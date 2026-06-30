@@ -25,11 +25,14 @@ allowed_origins = [
     "http://127.0.0.1:3000",
     "http://localhost:3007",
     "http://127.0.0.1:3007",
+    "http://192.168.99.99:3007",
 ]
 
-frontend_origin = os.getenv("FRONTEND_ORIGIN")
-if frontend_origin and frontend_origin not in allowed_origins:
-    allowed_origins.append(frontend_origin)
+frontend_origin = os.getenv("FRONTEND_ORIGIN", "")
+for origin in frontend_origin.split(","):
+    cleaned_origin = origin.strip()
+    if cleaned_origin and cleaned_origin not in allowed_origins:
+        allowed_origins.append(cleaned_origin)
 
 app.add_middleware(
     CORSMiddleware,
