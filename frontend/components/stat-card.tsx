@@ -6,10 +6,10 @@ type StatCardProps = {
 
 export function StatCard({ label, value, helper }: StatCardProps) {
   return (
-    <article className="rounded-3xl border border-brand-border bg-white p-5 shadow-card">
-      <p className="text-sm font-medium text-brand-muted">{label}</p>
-      <p className="mt-3 text-3xl font-bold text-brand-deep">{value}</p>
-      {helper ? <p className="mt-2 text-sm text-brand-muted">{helper}</p> : null}
+    <article className="rounded-2xl bg-white p-4 shadow-card">
+      <p className="text-xs font-medium text-gray-400">{label}</p>
+      <p className="mt-2 text-2xl font-black tracking-tight text-gray-900">{value}</p>
+      {helper ? <p className="mt-1 text-xs leading-relaxed text-gray-500">{helper}</p> : null}
     </article>
   );
 }

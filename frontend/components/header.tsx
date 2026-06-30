@@ -28,26 +28,37 @@ export function Header({ title, subtitle, backHref, logoutType }: HeaderProps) {
   };
 
   return (
-    <header className="flex items-start justify-between gap-3">
-      <div className="space-y-1">
-        {backHref ? (
-          <Link className="text-sm font-medium text-brand-muted" href={backHref}>
-            이전으로
-          </Link>
-        ) : null}
-        <h1 className="text-2xl font-bold text-brand-deep">{title}</h1>
-        {subtitle ? <p className="text-sm text-brand-muted">{subtitle}</p> : null}
-      </div>
-
-      {logoutType ? (
-        <button
-          className="rounded-full border border-brand-border bg-white px-4 py-2 text-sm font-semibold text-brand-navy shadow-card"
-          onClick={handleLogout}
-          type="button"
+    <div className="space-y-2">
+      {backHref ? (
+        <Link
+          href={backHref}
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-400 transition hover:text-gray-600"
         >
-          로그아웃
-        </button>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
+          </svg>
+          돌아가기
+        </Link>
       ) : null}
-    </header>
+
+      <div className="flex items-start justify-between gap-4 pt-0.5">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-black leading-tight tracking-tight text-gray-900">{title}</h1>
+          {subtitle ? (
+            <p className="mt-1 text-sm leading-relaxed text-gray-500">{subtitle}</p>
+          ) : null}
+        </div>
+
+        {logoutType ? (
+          <button
+            className="shrink-0 rounded-full bg-gray-100 px-4 py-2 text-sm font-medium text-gray-500 transition hover:bg-gray-200"
+            onClick={handleLogout}
+            type="button"
+          >
+            로그아웃
+          </button>
+        ) : null}
+      </div>
+    </div>
   );
 }

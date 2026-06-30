@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { BottomNav } from "@/components/bottom-nav";
+import { StudentBottomNav } from "@/components/student-bottom-nav";
 import { Header } from "@/components/header";
 import { ProgressBar } from "@/components/progress-bar";
 import { ScreenShell } from "@/components/screen-shell";
@@ -53,14 +53,10 @@ export default function UnitChecklistPage() {
   const completedCount = useMemo(() => tasks.filter((task) => task.is_done).length, [tasks]);
 
   const handleToggle = async (taskId: number) => {
-    if (!studentId) {
-      return;
-    }
+    if (!studentId) return;
 
     const current = tasks.find((task) => task.id === taskId);
-    if (!current) {
-      return;
-    }
+    if (!current) return;
 
     const nextValue = !current.is_done;
 
@@ -100,44 +96,66 @@ export default function UnitChecklistPage() {
       setProgress(0);
       return;
     }
-
     setProgress((completedCount / tasks.length) * 100);
   }, [completedCount, tasks.length]);
+
+  const progressRounded = Math.round(progress);
+  const isAllDone = tasks.length > 0 && completedCount === tasks.length;
 
   return (
     <ScreenShell withBottomNav>
       <Header backHref="/student" logoutType="student" subtitle="체크할수록 진도가 쌓여요" title={unitName} />
 
-      <section className="rounded-[2rem] bg-white p-5 shadow-card">
-        <div className="flex items-center justify-between gap-3">
+      {/* Progress summary card */}
+      <div
+        className={`rounded-3xl p-6 transition-colors duration-500 ${
+          isAllDone ? "bg-emerald-50" : "bg-white shadow-card"
+        }`}
+      >
+        <div className="flex items-center justify-between gap-4">
           <div>
-            <p className="text-sm text-brand-muted">단원 진도</p>
-            <p className="mt-2 text-3xl font-bold text-brand-deep">{Math.round(progress)}%</p>
+            <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">단원 진도</p>
+            <p
+              className={`mt-2 text-4xl font-black tracking-tight ${
+                isAllDone ? "text-emerald-600" : "text-gray-900"
+              }`}
+            >
+              {progressRounded}%
+            </p>
           </div>
-          <div className="rounded-full bg-brand-softYellow px-4 py-2 text-sm font-semibold text-brand-navy">
-            {completedCount} / {tasks.length} 완료
+          <div
+            className={`rounded-2xl px-4 py-3 text-center ${
+              isAllDone ? "bg-emerald-100" : "bg-gray-100"
+            }`}
+          >
+            <p className={`text-xs ${isAllDone ? "text-emerald-600" : "text-gray-400"}`}>완료</p>
+            <p className={`mt-1 text-xl font-black ${isAllDone ? "text-emerald-700" : "text-gray-900"}`}>
+              {completedCount}/{tasks.length}
+            </p>
           </div>
         </div>
-
         <div className="mt-5">
-          <ProgressBar value={progress} />
+          <ProgressBar tone={isAllDone ? "green" : "blue"} value={progress} />
         </div>
-      </section>
+      </div>
 
-      <section className="space-y-3">
-        <h2 className="text-lg font-bold text-brand-deep">학습 체크리스트</h2>
-        {tasks.map((task) => (
-          <TaskCheckbox
-            checked={task.is_done}
-            disabled={savingTaskId === task.id}
-            key={task.id}
-            onToggle={() => void handleToggle(task.id)}
-            title={task.title}
-          />
-        ))}
-      </section>
+      {/* Task checklist */}
+      <div>
+        <h2 className="mb-4 text-lg font-bold text-gray-900">학습 체크리스트</h2>
+        <div className="space-y-3">
+          {tasks.map((task) => (
+            <TaskCheckbox
+              checked={task.is_done}
+              disabled={savingTaskId === task.id}
+              key={task.id}
+              onToggle={() => void handleToggle(task.id)}
+              title={task.title}
+            />
+          ))}
+        </div>
+      </div>
 
-      <BottomNav items={[{ href: "/student", label: "홈" }, { href: "/login", label: "학생 로그인" }]} />
+      <StudentBottomNav />
     </ScreenShell>
   );
 }

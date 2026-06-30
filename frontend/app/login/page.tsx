@@ -2,7 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ScreenShell } from "@/components/screen-shell";
+import Link from "next/link";
 import { apiFetch } from "@/lib/api";
 import { saveStudent } from "@/lib/storage";
 import { StudentLoginResponse } from "@/lib/types";
@@ -34,36 +34,64 @@ export default function LoginPage() {
   };
 
   return (
-    <ScreenShell>
-      <section className="rounded-[2rem] bg-brand-navy p-6 text-white shadow-card">
-        <p className="text-sm text-white/70">9월 모평 대비</p>
-        <h1 className="mt-2 text-3xl font-bold">수학체크</h1>
-        <p className="mt-3 text-sm leading-6 text-white/80">
-          휴대폰 번호로 로그인하고 오늘의 수학 진도를 가볍게 이어가세요.
-        </p>
-      </section>
+    <div className="flex min-h-screen flex-col items-center justify-center bg-[#EEF2F6] px-5 py-12">
+      <div className="w-full max-w-[390px]">
+        {/* App logo */}
+        <div className="mb-8 text-center">
+          <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-3xl bg-[#0F172A] shadow-lg">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="white">
+              <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" />
+            </svg>
+          </div>
+          <h1 className="text-3xl font-black tracking-tight text-gray-900">MathCheck</h1>
+          <p className="mt-1.5 text-sm text-gray-500">9모 대비 진도관리</p>
+        </div>
 
-      <form className="rounded-4xl border border-brand-border bg-white p-6 shadow-card" onSubmit={handleSubmit}>
-        <label className="block">
-          <span className="text-sm font-semibold text-brand-deep">휴대폰 번호</span>
-          <input
-            className="mt-3 w-full rounded-2xl border border-brand-border bg-brand-bg px-4 py-4 text-base outline-none ring-0 transition focus:border-brand-yellow"
-            onChange={(event) => setPhone(event.target.value)}
-            placeholder="01011112222"
-            value={phone}
-          />
-        </label>
+        {/* Login card */}
+        <div className="rounded-3xl bg-white p-7 shadow-[0_8px_30px_rgba(0,0,0,0.08)]">
+          <h2 className="text-xl font-bold text-gray-900">시작하기</h2>
+          <p className="mt-1 text-sm text-gray-500">
+            전화번호만 입력하면 바로 진도표로 이동합니다.
+          </p>
 
-        {error ? <p className="mt-4 text-sm text-red-500">{error}</p> : null}
+          <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
+            <div>
+              <label className="mb-2 block text-sm font-semibold text-gray-700">
+                휴대폰 번호
+              </label>
+              <input
+                className="w-full rounded-2xl border-2 border-gray-100 bg-gray-50 px-5 py-4 text-base text-gray-900 outline-none transition focus:border-[#0F172A] focus:bg-white"
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="01011112222"
+                type="tel"
+                value={phone}
+              />
+            </div>
 
-        <button
-          className="mt-6 w-full rounded-full bg-brand-yellow px-5 py-4 text-base font-bold text-brand-navy transition hover:brightness-95"
-          disabled={loading}
-          type="submit"
-        >
-          {loading ? "로그인 중..." : "학생 로그인"}
-        </button>
-      </form>
-    </ScreenShell>
+            {error ? (
+              <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{error}</p>
+            ) : null}
+
+            <button
+              className="w-full rounded-2xl bg-[#0F172A] py-4 text-base font-bold text-white transition hover:opacity-90 disabled:opacity-50"
+              disabled={loading || !phone}
+              type="submit"
+            >
+              {loading ? "로그인 중..." : "시작하기"}
+            </button>
+          </form>
+        </div>
+
+        {/* Admin link - subtle */}
+        <div className="mt-6 text-center">
+          <Link
+            className="text-xs text-gray-400 transition hover:text-gray-600"
+            href="/admin/login"
+          >
+            관리자이신가요? →
+          </Link>
+        </div>
+      </div>
+    </div>
   );
 }

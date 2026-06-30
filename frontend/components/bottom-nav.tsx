@@ -8,6 +8,7 @@ type BottomNavProps = {
   items: {
     href: string;
     label: string;
+    icon?: string;
   }[];
 };
 
@@ -15,8 +16,8 @@ export function BottomNav({ items }: BottomNavProps) {
   const pathname = usePathname();
 
   return (
-    <nav className="fixed bottom-4 left-1/2 z-20 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 rounded-full border border-brand-border bg-white/95 p-2 shadow-card backdrop-blur">
-      <div className="grid grid-cols-2 gap-2">
+    <nav className="fixed bottom-4 left-1/2 z-20 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 rounded-[2rem] bg-brand-deep p-2.5 shadow-[0_20px_45px_rgba(15,23,42,0.28)]">
+      <div className={`grid gap-2 ${items.length === 4 ? "grid-cols-4" : `grid-cols-${Math.min(items.length, 4)}`}`}>
         {items.map((item) => {
           const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
 
@@ -24,12 +25,13 @@ export function BottomNav({ items }: BottomNavProps) {
             <Link
               key={item.href}
               className={cn(
-                "rounded-full px-4 py-3 text-center text-sm font-semibold transition",
-                active ? "bg-brand-navy text-white" : "text-brand-muted"
+                "flex min-h-14 flex-col items-center justify-center rounded-[1.3rem] px-3 py-2 text-center text-[11px] font-semibold transition",
+                active ? "bg-white text-brand-deep" : "text-white/70"
               )}
               href={item.href}
             >
-              {item.label}
+              <span className="text-base leading-none">{item.icon ?? "•"}</span>
+              <span className="mt-1">{item.label}</span>
             </Link>
           );
         })}
