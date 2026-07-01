@@ -81,8 +81,8 @@ export default function StudentDashboardPage() {
 
   const completedTasks = summary?.completed_tasks ?? 0;
   const totalTasks = summary?.total_tasks ?? 0;
-  const remainingTasks = totalTasks - completedTasks;
   const progressPct = summary ? Math.round(summary.progress_percentage) : 0;
+  const remainingTasks = Math.max(totalTasks - completedTasks, 0);
   const ddayInfo = getDdayInfo("2026-09-02");
   const examMessage = examMessages[Math.abs(ddayInfo.daysRemaining) % examMessages.length];
 
@@ -95,75 +95,83 @@ export default function StudentDashboardPage() {
     <ScreenShell withBottomNav>
       <div className="flex items-start justify-between gap-4 pt-1">
         <div>
-          {loading ? (
-            <p className="h-4 w-24 animate-pulse rounded bg-gray-200" />
-          ) : (
-            <p className="text-sm font-medium text-gray-400">{summary?.grade ?? ""}</p>
-          )}
-          <h1 className="mt-1 text-2xl font-black tracking-tight text-gray-900">
-            {summary ? `안녕하세요, ${summary.name}님` : "대시보드"}
+          <h1 className="text-2xl font-black tracking-tight text-[#17213B]">
+            {summary ? `안녕하세요, ${summary.name}님` : "안녕하세요"}
           </h1>
-          <p className="mt-0.5 text-sm text-gray-500">오늘의 진도를 체크해볼까요?</p>
+          <p className="mt-2 text-sm font-medium text-[#98A1B3]">오늘도 한 걸음씩 함께해요.</p>
         </div>
         <button
-          className="shrink-0 rounded-full bg-gray-100 px-4 py-2 text-sm font-medium text-gray-500 transition hover:bg-gray-200"
+          aria-label="로그아웃"
+          className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white text-[#17213B] shadow-card transition hover:bg-gray-50"
           onClick={handleLogout}
           type="button"
         >
-          로그아웃
+          <span className="text-lg">⌂</span>
+          <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-rose-500" />
         </button>
       </div>
 
-      <section className="rounded-3xl bg-white p-5 shadow-card">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-sm font-bold text-gray-500">9월 모의고사까지</p>
-            <p className="mt-1 text-xs font-medium text-gray-400">2026년 9월 2일 시행</p>
-          </div>
-          <div className="rounded-2xl bg-[#0F172A] px-4 py-3 text-right text-white">
-            <p className="text-xs font-semibold text-white/50">D-DAY</p>
-            <p className="mt-1 text-3xl font-black tracking-tight">{ddayInfo.label}</p>
-          </div>
-        </div>
-        <p className="mt-4 rounded-2xl bg-amber-50 px-4 py-3 text-sm font-semibold leading-relaxed text-amber-800">
-          {examMessage}
-        </p>
-      </section>
-
-      <div className="rounded-3xl bg-[#0F172A] p-6 text-white">
-        <p className="text-xs font-semibold uppercase tracking-widest text-white/40">전체 진도</p>
-        <div className="mt-3 flex items-end justify-between gap-4">
-          <div>
-            <p className="text-5xl font-black tracking-tight">{progressPct}%</p>
-            <p className="mt-2 text-sm text-white/50">
-              {completedTasks}개 완료 &middot; {remainingTasks}개 남음
+      <section className="relative overflow-hidden rounded-2xl border border-indigo-100 bg-[#F7F8FF] p-5 shadow-card">
+        <div className="pointer-events-none absolute right-4 top-4 h-24 w-24 rounded-full bg-white/60" />
+        <div className="pointer-events-none absolute bottom-9 right-28 h-5 w-16 rounded-full bg-white/70" />
+        <div className="relative flex items-center justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <p className="text-lg font-black text-[#17213B]">9월 모의고사까지</p>
+            <p className="mt-1 text-sm font-bold text-indigo-400">2026년 9월 2일 시행</p>
+            <p className="mt-5 max-w-[11rem] text-sm font-bold leading-relaxed text-[#17213B]">
+              {examMessage}
             </p>
           </div>
-          <div className="rounded-2xl bg-white/10 px-4 py-3 text-center">
-            <p className="text-xs text-white/40">학년</p>
-            <p className="mt-1 text-lg font-bold">{summary?.grade ?? "-"}</p>
+
+          <div className="relative flex h-32 w-32 shrink-0 items-center justify-center rounded-full bg-indigo-200/80 p-1.5 shadow-[0_14px_32px_rgba(79,70,229,0.22)]">
+            <div className="flex h-full w-full flex-col items-center justify-center rounded-full bg-[#111A35] text-white">
+              <p className="text-xs font-bold text-white/45">D-DAY</p>
+              <p className="mt-1 text-4xl font-black tracking-tight">{ddayInfo.label}</p>
+            </div>
           </div>
         </div>
-        <div className="mt-5 h-2 overflow-hidden rounded-full bg-white/10">
-          <div
-            className="h-full rounded-full bg-[#FACC15] transition-all duration-700"
-            style={{ width: `${progressPct}%` }}
-          />
-        </div>
-      </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div className="rounded-2xl bg-white p-4 shadow-card">
-          <p className="text-xs text-gray-400">전체 문제</p>
-          <p className="mt-1.5 text-2xl font-black tracking-tight text-gray-900">{totalTasks}개</p>
+        <div className="relative mt-5 flex items-center justify-between rounded-full bg-white px-4 py-3 text-sm font-semibold text-[#8A94A8] shadow-sm">
+          <span>목표까지 꾸준히, 우리 충분히 잘하고 있어요!</span>
+          <span className="text-lg text-[#98A1B3]">›</span>
         </div>
-        <div className="rounded-2xl bg-white p-4 shadow-card">
-          <p className="text-xs text-gray-400">완료한 문제</p>
-          <p className="mt-1.5 text-2xl font-black tracking-tight text-emerald-600">
-            {completedTasks}개
-          </p>
+      </section>
+
+      <section className="rounded-2xl border border-gray-100 bg-white p-4 shadow-card">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-black text-[#17213B]">전체 학습 요약</h2>
+          <span className="text-xs font-semibold text-[#98A1B3]">이번 주 기준</span>
         </div>
-      </div>
+
+        <div className="mt-5 grid grid-cols-3 gap-3">
+          <div className="text-center">
+            <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-indigo-100 text-indigo-500">
+              <span className="text-lg font-black">✓</span>
+            </div>
+            <p className="mt-3 text-xs font-semibold text-[#98A1B3]">완료한 문제</p>
+            <p className="mt-1 text-2xl font-black text-[#17213B]">{completedTasks}</p>
+            <p className="text-xs font-medium text-[#98A1B3]">/ {totalTasks}문제</p>
+          </div>
+
+          <div className="text-center">
+            <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+              <span className="text-lg font-black">◎</span>
+            </div>
+            <p className="mt-3 text-xs font-semibold text-[#98A1B3]">학습 진도</p>
+            <p className="mt-1 text-2xl font-black text-[#17213B]">{progressPct}%</p>
+            <p className="text-xs font-medium text-[#98A1B3]">목표 70%</p>
+          </div>
+
+          <div className="text-center">
+            <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-orange-100 text-orange-500">
+              <span className="text-lg font-black">▲</span>
+            </div>
+            <p className="mt-3 text-xs font-semibold text-[#98A1B3]">남은 문제</p>
+            <p className="mt-1 text-2xl font-black text-[#17213B]">{remainingTasks}</p>
+            <p className="text-xs font-medium text-[#98A1B3]">오늘도 하나씩</p>
+          </div>
+        </div>
+      </section>
 
       <div>
         <div className="mb-4 flex items-center justify-between">
