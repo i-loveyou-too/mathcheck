@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { StudentBottomNav } from "@/components/student-bottom-nav";
 import { ScreenShell } from "@/components/screen-shell";
+import { StudentBottomNav } from "@/components/student-bottom-nav";
 import { SubjectCard } from "@/components/subject-card";
 import { apiFetch } from "@/lib/api";
 import { clearStudent, getStudent } from "@/lib/storage";
@@ -14,6 +14,36 @@ const studentSubjectCards = [
   { id: 1, name: "수2", href: "/student/subjects/su2" },
   { id: 2, name: "확률과 통계", href: "/student/subjects/probability" },
 ];
+
+const examMessages = [
+  "9모는 너의 날이야.",
+  "오늘 체크 하나가 9모 점수를 만든다.",
+  "조금씩 쌓이면 진짜 달라진다.",
+  "오늘도 해내면 충분해.",
+  "완벽 말고 체크부터 가자.",
+  "9모까지 차근차근, 결국 네가 이긴다.",
+  "오늘도 해냄. 이게 진짜 실력 된다.",
+  "작게 해도 괜찮아. 대신 오늘도 이어가자.",
+];
+
+function getDdayInfo(targetDateString: string) {
+  const [year, month, day] = targetDateString.split("-").map(Number);
+  const today = new Date();
+  const target = new Date(year, month - 1, day);
+
+  const todayLocal = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const targetLocal = new Date(target.getFullYear(), target.getMonth(), target.getDate());
+
+  const diffMs = targetLocal.getTime() - todayLocal.getTime();
+  const daysRemaining = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+
+  let label = "";
+  if (daysRemaining > 0) label = `D-${daysRemaining}`;
+  else if (daysRemaining === 0) label = "D-DAY";
+  else label = "종료";
+
+  return { daysRemaining, label };
+}
 
 export default function StudentDashboardPage() {
   const router = useRouter();
@@ -53,6 +83,8 @@ export default function StudentDashboardPage() {
   const totalTasks = summary?.total_tasks ?? 0;
   const remainingTasks = totalTasks - completedTasks;
   const progressPct = summary ? Math.round(summary.progress_percentage) : 0;
+  const ddayInfo = getDdayInfo("2026-09-02");
+  const examMessage = examMessages[Math.abs(ddayInfo.daysRemaining) % examMessages.length];
 
   const handleLogout = () => {
     clearStudent();
@@ -61,7 +93,6 @@ export default function StudentDashboardPage() {
 
   return (
     <ScreenShell withBottomNav>
-      {/* Header */}
       <div className="flex items-start justify-between gap-4 pt-1">
         <div>
           {loading ? (
@@ -72,7 +103,7 @@ export default function StudentDashboardPage() {
           <h1 className="mt-1 text-2xl font-black tracking-tight text-gray-900">
             {summary ? `안녕하세요, ${summary.name}님` : "대시보드"}
           </h1>
-          <p className="mt-0.5 text-sm text-gray-500">오늘도 진도를 체크해볼까요?</p>
+          <p className="mt-0.5 text-sm text-gray-500">오늘의 진도를 체크해볼까요?</p>
         </div>
         <button
           className="shrink-0 rounded-full bg-gray-100 px-4 py-2 text-sm font-medium text-gray-500 transition hover:bg-gray-200"
@@ -83,7 +114,22 @@ export default function StudentDashboardPage() {
         </button>
       </div>
 
-      {/* Overall progress card */}
+      <section className="rounded-3xl bg-white p-5 shadow-card">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-sm font-bold text-gray-500">9월 모의고사까지</p>
+            <p className="mt-1 text-xs font-medium text-gray-400">2026년 9월 2일 시행</p>
+          </div>
+          <div className="rounded-2xl bg-[#0F172A] px-4 py-3 text-right text-white">
+            <p className="text-xs font-semibold text-white/50">D-DAY</p>
+            <p className="mt-1 text-3xl font-black tracking-tight">{ddayInfo.label}</p>
+          </div>
+        </div>
+        <p className="mt-4 rounded-2xl bg-amber-50 px-4 py-3 text-sm font-semibold leading-relaxed text-amber-800">
+          {examMessage}
+        </p>
+      </section>
+
       <div className="rounded-3xl bg-[#0F172A] p-6 text-white">
         <p className="text-xs font-semibold uppercase tracking-widest text-white/40">전체 진도</p>
         <div className="mt-3 flex items-end justify-between gap-4">
@@ -106,7 +152,6 @@ export default function StudentDashboardPage() {
         </div>
       </div>
 
-      {/* Quick stats */}
       <div className="grid grid-cols-2 gap-3">
         <div className="rounded-2xl bg-white p-4 shadow-card">
           <p className="text-xs text-gray-400">전체 문제</p>
@@ -120,7 +165,6 @@ export default function StudentDashboardPage() {
         </div>
       </div>
 
-      {/* Subjects */}
       <div>
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-bold text-gray-900">교재별 진도</h2>
