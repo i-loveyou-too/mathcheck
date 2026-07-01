@@ -1,20 +1,60 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/header";
 import { ScreenShell } from "@/components/screen-shell";
 import { StudentBottomNav } from "@/components/student-bottom-nav";
-import { cn } from "@/lib/utils";
+import { apiFetch } from "@/lib/api";
 import { getStudent } from "@/lib/storage";
+import { cn } from "@/lib/utils";
 
 type ProblemStatus = "not-started" | "question" | "done";
+type ApiProblemStatus = "not_started" | "partial" | "done";
+
+type ChecklistItem = {
+  id?: number;
+  itemNumber: number;
+  title: string;
+  status: ProblemStatus;
+};
+
+type TextbookProgressResponse = {
+  textbook: {
+    id: number;
+    key: string;
+    subject: string | null;
+    title: string;
+    full_title: string;
+    problem_count: number;
+  };
+  summary: {
+    total: number;
+    done: number;
+    partial: number;
+    not_started: number;
+  };
+  items: {
+    id: number;
+    item_number: number;
+    title: string;
+    status: ApiProblemStatus;
+  }[];
+};
+
+type StudentItemProgressResponse = {
+  student_id: number;
+  item_id: number;
+  status: ApiProblemStatus;
+  updated_at: string;
+};
 
 type TextbookChecklistPageProps = {
   title: string;
   backHref: string;
   startNumber: number;
   endNumber: number;
+  progressKey?: "deep-su1-exp-log";
 };
 
 const statusOptions: { label: string; value: ProblemStatus }[] = [
@@ -52,6 +92,18 @@ const statusStyles: Record<
   },
 };
 
+function toUiStatus(status: ApiProblemStatus): ProblemStatus {
+  if (status === "done") return "done";
+  if (status === "partial") return "question";
+  return "not-started";
+}
+
+function toApiStatus(status: ProblemStatus): ApiProblemStatus {
+  if (status === "done") return "done";
+  if (status === "question") return "partial";
+  return "not_started";
+}
+
 function getStatusLabel(status: ProblemStatus) {
   if (status === "done") return "완료";
   if (status === "question") return "질문";
@@ -61,27 +113,85 @@ function getStatusLabel(status: ProblemStatus) {
 export function TextbookChecklistPage({
   backHref,
   endNumber,
+  progressKey,
   startNumber,
   title,
 }: TextbookChecklistPageProps) {
   const router = useRouter();
+  const [studentId, setStudentId] = useState<number | null>(null);
+  const [apiTitle, setApiTitle] = useState<string | null>(null);
+  const [items, setItems] = useState<ChecklistItem[]>([]);
   const [statuses, setStatuses] = useState<Record<number, ProblemStatus>>({});
+  const [loading, setLoading] = useState(Boolean(progressKey));
+  const [loadError, setLoadError] = useState("");
+  const [saveError, setSaveError] = useState("");
+  const [savingItemId, setSavingItemId] = useState<number | null>(null);
 
-  useEffect(() => {
-    if (!getStudent()) {
-      router.push("/login");
-    }
-  }, [router]);
+  const isDbBacked = Boolean(progressKey);
 
-  const problemNumbers = useMemo(
-    () => Array.from({ length: endNumber - startNumber + 1 }, (_, index) => startNumber + index),
-    [endNumber, startNumber]
+  const fetchProgress = useCallback(
+    async (nextStudentId: number) => {
+      if (!progressKey) return;
+
+      setLoading(true);
+      setLoadError("");
+
+      try {
+        const data = await apiFetch<TextbookProgressResponse>(
+          `/student/textbook-progress/${progressKey}?student_id=${nextStudentId}`
+        );
+
+        setApiTitle(data.textbook.full_title);
+        setItems(
+          data.items.map((item) => ({
+            id: item.id,
+            itemNumber: item.item_number,
+            title: item.title,
+            status: toUiStatus(item.status),
+          }))
+        );
+      } catch {
+        setLoadError("진도 정보를 불러오지 못했습니다.");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [progressKey]
   );
 
+  useEffect(() => {
+    const student = getStudent();
+    if (!student) {
+      router.push("/login");
+      return;
+    }
+
+    setStudentId(student.id);
+
+    if (progressKey) {
+      void fetchProgress(student.id);
+    }
+  }, [fetchProgress, progressKey, router]);
+
+  const dummyItems = useMemo<ChecklistItem[]>(
+    () =>
+      Array.from({ length: endNumber - startNumber + 1 }, (_, index) => {
+        const itemNumber = startNumber + index;
+        return {
+          itemNumber,
+          title: `${itemNumber}번`,
+          status: statuses[itemNumber] ?? "not-started",
+        };
+      }),
+    [endNumber, startNumber, statuses]
+  );
+
+  const visibleItems = isDbBacked ? items : dummyItems;
+
   const summary = useMemo(() => {
-    const total = problemNumbers.length;
-    const done = problemNumbers.filter((number) => statuses[number] === "done").length;
-    const question = problemNumbers.filter((number) => statuses[number] === "question").length;
+    const total = visibleItems.length;
+    const done = visibleItems.filter((item) => item.status === "done").length;
+    const question = visibleItems.filter((item) => item.status === "question").length;
 
     return {
       total,
@@ -89,13 +199,45 @@ export function TextbookChecklistPage({
       question,
       notStarted: total - done - question,
     };
-  }, [problemNumbers, statuses]);
+  }, [visibleItems]);
 
-  const handleStatusChange = (problemNumber: number, status: ProblemStatus) => {
-    setStatuses((current) => ({
-      ...current,
-      [problemNumber]: status,
-    }));
+  const handleStatusChange = async (item: ChecklistItem, status: ProblemStatus) => {
+    setSaveError("");
+
+    if (!isDbBacked) {
+      setStatuses((current) => ({
+        ...current,
+        [item.itemNumber]: status,
+      }));
+      return;
+    }
+
+    if (!studentId || !item.id) return;
+
+    const previousItems = items;
+    setSavingItemId(item.id);
+    setItems((current) =>
+      current.map((currentItem) =>
+        currentItem.id === item.id ? { ...currentItem, status } : currentItem
+      )
+    );
+
+    try {
+      await apiFetch<StudentItemProgressResponse>("/student/item-progress", {
+        method: "POST",
+        body: {
+          student_id: studentId,
+          item_id: item.id,
+          status: toApiStatus(status),
+        },
+      });
+    } catch {
+      setSaveError("저장하지 못했습니다. 다시 시도해주세요.");
+      setItems(previousItems);
+      await fetchProgress(studentId);
+    } finally {
+      setSavingItemId(null);
+    }
   };
 
   return (
@@ -103,8 +245,12 @@ export function TextbookChecklistPage({
       <Header
         backHref={backHref}
         logoutType="student"
-        subtitle="문제별 체크는 이 화면에서만 임시로 반영됩니다."
-        title={title}
+        subtitle={
+          isDbBacked
+            ? "문제별 체크는 교재별로 저장됩니다."
+            : "문제별 체크는 이 화면에서만 임시로 반영됩니다."
+        }
+        title={apiTitle ?? title}
       />
 
       <section className="rounded-3xl bg-[#0F172A] p-5 text-white">
@@ -131,15 +277,27 @@ export function TextbookChecklistPage({
 
       <section>
         <h2 className="mb-3 text-lg font-bold text-gray-900">문제 목록</h2>
+
+        {loading ? <p className="text-sm font-semibold text-gray-400">불러오는 중...</p> : null}
+        {loadError ? <p className="text-sm font-semibold text-red-500">{loadError}</p> : null}
+        {saveError ? <p className="mb-3 text-sm font-semibold text-red-500">{saveError}</p> : null}
+
+        {!loading && !loadError && visibleItems.length === 0 ? (
+          <p className="text-sm font-semibold text-gray-400">표시할 문제가 없습니다.</p>
+        ) : null}
+
         <div className="space-y-3">
-          {problemNumbers.map((problemNumber) => {
-            const selectedStatus = statuses[problemNumber] ?? "not-started";
+          {visibleItems.map((item) => {
+            const selectedStatus = item.status;
 
             return (
-              <article className="rounded-2xl bg-white p-4 shadow-card" key={problemNumber}>
+              <article className="rounded-2xl bg-white p-4 shadow-card" key={item.id ?? item.itemNumber}>
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <h3 className="text-base font-bold text-gray-900">{problemNumber}번</h3>
+                    <h3 className="text-base font-bold text-gray-900">{item.itemNumber}번</h3>
+                    {item.title !== `${item.itemNumber}번` ? (
+                      <p className="mt-1 text-xs font-medium text-gray-500">{item.title}</p>
+                    ) : null}
                     <p
                       className={cn(
                         "mt-1 text-xs font-semibold",
@@ -156,13 +314,14 @@ export function TextbookChecklistPage({
                       return (
                         <button
                           className={cn(
-                            "h-9 min-w-16 rounded-full px-3 text-xs font-bold transition",
+                            "h-9 min-w-16 rounded-full px-3 text-xs font-bold transition disabled:opacity-60",
                             isSelected
                               ? statusStyles[option.value].selectedButton
                               : statusStyles[option.value].idleButton
                           )}
+                          disabled={savingItemId === item.id}
                           key={option.value}
-                          onClick={() => handleStatusChange(problemNumber, option.value)}
+                          onClick={() => void handleStatusChange(item, option.value)}
                           type="button"
                         >
                           {option.label}
