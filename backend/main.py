@@ -100,6 +100,50 @@ def student_summary(student_id: int, db: Session = Depends(get_db)):
     return summary
 
 
+@app.get(
+    "/student/textbook-progress/deep-su1-exp-log",
+    response_model=schemas.TextbookProgressResponse,
+    tags=["Student"],
+)
+def deep_su1_exp_log_progress(student_id: int, db: Session = Depends(get_db)):
+    student = crud.get_student_by_id(db, student_id)
+    if student is None:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    progress = crud.get_deep_su1_exp_log_progress(db, student_id)
+    if progress is None:
+        raise HTTPException(status_code=404, detail="Textbook not found")
+    return progress
+
+
+@app.post(
+    "/student/item-progress",
+    response_model=schemas.StudentItemProgressResponse,
+    tags=["Student"],
+)
+def save_student_item_progress(
+    payload: schemas.StudentItemProgressRequest,
+    db: Session = Depends(get_db),
+):
+    if payload.status not in crud.ITEM_PROGRESS_STATUSES:
+        raise HTTPException(status_code=400, detail="Invalid status")
+
+    student = crud.get_student_by_id(db, payload.student_id)
+    if student is None:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    item = crud.get_textbook_item(db, payload.item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Item not found")
+
+    return crud.upsert_student_item_progress(
+        db,
+        payload.student_id,
+        payload.item_id,
+        payload.status,
+    )
+
+
 @app.post("/auth/admin-login", response_model=schemas.AdminLoginResponse, tags=["Admin"])
 def admin_login(payload: schemas.AdminLoginRequest, db: Session = Depends(get_db)):
     admin = crud.get_admin_by_username(db, payload.username)

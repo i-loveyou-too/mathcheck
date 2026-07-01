@@ -14,6 +14,11 @@ class Student(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     progress = relationship("Progress", back_populates="student", cascade="all, delete-orphan")
+    item_progress = relationship(
+        "MathStudentItemProgress",
+        back_populates="student",
+        cascade="all, delete-orphan",
+    )
 
 
 class Admin(Base):
@@ -81,3 +86,88 @@ class Progress(Base):
 
     student = relationship("Student", back_populates="progress")
     task = relationship("Task", back_populates="progress_entries")
+
+
+class MathTextbookSeries(Base):
+    __tablename__ = "math_textbook_series"
+    __table_args__ = (
+        UniqueConstraint("display_name", "type", name="uq_math_textbook_series_display_type"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    korean_name = Column(String(100), nullable=False)
+    english_name = Column(String(100), nullable=False)
+    display_name = Column(String(200), nullable=False)
+    type = Column(String(50), nullable=False)
+    order_index = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    textbooks = relationship(
+        "MathTextbook",
+        back_populates="series",
+        cascade="all, delete-orphan",
+        order_by="MathTextbook.order_index, MathTextbook.id",
+    )
+
+
+class MathTextbook(Base):
+    __tablename__ = "math_textbooks"
+    __table_args__ = (UniqueConstraint("full_title", name="uq_math_textbooks_full_title"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    series_id = Column(Integer, ForeignKey("math_textbook_series.id"), nullable=False)
+    subject = Column(String(50), nullable=True)
+    title = Column(String(200), nullable=False)
+    full_title = Column(String(300), nullable=False)
+    type = Column(String(50), nullable=False)
+    is_checkable = Column(Boolean, nullable=False, default=True)
+    is_published = Column(Boolean, nullable=False, default=True)
+    order_index = Column(Integer, nullable=False, default=0)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    series = relationship("MathTextbookSeries", back_populates="textbooks")
+    items = relationship(
+        "MathTextbookItem",
+        back_populates="textbook",
+        cascade="all, delete-orphan",
+        order_by="MathTextbookItem.order_index, MathTextbookItem.id",
+    )
+
+
+class MathTextbookItem(Base):
+    __tablename__ = "math_textbook_items"
+    __table_args__ = (
+        UniqueConstraint("textbook_id", "item_number", name="uq_math_textbook_items_textbook_number"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    textbook_id = Column(Integer, ForeignKey("math_textbooks.id"), nullable=False)
+    item_number = Column(Integer, nullable=False)
+    title = Column(String(100), nullable=False)
+    item_type = Column(String(50), nullable=False)
+    order_index = Column(Integer, nullable=False, default=0)
+    is_active = Column(Boolean, nullable=False, default=True)
+
+    textbook = relationship("MathTextbook", back_populates="items")
+    progress_entries = relationship(
+        "MathStudentItemProgress",
+        back_populates="item",
+        cascade="all, delete-orphan",
+    )
+
+
+class MathStudentItemProgress(Base):
+    __tablename__ = "math_student_item_progress"
+    __table_args__ = (
+        UniqueConstraint("student_id", "item_id", name="uq_math_student_item_progress_student_item"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("math_students.id"), nullable=False)
+    item_id = Column(Integer, ForeignKey("math_textbook_items.id"), nullable=False)
+    status = Column(String(50), nullable=False, default="not_started")
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    student = relationship("Student", back_populates="item_progress")
+    item = relationship("MathTextbookItem", back_populates="progress_entries")

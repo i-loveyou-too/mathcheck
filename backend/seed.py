@@ -128,6 +128,25 @@ SAMPLE_SUBJECTS = [
     },
 ]
 
+DEEP_SU1_EXP_LOG_SERIES = {
+    "korean_name": "딥러닝",
+    "english_name": "Deep Learning",
+    "display_name": "딥러닝 Deep Learning",
+    "type": "problem",
+    "order_index": 2,
+}
+
+DEEP_SU1_EXP_LOG_TEXTBOOK = {
+    "subject": "수1",
+    "title": "지수로그",
+    "full_title": "딥러닝 Deep Learning 수1 - 지수로그",
+    "type": "problem",
+    "is_checkable": True,
+    "is_published": True,
+    "is_active": True,
+    "order_index": 1,
+}
+
 def get_or_create_student(db, name: str, phone: str, grade: str):
     student = db.query(models.Student).filter(models.Student.phone == phone).first()
     if student is not None:
@@ -186,6 +205,91 @@ def get_or_create_task(db, unit_id: int, title: str, order_index: int):
     return task
 
 
+def get_or_create_textbook_series(db, series_data: dict):
+    series = (
+        db.query(models.MathTextbookSeries)
+        .filter(
+            models.MathTextbookSeries.display_name == series_data["display_name"],
+            models.MathTextbookSeries.type == series_data["type"],
+        )
+        .first()
+    )
+    if series is None:
+        series = models.MathTextbookSeries(**series_data)
+        db.add(series)
+    else:
+        for key, value in series_data.items():
+            setattr(series, key, value)
+    db.flush()
+    return series
+
+
+def get_or_create_textbook(db, series_id: int, textbook_data: dict):
+    textbook = (
+        db.query(models.MathTextbook)
+        .filter(models.MathTextbook.full_title == textbook_data["full_title"])
+        .first()
+    )
+    values = {**textbook_data, "series_id": series_id}
+    if textbook is None:
+        textbook = models.MathTextbook(**values)
+        db.add(textbook)
+    else:
+        for key, value in values.items():
+            setattr(textbook, key, value)
+    db.flush()
+    return textbook
+
+
+def get_or_create_textbook_item(
+    db,
+    textbook_id: int,
+    item_number: int,
+    title: str,
+    item_type: str,
+    order_index: int,
+):
+    item = (
+        db.query(models.MathTextbookItem)
+        .filter(
+            models.MathTextbookItem.textbook_id == textbook_id,
+            models.MathTextbookItem.item_number == item_number,
+        )
+        .first()
+    )
+    values = {
+        "textbook_id": textbook_id,
+        "item_number": item_number,
+        "title": title,
+        "item_type": item_type,
+        "order_index": order_index,
+        "is_active": True,
+    }
+    if item is None:
+        item = models.MathTextbookItem(**values)
+        db.add(item)
+    else:
+        for key, value in values.items():
+            setattr(item, key, value)
+    db.flush()
+    return item
+
+
+def seed_deep_su1_exp_log(db):
+    series = get_or_create_textbook_series(db, DEEP_SU1_EXP_LOG_SERIES)
+    textbook = get_or_create_textbook(db, series.id, DEEP_SU1_EXP_LOG_TEXTBOOK)
+
+    for item_number in range(1, 21):
+        get_or_create_textbook_item(
+            db,
+            textbook_id=textbook.id,
+            item_number=item_number,
+            title=f"{item_number}번",
+            item_type="problem",
+            order_index=item_number,
+        )
+
+
 def seed():
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
@@ -201,6 +305,8 @@ def seed():
                 unit = get_or_create_unit(db, subject.id, unit_data["name"], unit_data["order_index"])
                 for index, task_title in enumerate(unit_data["tasks"], start=1):
                     get_or_create_task(db, unit.id, task_title, index)
+
+        seed_deep_su1_exp_log(db)
 
         db.commit()
         print("Seed data is ready.")

@@ -125,3 +125,45 @@ class StudentProgressDetailResponse(BaseModel):
     completed_tasks: int
     progress_percentage: float
     subjects: list[SubjectStatus]
+
+
+class TextbookProgressInfo(BaseModel):
+    id: int
+    key: str
+    subject: Optional[str] = None
+    title: str
+    full_title: str
+    problem_count: int
+
+
+class TextbookProgressSummary(BaseModel):
+    total: int
+    done: int
+    partial: int
+    not_started: int
+
+
+class TextbookProgressItem(BaseModel):
+    id: int
+    item_number: int
+    title: str
+    status: str
+
+
+class TextbookProgressResponse(BaseModel):
+    textbook: TextbookProgressInfo
+    summary: TextbookProgressSummary
+    items: list[TextbookProgressItem]
+
+
+class StudentItemProgressRequest(BaseModel):
+    student_id: int
+    item_id: int
+    status: str
+
+
+class StudentItemProgressResponse(BaseModel):
+    student_id: int
+    item_id: int
+    status: str
+    updated_at: datetime

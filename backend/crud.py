@@ -3,7 +3,22 @@ from typing import Optional
 
 from sqlalchemy.orm import Session, selectinload
 
-from models import Admin, Progress, Student, Subject, Task, Unit
+from models import (
+    Admin,
+    MathStudentItemProgress,
+    MathTextbook,
+    MathTextbookItem,
+    Progress,
+    Student,
+    Subject,
+    Task,
+    Unit,
+)
+
+
+DEEP_SU1_EXP_LOG_KEY = "deep-su1-exp-log"
+DEEP_SU1_EXP_LOG_FULL_TITLE = "딥러닝 Deep Learning 수1 - 지수로그"
+ITEM_PROGRESS_STATUSES = {"not_started", "partial", "done"}
 
 
 def percentage(completed_tasks: int, total_tasks: int) -> float:
@@ -39,6 +54,14 @@ def get_unit(db: Session, unit_id: int) -> Optional[Unit]:
 
 def get_task(db: Session, task_id: int) -> Optional[Task]:
     return db.query(Task).filter(Task.id == task_id).first()
+
+
+def get_textbook_by_full_title(db: Session, full_title: str) -> Optional[MathTextbook]:
+    return db.query(MathTextbook).filter(MathTextbook.full_title == full_title).first()
+
+
+def get_textbook_item(db: Session, item_id: int) -> Optional[MathTextbookItem]:
+    return db.query(MathTextbookItem).filter(MathTextbookItem.id == item_id).first()
 
 
 def get_unit_tasks_with_progress(db: Session, student_id: int, unit_id: int) -> list[dict]:
@@ -92,6 +115,99 @@ def upsert_progress(db: Session, student_id: int, task_id: int, is_done: bool) -
     else:
         progress.is_done = is_done
         progress.done_at = now if is_done else None
+
+    db.commit()
+    db.refresh(progress)
+    return progress
+
+
+def get_deep_su1_exp_log_progress(db: Session, student_id: int) -> Optional[dict]:
+    textbook = get_textbook_by_full_title(db, DEEP_SU1_EXP_LOG_FULL_TITLE)
+    if textbook is None:
+        return None
+
+    items = (
+        db.query(MathTextbookItem)
+        .filter(MathTextbookItem.textbook_id == textbook.id, MathTextbookItem.is_active.is_(True))
+        .order_by(MathTextbookItem.order_index, MathTextbookItem.id)
+        .all()
+    )
+    item_ids = [item.id for item in items]
+    progress_rows = (
+        db.query(MathStudentItemProgress)
+        .filter(
+            MathStudentItemProgress.student_id == student_id,
+            MathStudentItemProgress.item_id.in_(item_ids),
+        )
+        .all()
+        if item_ids
+        else []
+    )
+    progress_map = {row.item_id: row for row in progress_rows}
+
+    item_payloads = []
+    summary = {
+        "total": len(items),
+        "done": 0,
+        "partial": 0,
+        "not_started": 0,
+    }
+
+    for item in items:
+        status = progress_map.get(item.id).status if item.id in progress_map else "not_started"
+        if status not in ITEM_PROGRESS_STATUSES:
+            status = "not_started"
+        summary[status] += 1
+        item_payloads.append(
+            {
+                "id": item.id,
+                "item_number": item.item_number,
+                "title": item.title,
+                "status": status,
+            }
+        )
+
+    return {
+        "textbook": {
+            "id": textbook.id,
+            "key": DEEP_SU1_EXP_LOG_KEY,
+            "subject": textbook.subject,
+            "title": textbook.title,
+            "full_title": textbook.full_title,
+            "problem_count": len(items),
+        },
+        "summary": summary,
+        "items": item_payloads,
+    }
+
+
+def upsert_student_item_progress(
+    db: Session,
+    student_id: int,
+    item_id: int,
+    status: str,
+) -> MathStudentItemProgress:
+    progress = (
+        db.query(MathStudentItemProgress)
+        .filter(
+            MathStudentItemProgress.student_id == student_id,
+            MathStudentItemProgress.item_id == item_id,
+        )
+        .first()
+    )
+    now = datetime.now(timezone.utc)
+
+    if progress is None:
+        progress = MathStudentItemProgress(
+            student_id=student_id,
+            item_id=item_id,
+            status=status,
+            updated_at=now,
+        )
+        db.add(progress)
+    else:
+        progress.status = status
+        progress.updated_at = now
 
     db.commit()
     db.refresh(progress)
