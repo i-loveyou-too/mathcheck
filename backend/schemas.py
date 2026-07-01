@@ -167,3 +167,21 @@ class StudentItemProgressResponse(BaseModel):
     item_id: int
     status: str
     updated_at: datetime
+
+
+class StudentDashboardProgressBucket(BaseModel):
+    total: int
+    done: int
+    partial: int
+    not_started: int
+    progress_rate: int
+
+
+class StudentDashboardSubjectProgress(StudentDashboardProgressBucket):
+    subject: str
+
+
+class StudentDashboardProgressSummaryResponse(BaseModel):
+    student_id: int
+    overall: StudentDashboardProgressBucket
+    subjects: list[StudentDashboardSubjectProgress]

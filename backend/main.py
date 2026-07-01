@@ -101,6 +101,19 @@ def student_summary(student_id: int, db: Session = Depends(get_db)):
 
 
 @app.get(
+    "/student/progress-summary",
+    response_model=schemas.StudentDashboardProgressSummaryResponse,
+    tags=["Student"],
+)
+def student_item_progress_summary(student_id: int, db: Session = Depends(get_db)):
+    student = crud.get_student_by_id(db, student_id)
+    if student is None:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    return crud.build_student_item_progress_summary(db, student_id)
+
+
+@app.get(
     "/student/textbook-progress/{textbook_key}",
     response_model=schemas.TextbookProgressResponse,
     tags=["Student"],

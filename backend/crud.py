@@ -24,6 +24,7 @@ TEXTBOOK_PROGRESS_CONFIG = {
     "deep-prob-counting": "딥러닝 Deep Learning 확률과 통계 - 경우의 수",
 }
 ITEM_PROGRESS_STATUSES = {"not_started", "partial", "done"}
+STUDENT_PROGRESS_SUMMARY_SUBJECTS = ["수1", "수2", "확률과 통계"]
 
 
 def percentage(completed_tasks: int, total_tasks: int) -> float:
@@ -221,6 +222,96 @@ def upsert_student_item_progress(
     db.commit()
     db.refresh(progress)
     return progress
+
+
+def build_item_progress_bucket(done: int, partial: int, total: int) -> dict:
+    if total == 0:
+        return {
+            "total": 0,
+            "done": 0,
+            "partial": 0,
+            "not_started": 0,
+            "progress_rate": 0,
+        }
+
+    not_started = total - done - partial
+    return {
+        "total": total,
+        "done": done,
+        "partial": partial,
+        "not_started": max(not_started, 0),
+        "progress_rate": round((done / total) * 100),
+    }
+
+
+def build_student_item_progress_summary(db: Session, student_id: int) -> dict:
+    rows = (
+        db.query(MathTextbookItem.id, MathTextbook.subject)
+        .join(MathTextbook, MathTextbookItem.textbook_id == MathTextbook.id)
+        .filter(
+            MathTextbook.is_published.is_(True),
+            MathTextbook.is_active.is_(True),
+            MathTextbook.is_checkable.is_(True),
+            MathTextbookItem.is_active.is_(True),
+        )
+        .all()
+    )
+    item_ids = [row.id for row in rows]
+    progress_rows = (
+        db.query(MathStudentItemProgress)
+        .filter(
+            MathStudentItemProgress.student_id == student_id,
+            MathStudentItemProgress.item_id.in_(item_ids),
+        )
+        .all()
+        if item_ids
+        else []
+    )
+    progress_map = {row.item_id: row.status for row in progress_rows}
+
+    overall = {"total": 0, "done": 0, "partial": 0}
+    subjects = {
+        subject: {"total": 0, "done": 0, "partial": 0}
+        for subject in STUDENT_PROGRESS_SUMMARY_SUBJECTS
+    }
+
+    for row in rows:
+        status = progress_map.get(row.id, "not_started")
+        if status not in ITEM_PROGRESS_STATUSES:
+            status = "not_started"
+
+        overall["total"] += 1
+        if status == "done":
+            overall["done"] += 1
+        elif status == "partial":
+            overall["partial"] += 1
+
+        if row.subject in subjects:
+            subjects[row.subject]["total"] += 1
+            if status == "done":
+                subjects[row.subject]["done"] += 1
+            elif status == "partial":
+                subjects[row.subject]["partial"] += 1
+
+    return {
+        "student_id": student_id,
+        "overall": build_item_progress_bucket(
+            overall["done"],
+            overall["partial"],
+            overall["total"],
+        ),
+        "subjects": [
+            {
+                "subject": subject,
+                **build_item_progress_bucket(
+                    subject_counts["done"],
+                    subject_counts["partial"],
+                    subject_counts["total"],
+                ),
+            }
+            for subject, subject_counts in subjects.items()
+        ],
+    }
 
 
 def build_progress_tree(db: Session, student_id: int) -> Optional[dict]:
