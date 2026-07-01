@@ -48,10 +48,10 @@ Frontend environment variables:
   `https://your-vercel-app.vercel.app,https://aimon.teamzsoft.com,http://localhost:3000`
 - `FRONTEND_ORIGIN_REGEX` defaults to `https://.*\.vercel\.app` for Vercel deployments.
 - Run FastAPI with PM2/uvicorn on the home server as usual.
-- Public frontend traffic should call only `https://api.aimon.teamzsoft.com`.
+- Public frontend traffic should call `http://aimon.teamzsoft.com:8002`.
 
 ## Vercel frontend deployment
 
 - Root Directory: `frontend`
 - Environment variable:
-  `NEXT_PUBLIC_API_URL=https://api.aimon.teamzsoft.com`
+  `NEXT_PUBLIC_API_URL=http://aimon.teamzsoft.com:8002`

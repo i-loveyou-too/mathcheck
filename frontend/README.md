@@ -13,7 +13,7 @@ Next.js App Router frontend for the math progress tracking app.
 
 ## Notes
 
-- Set `NEXT_PUBLIC_API_URL=https://api.aimon.teamzsoft.com` in Vercel.
+- Set `NEXT_PUBLIC_API_URL=http://aimon.teamzsoft.com:8002` in Vercel.
 - API requests are sent through the shared `apiFetch` helper.
 - Student login uses `/auth/student-login` with `{ phone }`.
 - Admin login uses `/auth/admin-login` with `{ username, password }`.
