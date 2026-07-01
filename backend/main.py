@@ -23,8 +23,11 @@ app = FastAPI(title="Math Progress API", lifespan=lifespan)
 
 allowed_origins = [
     "https://aimon.teamzsoft.com",
+    "http://192.168.99.99:3000",
     "http://localhost:3000",
+    "http://localhost:3001",
     "http://127.0.0.1:3000",
+    "http://127.0.0.1:3001",
 ]
 
 frontend_origins = ",".join(
@@ -45,7 +48,7 @@ app.add_middleware(
     allow_origins=allowed_origins,
     allow_origin_regex=os.getenv(
         "FRONTEND_ORIGIN_REGEX",
-        r"https://.*\.vercel\.app|http://(localhost|127\.0\.0\.1):\d+",
+        r"https://.*\.vercel\.app|http://(localhost|127\.0\.0\.1|192\.168\.99\.99):\d+",
     ),
     allow_credentials=True,
     allow_methods=["*"],
