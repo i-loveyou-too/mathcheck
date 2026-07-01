@@ -20,6 +20,14 @@ function BookIcon() {
   );
 }
 
+function CheckListIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9.3 16.3 6 13l1.4-1.4 1.9 1.9 4.3-4.3L15 10.6l-5.7 5.7zm8.7-.8h-2v-2h2v2zm0-4h-2v-2h2v2z" />
+    </svg>
+  );
+}
+
 function ChartIcon() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
@@ -32,26 +40,30 @@ export function StudentBottomNav() {
   const pathname = usePathname();
 
   const isHome = pathname === "/student";
+  const isToday = pathname === "/student/today";
   const isSubjectArea =
     pathname.startsWith("/student/subjects") ||
+    pathname.startsWith("/student/textbooks") ||
     pathname.startsWith("/student/units");
+  const isTracker = pathname === "/student/tracker";
 
   const items = [
     { href: "/student", label: "홈", Icon: HomeIcon, active: isHome },
-    { href: "/student", label: "교재별 진도", Icon: BookIcon, active: isSubjectArea },
-    { href: "/student", label: "내 진도", Icon: ChartIcon, active: !isHome && !isSubjectArea },
+    { href: "/student/today", label: "오늘미션", Icon: CheckListIcon, active: isToday },
+    { href: "/student/subjects", label: "교재진도", Icon: BookIcon, active: isSubjectArea },
+    { href: "/student/tracker", label: "갓생챌린지", Icon: ChartIcon, active: isTracker },
   ];
 
   return (
     <nav className="fixed bottom-4 left-1/2 z-20 w-[calc(100%-2.5rem)] max-w-[390px] -translate-x-1/2">
       <div className="rounded-[1.8rem] bg-[#0F172A] px-3 py-3 shadow-nav">
-        <div className="grid grid-cols-3 gap-1">
+        <div className="grid grid-cols-4 gap-1">
           {items.map((item, idx) => (
             <Link
               key={idx}
               href={item.href}
               className={cn(
-                "flex flex-col items-center gap-1.5 rounded-[1.2rem] px-3 py-2.5 text-[11px] font-semibold transition-all",
+                "flex flex-col items-center gap-1.5 rounded-[1.2rem] px-1.5 py-2.5 text-[10px] font-semibold transition-all",
                 item.active
                   ? "bg-white text-[#0F172A]"
                   : "text-white/50 hover:text-white/75"

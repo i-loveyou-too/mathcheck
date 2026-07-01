@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AdminBottomNav } from "@/components/admin-bottom-nav";
 import { ScreenShell } from "@/components/screen-shell";
@@ -82,6 +83,22 @@ export default function AdminDashboardPage() {
           </p>
         </div>
       </div>
+
+      <Link
+        className="block rounded-2xl bg-white p-4 shadow-card transition hover:-translate-y-0.5"
+        href="/admin/daily-tasks"
+      >
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-xs font-bold text-[#818CF8]">해냄리스트</p>
+            <h2 className="mt-1 text-lg font-black text-gray-900">숙제 배정</h2>
+            <p className="mt-1 text-sm font-medium text-gray-500">
+              학생별 날짜와 교재 범위를 선택해 등록해요.
+            </p>
+          </div>
+          <span className="text-2xl font-bold text-gray-300">›</span>
+        </div>
+      </Link>
 
       {/* Student list */}
       <div>

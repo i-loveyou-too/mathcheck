@@ -7,7 +7,7 @@ import { StudentBottomNav } from "@/components/student-bottom-nav";
 import { SubjectCard } from "@/components/subject-card";
 import { apiFetch } from "@/lib/api";
 import { clearStudent, getStudent } from "@/lib/storage";
-import { StudentSummary } from "@/lib/types";
+import { StoredStudent, StudentDashboardProgressSummary } from "@/lib/types";
 
 const studentSubjectCards = [
   { id: 0, name: "수1", href: "/student/subjects/su1" },
@@ -47,20 +47,29 @@ function getDdayInfo(targetDateString: string) {
 
 export default function StudentDashboardPage() {
   const router = useRouter();
-  const [summary, setSummary] = useState<StudentSummary | null>(null);
+  const [student, setStudent] = useState<StoredStudent | null>(null);
+  const [summary, setSummary] = useState<StudentDashboardProgressSummary | null>(null);
+  const [summaryError, setSummaryError] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const student = getStudent();
-    if (!student) {
+    const storedStudent = getStudent();
+    if (!storedStudent) {
       router.push("/login");
       return;
     }
 
+    setStudent(storedStudent);
+
     const load = async () => {
       try {
-        const summaryData = await apiFetch<StudentSummary>(`/students/${student.id}/summary`);
+        const summaryData = await apiFetch<StudentDashboardProgressSummary>(
+          `/student/progress-summary?student_id=${storedStudent.id}`,
+        );
         setSummary(summaryData);
+        setSummaryError("");
+      } catch {
+        setSummaryError("진도 요약을 불러오지 못했습니다.");
       } finally {
         setLoading(false);
       }
@@ -70,19 +79,21 @@ export default function StudentDashboardPage() {
   }, [router]);
 
   const subjectCards = studentSubjectCards.map((subject) => {
-    const matched = summary?.subjects.find((item) => item.name === subject.name);
+    const matched = summary?.subjects.find((item) => item.subject === subject.name);
     return {
+      completed: matched?.done ?? 0,
       id: subject.id,
       name: subject.name,
       href: subject.href,
-      progressPercentage: matched?.progress_percentage ?? 0,
+      progressPercentage: matched?.progress_rate ?? 0,
+      total: matched?.total ?? 0,
     };
   });
 
-  const completedTasks = summary?.completed_tasks ?? 0;
-  const totalTasks = summary?.total_tasks ?? 0;
-  const progressPct = summary ? Math.round(summary.progress_percentage) : 0;
-  const remainingTasks = Math.max(totalTasks - completedTasks, 0);
+  const completedTasks = summary?.overall.done ?? 0;
+  const totalTasks = summary?.overall.total ?? 0;
+  const progressPct = summary?.overall.progress_rate ?? 0;
+  const questionTasks = summary?.overall.partial ?? 0;
   const ddayInfo = getDdayInfo("2026-09-02");
   const examMessage = examMessages[Math.abs(ddayInfo.daysRemaining) % examMessages.length];
 
@@ -96,7 +107,7 @@ export default function StudentDashboardPage() {
       <div className="flex items-start justify-between gap-4 pt-1">
         <div>
           <h1 className="text-2xl font-black tracking-tight text-[#17213B]">
-            {summary ? `안녕하세요, ${summary.name}님` : "안녕하세요"}
+            {student ? `안녕하세요, ${student.name}님` : "안녕하세요"}
           </h1>
           <p className="mt-2 text-sm font-medium text-[#98A1B3]">오늘도 한 걸음씩 함께해요.</p>
         </div>
@@ -140,8 +151,16 @@ export default function StudentDashboardPage() {
       <section className="rounded-2xl border border-gray-100 bg-white p-4 shadow-card">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-black text-[#17213B]">전체 학습 요약</h2>
-          <span className="text-xs font-semibold text-[#98A1B3]">이번 주 기준</span>
+          <span className="text-xs font-semibold text-[#98A1B3]">
+            {loading ? "진도 불러오는 중..." : "이번 주 기준"}
+          </span>
         </div>
+
+        {summaryError ? (
+          <p className="mt-3 rounded-xl bg-red-50 px-4 py-3 text-sm font-bold text-red-500">
+            {summaryError}
+          </p>
+        ) : null}
 
         <div className="mt-5 grid grid-cols-3 gap-3">
           <div className="text-center">
@@ -166,16 +185,16 @@ export default function StudentDashboardPage() {
             <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-orange-100 text-orange-500">
               <span className="text-lg font-black">▲</span>
             </div>
-            <p className="mt-3 text-xs font-semibold text-[#98A1B3]">남은 문제</p>
-            <p className="mt-1 text-2xl font-black text-[#17213B]">{remainingTasks}</p>
-            <p className="text-xs font-medium text-[#98A1B3]">오늘도 하나씩</p>
+            <p className="mt-3 text-xs font-semibold text-[#98A1B3]">질문 표시</p>
+            <p className="mt-1 text-2xl font-black text-[#17213B]">{questionTasks}</p>
+            <p className="text-xs font-medium text-[#98A1B3]">다시 볼 문제</p>
           </div>
         </div>
       </section>
 
       <div>
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-gray-900">교재별 진도</h2>
+          <h2 className="text-lg font-bold text-gray-900">교재진도</h2>
           {loading ? (
             <span className="text-xs text-gray-400">불러오는 중...</span>
           ) : (
@@ -190,6 +209,8 @@ export default function StudentDashboardPage() {
               key={subject.id}
               name={subject.name}
               progressPercentage={subject.progressPercentage}
+              completed={subject.completed}
+              total={subject.total}
             />
           ))}
         </div>

@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, UniqueConstraint, func
+from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Integer, String, UniqueConstraint, func
 from sqlalchemy.orm import relationship
 
 from database import Base
@@ -16,6 +16,11 @@ class Student(Base):
     progress = relationship("Progress", back_populates="student", cascade="all, delete-orphan")
     item_progress = relationship(
         "MathStudentItemProgress",
+        back_populates="student",
+        cascade="all, delete-orphan",
+    )
+    daily_tasks = relationship(
+        "MathDailyTask",
         back_populates="student",
         cascade="all, delete-orphan",
     )
@@ -133,6 +138,7 @@ class MathTextbook(Base):
         cascade="all, delete-orphan",
         order_by="MathTextbookItem.order_index, MathTextbookItem.id",
     )
+    daily_tasks = relationship("MathDailyTask", back_populates="textbook")
 
 
 class MathTextbookItem(Base):
@@ -171,3 +177,26 @@ class MathStudentItemProgress(Base):
 
     student = relationship("Student", back_populates="item_progress")
     item = relationship("MathTextbookItem", back_populates="progress_entries")
+
+
+class MathDailyTask(Base):
+    __tablename__ = "math_daily_tasks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("math_students.id"), nullable=False, index=True)
+    task_date = Column(Date, nullable=False, index=True)
+    title = Column(String(200), nullable=False)
+    detail = Column(String(300), nullable=True)
+    textbook_id = Column(Integer, ForeignKey("math_textbooks.id"), nullable=True)
+    textbook_key = Column(String(100), nullable=True)
+    start_item_number = Column(Integer, nullable=True)
+    end_item_number = Column(Integer, nullable=True)
+    status = Column(String(50), nullable=False, default="todo")
+    difficulty = Column(String(50), nullable=True)
+    category = Column(String(100), nullable=True)
+    order_index = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), nullable=True)
+
+    student = relationship("Student", back_populates="daily_tasks")
+    textbook = relationship("MathTextbook", back_populates="daily_tasks")

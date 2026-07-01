@@ -2,8 +2,26 @@
 @tailwind components;
 @tailwind utilities;
 
+@font-face {
+  font-family: 'Cafe24Ssurround';
+  src: url('https://fastly.jsdelivr.net/gh/projectnoonnu/noonfonts_2108@1.1/Cafe24Ssurround.woff') format('woff');
+  font-display: swap;
+  font-weight: 700;
+}
+
+@font-face {
+  font-family: 'JalnanGothic';
+  src: url('https://fastly.jsdelivr.net/gh/projectnoonnu/noonfonts_2311@1.1/JalnanGothic.woff') format('woff');
+  font-display: swap;
+  font-weight: 700;
+}
+
 :root {
   color-scheme: light;
+  --font-body: 'Pretendard Rounded', 'Pretendard Variable', 'Pretendard', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
+  --font-display: 'JalnanGothic', 'Cafe24Ssurround', var(--font-body);
+  --font-button: 'JalnanGothic', var(--font-body);
+  --font-number: 'Pretendard Rounded', 'Pretendard Variable', 'Pretendard', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
 }
 
 body {
@@ -11,7 +29,7 @@ body {
   min-height: 100vh;
   background: #eef2f6;
   color: #111827;
-  font-family: 'Noto Sans KR', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
+  font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -28,4 +46,25 @@ a {
 button,
 input {
   font: inherit;
+}
+
+h1,
+h2 {
+  font-family: var(--font-display);
+}
+
+button {
+  font-family: var(--font-button);
+}
+
+.font-black,
+.font-extrabold {
+  font-family: var(--font-number);
+}
+
+h1.font-black,
+h1.font-extrabold,
+h2.font-black,
+h2.font-extrabold {
+  font-family: var(--font-display);
 }

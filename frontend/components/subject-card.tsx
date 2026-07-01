@@ -2,9 +2,11 @@ import Link from "next/link";
 import { ProgressBar } from "@/components/progress-bar";
 
 type SubjectCardProps = {
+  completed?: number;
   id: number;
   name: string;
   progressPercentage: number;
+  total?: number;
   href?: string;
 };
 
@@ -39,8 +41,19 @@ const subjectThemes = [
   },
 ];
 
-export function SubjectCard({ id, name, progressPercentage, href }: SubjectCardProps) {
+export function SubjectCard({
+  completed,
+  id,
+  name,
+  progressPercentage,
+  total,
+  href,
+}: SubjectCardProps) {
   const theme = subjectThemes[id % subjectThemes.length];
+  const detailText =
+    typeof completed === "number" && typeof total === "number"
+      ? `완료 ${completed} / ${total}문제`
+      : "단원별 체크리스트";
 
   return (
     <Link href={href ?? `/student/subjects/${id}`} className={`block rounded-3xl p-5 ${theme.bg}`}>
@@ -53,7 +66,7 @@ export function SubjectCard({ id, name, progressPercentage, href }: SubjectCardP
           </div>
           <div>
             <p className="text-lg font-bold text-gray-900">{name}</p>
-            <p className="text-xs text-gray-500">단원별 체크리스트</p>
+            <p className="text-xs text-gray-500">{detailText}</p>
           </div>
         </div>
         <span className={`shrink-0 rounded-full px-3 py-1 text-sm font-bold ${theme.badge}`}>

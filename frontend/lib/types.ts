@@ -92,6 +92,24 @@ export type StudentCardSubjectProgress = {
   progressPercentage: number;
 };
 
+export type StudentDashboardProgressBucket = {
+  total: number;
+  done: number;
+  partial: number;
+  not_started: number;
+  progress_rate: number;
+};
+
+export type StudentDashboardSubjectProgress = StudentDashboardProgressBucket & {
+  subject: string;
+};
+
+export type StudentDashboardProgressSummary = {
+  student_id: number;
+  overall: StudentDashboardProgressBucket;
+  subjects: StudentDashboardSubjectProgress[];
+};
+
 export type StoredStudent = {
   id: number;
   name: string;

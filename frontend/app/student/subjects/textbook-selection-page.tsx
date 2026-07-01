@@ -98,7 +98,7 @@ export function TextbookSelectionPage({
       <Header
         backHref="/student"
         logoutType="student"
-        subtitle="교재 선택 기능은 준비 중입니다."
+        subtitle="교재를 선택하고 문제별 진도를 체크해요."
         title={title}
       />
 

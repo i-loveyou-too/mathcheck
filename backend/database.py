@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from typing import Union
 
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
@@ -18,7 +19,7 @@ def read_env(name: str, default: str = "") -> str:
     return str(value).strip()
 
 
-def build_database_url() -> str | URL:
+def build_database_url() -> Union[str, URL]:
     database_url = read_env("DATABASE_URL")
     if database_url:
         return database_url

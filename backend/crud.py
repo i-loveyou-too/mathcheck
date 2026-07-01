@@ -1,10 +1,12 @@
-from datetime import datetime, timezone
+from calendar import monthrange
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
 from sqlalchemy.orm import Session, selectinload
 
 from models import (
     Admin,
+    MathDailyTask,
     MathStudentItemProgress,
     MathTextbook,
     MathTextbookItem,
@@ -24,6 +26,7 @@ TEXTBOOK_PROGRESS_CONFIG = {
     "deep-prob-counting": "딥러닝 Deep Learning 확률과 통계 - 경우의 수",
 }
 ITEM_PROGRESS_STATUSES = {"not_started", "partial", "done"}
+DAILY_TASK_STATUSES = {"todo", "in_progress", "done"}
 STUDENT_PROGRESS_SUMMARY_SUBJECTS = ["수1", "수2", "확률과 통계"]
 
 
@@ -66,8 +69,318 @@ def get_textbook_by_full_title(db: Session, full_title: str) -> Optional[MathTex
     return db.query(MathTextbook).filter(MathTextbook.full_title == full_title).first()
 
 
+def get_textbook_by_key(db: Session, textbook_key: Optional[str]) -> Optional[MathTextbook]:
+    if not textbook_key:
+        return None
+
+    full_title = TEXTBOOK_PROGRESS_CONFIG.get(textbook_key)
+    if full_title is None:
+        return None
+
+    return get_textbook_by_full_title(db, full_title)
+
+
+def build_textbook_short_title(full_title: str) -> str:
+    return full_title.replace("딥러닝 Deep Learning", "딥러닝").strip()
+
+
+def get_admin_textbook_catalog(db: Session) -> dict:
+    textbooks = []
+
+    for textbook_key, full_title in TEXTBOOK_PROGRESS_CONFIG.items():
+        textbook = (
+            db.query(MathTextbook)
+            .filter(
+                MathTextbook.full_title == full_title,
+                MathTextbook.is_checkable.is_(True),
+            )
+            .first()
+        )
+        if textbook is None:
+            continue
+
+        items = (
+            db.query(MathTextbookItem)
+            .filter(
+                MathTextbookItem.textbook_id == textbook.id,
+                MathTextbookItem.is_active.is_(True),
+            )
+            .order_by(MathTextbookItem.item_number)
+            .all()
+        )
+        if not items:
+            continue
+
+        item_numbers = [item.item_number for item in items]
+        textbooks.append(
+            {
+                "id": textbook.id,
+                "textbook_key": textbook_key,
+                "title": textbook.full_title,
+                "short_title": build_textbook_short_title(textbook.full_title),
+                "category": textbook.subject,
+                "subject": textbook.subject,
+                "min_item_number": min(item_numbers),
+                "max_item_number": max(item_numbers),
+                "total_items": len(items),
+                "is_active": textbook.is_active,
+                "is_checkable": textbook.is_checkable,
+            }
+        )
+
+    return {"textbooks": textbooks}
+
+
 def get_textbook_item(db: Session, item_id: int) -> Optional[MathTextbookItem]:
     return db.query(MathTextbookItem).filter(MathTextbookItem.id == item_id).first()
+
+
+def get_daily_task(db: Session, task_id: int) -> Optional[MathDailyTask]:
+    return (
+        db.query(MathDailyTask)
+        .options(selectinload(MathDailyTask.textbook))
+        .filter(MathDailyTask.id == task_id)
+        .first()
+    )
+
+
+def build_daily_task_summary(tasks: list[MathDailyTask]) -> dict:
+    total = len(tasks)
+    done = sum(1 for task in tasks if task.status == "done")
+    todo = total - done
+
+    return {
+        "total": total,
+        "done": done,
+        "todo": todo,
+        "completion_rate": round((done / total) * 100) if total else 0,
+    }
+
+
+def serialize_daily_task(task: MathDailyTask) -> dict:
+    textbook = None
+    if task.textbook is not None:
+        textbook = {
+            "id": task.textbook.id,
+            "subject": task.textbook.subject,
+            "title": task.textbook.title,
+            "full_title": task.textbook.full_title,
+        }
+
+    return {
+        "id": task.id,
+        "title": task.title,
+        "detail": task.detail,
+        "textbook_id": task.textbook_id,
+        "textbook_key": task.textbook_key,
+        "start_item_number": task.start_item_number,
+        "end_item_number": task.end_item_number,
+        "status": task.status,
+        "difficulty": task.difficulty,
+        "category": task.category,
+        "order_index": task.order_index,
+        "textbook": textbook,
+    }
+
+
+def get_student_daily_tasks(db: Session, student_id: int, task_date: date) -> dict:
+    tasks = (
+        db.query(MathDailyTask)
+        .options(selectinload(MathDailyTask.textbook))
+        .filter(MathDailyTask.student_id == student_id, MathDailyTask.task_date == task_date)
+        .order_by(MathDailyTask.order_index, MathDailyTask.id)
+        .all()
+    )
+
+    return {
+        "student_id": student_id,
+        "date": task_date,
+        "summary": build_daily_task_summary(tasks),
+        "tasks": [serialize_daily_task(task) for task in tasks],
+    }
+
+
+def get_student_weekly_tasks(db: Session, student_id: int, week_start: date) -> dict:
+    week_end = week_start + timedelta(days=6)
+    tasks = (
+        db.query(MathDailyTask)
+        .options(selectinload(MathDailyTask.textbook))
+        .filter(
+            MathDailyTask.student_id == student_id,
+            MathDailyTask.task_date >= week_start,
+            MathDailyTask.task_date <= week_end,
+        )
+        .order_by(MathDailyTask.task_date, MathDailyTask.order_index, MathDailyTask.id)
+        .all()
+    )
+    tasks_by_date = {}
+    for task in tasks:
+        tasks_by_date.setdefault(task.task_date, []).append(task)
+
+    days = []
+    for offset in range(7):
+        current_date = week_start + timedelta(days=offset)
+        day_tasks = tasks_by_date.get(current_date, [])
+        days.append(
+            {
+                "date": current_date,
+                "summary": build_daily_task_summary(day_tasks),
+                "tasks": [serialize_daily_task(task) for task in day_tasks],
+            }
+        )
+
+    return {
+        "student_id": student_id,
+        "week_start": week_start,
+        "days": days,
+    }
+
+
+def build_task_day_bucket(task_date: date, tasks: list[MathDailyTask]) -> dict:
+    total = len(tasks)
+    done = sum(1 for task in tasks if task.status == "done")
+    todo = total - done
+    has_tasks = total > 0
+
+    return {
+        "date": task_date,
+        "total": total,
+        "done": done,
+        "todo": todo,
+        "is_completed": has_tasks and done == total,
+        "has_tasks": has_tasks,
+    }
+
+
+def get_student_achievement_tracker(
+    db: Session,
+    student_id: int,
+    year: int,
+    month: int,
+    today: Optional[date] = None,
+) -> dict:
+    month_last_day = monthrange(year, month)[1]
+    month_start = date(year, month, 1)
+    month_end = date(year, month, month_last_day)
+
+    monthly_tasks = (
+        db.query(MathDailyTask)
+        .filter(
+            MathDailyTask.student_id == student_id,
+            MathDailyTask.task_date >= month_start,
+            MathDailyTask.task_date <= month_end,
+        )
+        .order_by(MathDailyTask.task_date, MathDailyTask.order_index, MathDailyTask.id)
+        .all()
+    )
+    tasks_by_date = {}
+    for task in monthly_tasks:
+        tasks_by_date.setdefault(task.task_date, []).append(task)
+
+    days = [
+        build_task_day_bucket(
+            month_start + timedelta(days=offset),
+            tasks_by_date.get(month_start + timedelta(days=offset), []),
+        )
+        for offset in range(month_last_day)
+    ]
+    monthly_total_task_days = sum(1 for day in days if day["has_tasks"])
+    monthly_done_days = sum(1 for day in days if day["is_completed"])
+    monthly_completion_rate = (
+        round((monthly_done_days / monthly_total_task_days) * 100)
+        if monthly_total_task_days
+        else 0
+    )
+
+    today = today or date.today()
+    streak_end = today
+    streak_tasks = (
+        db.query(MathDailyTask)
+        .filter(
+            MathDailyTask.student_id == student_id,
+            MathDailyTask.task_date <= streak_end,
+        )
+        .order_by(MathDailyTask.task_date, MathDailyTask.order_index, MathDailyTask.id)
+        .all()
+    )
+    streak_tasks_by_date = {}
+    for task in streak_tasks:
+        streak_tasks_by_date.setdefault(task.task_date, []).append(task)
+
+    current_streak = 0
+    for task_date in sorted(streak_tasks_by_date.keys(), reverse=True):
+        task_day = build_task_day_bucket(task_date, streak_tasks_by_date[task_date])
+        if task_day["is_completed"]:
+            current_streak += 1
+        else:
+            break
+
+    return {
+        "student_id": student_id,
+        "year": year,
+        "month": month,
+        "current_streak": current_streak,
+        "monthly_done_days": monthly_done_days,
+        "monthly_total_task_days": monthly_total_task_days,
+        "monthly_completion_rate": monthly_completion_rate,
+        "days": days,
+    }
+
+
+def create_daily_task(db: Session, payload) -> MathDailyTask:
+    textbook = get_textbook_by_key(db, payload.textbook_key)
+    task = MathDailyTask(
+        student_id=payload.student_id,
+        task_date=payload.task_date,
+        title=payload.title,
+        detail=payload.detail,
+        textbook_id=textbook.id if textbook else None,
+        textbook_key=payload.textbook_key,
+        start_item_number=payload.start_item_number,
+        end_item_number=payload.end_item_number,
+        status=payload.status,
+        difficulty=payload.difficulty,
+        category=payload.category,
+        order_index=payload.order_index,
+    )
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+    return get_daily_task(db, task.id) or task
+
+
+def update_daily_task(db: Session, task: MathDailyTask, payload) -> MathDailyTask:
+    update_data = payload.model_dump(exclude_unset=True)
+
+    if "textbook_key" in update_data:
+        textbook_key = update_data["textbook_key"]
+        textbook = get_textbook_by_key(db, textbook_key)
+        task.textbook_key = textbook_key
+        task.textbook_id = textbook.id if textbook else None
+
+    for field in [
+        "task_date",
+        "title",
+        "detail",
+        "start_item_number",
+        "end_item_number",
+        "status",
+        "difficulty",
+        "category",
+        "order_index",
+    ]:
+        if field in update_data:
+            setattr(task, field, update_data[field])
+
+    task.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(task)
+    return get_daily_task(db, task.id) or task
+
+
+def delete_daily_task(db: Session, task: MathDailyTask) -> None:
+    db.delete(task)
+    db.commit()
 
 
 def get_unit_tasks_with_progress(db: Session, student_id: int, unit_id: int) -> list[dict]:

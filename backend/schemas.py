@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict
@@ -185,3 +185,127 @@ class StudentDashboardProgressSummaryResponse(BaseModel):
     student_id: int
     overall: StudentDashboardProgressBucket
     subjects: list[StudentDashboardSubjectProgress]
+
+
+class DailyTaskTextbookInfo(BaseModel):
+    id: int
+    subject: Optional[str] = None
+    title: str
+    full_title: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DailyTaskResponse(BaseModel):
+    id: int
+    title: str
+    detail: Optional[str] = None
+    textbook_id: Optional[int] = None
+    textbook_key: Optional[str] = None
+    start_item_number: Optional[int] = None
+    end_item_number: Optional[int] = None
+    status: str
+    difficulty: Optional[str] = None
+    category: Optional[str] = None
+    order_index: int
+    textbook: Optional[DailyTaskTextbookInfo] = None
+
+
+class DailyTaskSummary(BaseModel):
+    total: int
+    done: int
+    todo: int
+    completion_rate: int
+
+
+class StudentDailyTasksResponse(BaseModel):
+    student_id: int
+    date: date
+    summary: DailyTaskSummary
+    tasks: list[DailyTaskResponse]
+
+
+class StudentWeeklyTaskDay(BaseModel):
+    date: date
+    summary: DailyTaskSummary
+    tasks: list[DailyTaskResponse]
+
+
+class StudentWeeklyTasksResponse(BaseModel):
+    student_id: int
+    week_start: date
+    days: list[StudentWeeklyTaskDay]
+
+
+class AdminDailyTaskCreateRequest(BaseModel):
+    student_id: int
+    task_date: date
+    title: str
+    detail: Optional[str] = None
+    textbook_key: Optional[str] = None
+    start_item_number: Optional[int] = None
+    end_item_number: Optional[int] = None
+    status: str = "todo"
+    difficulty: Optional[str] = None
+    category: Optional[str] = None
+    order_index: int = 0
+
+
+class AdminDailyTaskUpdateRequest(BaseModel):
+    task_date: Optional[date] = None
+    title: Optional[str] = None
+    detail: Optional[str] = None
+    textbook_key: Optional[str] = None
+    start_item_number: Optional[int] = None
+    end_item_number: Optional[int] = None
+    status: Optional[str] = None
+    difficulty: Optional[str] = None
+    category: Optional[str] = None
+    order_index: Optional[int] = None
+
+
+class StudentDailyTaskStatusRequest(BaseModel):
+    student_id: int
+    status: str
+
+
+class DeleteResponse(BaseModel):
+    ok: bool
+
+
+class AchievementTrackerDay(BaseModel):
+    date: date
+    total: int
+    done: int
+    todo: int
+    is_completed: bool
+    has_tasks: bool
+
+
+class AchievementTrackerResponse(BaseModel):
+    student_id: int
+    year: int
+    month: int
+    current_streak: int
+    monthly_done_days: int
+    monthly_total_task_days: int
+    monthly_completion_rate: int
+    days: list[AchievementTrackerDay]
+
+
+class AdminTextbookCatalogItem(BaseModel):
+    id: int
+    textbook_key: str
+    title: str
+    short_title: str
+    category: Optional[str] = None
+    subject: Optional[str] = None
+    min_item_number: int
+    max_item_number: int
+    total_items: int
+    is_active: bool
+    is_checkable: bool
+
+
+class AdminTextbookCatalogResponse(BaseModel):
+    textbooks: list[AdminTextbookCatalogItem]
