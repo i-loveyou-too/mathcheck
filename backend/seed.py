@@ -128,7 +128,7 @@ SAMPLE_SUBJECTS = [
     },
 ]
 
-DEEP_SU1_EXP_LOG_SERIES = {
+DEEP_LEARNING_SERIES = {
     "korean_name": "딥러닝",
     "english_name": "Deep Learning",
     "display_name": "딥러닝 Deep Learning",
@@ -136,16 +136,73 @@ DEEP_SU1_EXP_LOG_SERIES = {
     "order_index": 2,
 }
 
-DEEP_SU1_EXP_LOG_TEXTBOOK = {
-    "subject": "수1",
-    "title": "지수로그",
-    "full_title": "딥러닝 Deep Learning 수1 - 지수로그",
-    "type": "problem",
-    "is_checkable": True,
-    "is_published": True,
-    "is_active": True,
-    "order_index": 1,
-}
+TEXTBOOK_SEED_DATA = [
+    {
+        "key": "deep-su1-exp-log",
+        "subject": "수1",
+        "title": "지수로그",
+        "full_title": "딥러닝 Deep Learning 수1 - 지수로그",
+        "type": "problem",
+        "is_checkable": True,
+        "is_published": True,
+        "is_active": True,
+        "order_index": 1,
+        "item_start": 1,
+        "item_end": 20,
+    },
+    {
+        "key": "deep-su1-trig-graph",
+        "subject": "수1",
+        "title": "삼각함수 그래프",
+        "full_title": "딥러닝 Deep Learning 수1 - 삼각함수 그래프",
+        "type": "problem",
+        "is_checkable": True,
+        "is_published": True,
+        "is_active": True,
+        "order_index": 2,
+        "item_start": 1,
+        "item_end": 15,
+    },
+    {
+        "key": "deep-su1-sequence-basic",
+        "subject": "수1",
+        "title": "수열 등차수열·등비수열",
+        "full_title": "딥러닝 Deep Learning 수1 - 수열 등차수열·등비수열",
+        "type": "problem",
+        "is_checkable": True,
+        "is_published": True,
+        "is_active": True,
+        "order_index": 3,
+        "item_start": 1,
+        "item_end": 20,
+    },
+    {
+        "key": "deep-su1-sequence-sum",
+        "subject": "수1",
+        "title": "수열의 합과 시그마",
+        "full_title": "딥러닝 Deep Learning 수1 - 수열의 합과 시그마",
+        "type": "problem",
+        "is_checkable": True,
+        "is_published": True,
+        "is_active": True,
+        "order_index": 4,
+        "item_start": 21,
+        "item_end": 38,
+    },
+    {
+        "key": "deep-prob-counting",
+        "subject": "확률과 통계",
+        "title": "경우의 수",
+        "full_title": "딥러닝 Deep Learning 확률과 통계 - 경우의 수",
+        "type": "problem",
+        "is_checkable": True,
+        "is_published": True,
+        "is_active": True,
+        "order_index": 5,
+        "item_start": 1,
+        "item_end": 18,
+    },
+]
 
 def get_or_create_student(db, name: str, phone: str, grade: str):
     student = db.query(models.Student).filter(models.Student.phone == phone).first()
@@ -275,19 +332,28 @@ def get_or_create_textbook_item(
     return item
 
 
-def seed_deep_su1_exp_log(db):
-    series = get_or_create_textbook_series(db, DEEP_SU1_EXP_LOG_SERIES)
-    textbook = get_or_create_textbook(db, series.id, DEEP_SU1_EXP_LOG_TEXTBOOK)
+def seed_textbooks(db):
+    series = get_or_create_textbook_series(db, DEEP_LEARNING_SERIES)
 
-    for item_number in range(1, 21):
-        get_or_create_textbook_item(
-            db,
-            textbook_id=textbook.id,
-            item_number=item_number,
-            title=f"{item_number}번",
-            item_type="problem",
-            order_index=item_number,
-        )
+    for textbook_data in TEXTBOOK_SEED_DATA:
+        item_start = textbook_data["item_start"]
+        item_end = textbook_data["item_end"]
+        textbook_values = {
+            key: value
+            for key, value in textbook_data.items()
+            if key not in {"key", "item_start", "item_end"}
+        }
+        textbook = get_or_create_textbook(db, series.id, textbook_values)
+
+        for order_index, item_number in enumerate(range(item_start, item_end + 1), start=1):
+            get_or_create_textbook_item(
+                db,
+                textbook_id=textbook.id,
+                item_number=item_number,
+                title=f"{item_number}번",
+                item_type="problem",
+                order_index=order_index,
+            )
 
 
 def seed():
@@ -306,7 +372,7 @@ def seed():
                 for index, task_title in enumerate(unit_data["tasks"], start=1):
                     get_or_create_task(db, unit.id, task_title, index)
 
-        seed_deep_su1_exp_log(db)
+        seed_textbooks(db)
 
         db.commit()
         print("Seed data is ready.")

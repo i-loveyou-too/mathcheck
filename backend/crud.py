@@ -16,8 +16,13 @@ from models import (
 )
 
 
-DEEP_SU1_EXP_LOG_KEY = "deep-su1-exp-log"
-DEEP_SU1_EXP_LOG_FULL_TITLE = "딥러닝 Deep Learning 수1 - 지수로그"
+TEXTBOOK_PROGRESS_CONFIG = {
+    "deep-su1-exp-log": "딥러닝 Deep Learning 수1 - 지수로그",
+    "deep-su1-trig-graph": "딥러닝 Deep Learning 수1 - 삼각함수 그래프",
+    "deep-su1-sequence-basic": "딥러닝 Deep Learning 수1 - 수열 등차수열·등비수열",
+    "deep-su1-sequence-sum": "딥러닝 Deep Learning 수1 - 수열의 합과 시그마",
+    "deep-prob-counting": "딥러닝 Deep Learning 확률과 통계 - 경우의 수",
+}
 ITEM_PROGRESS_STATUSES = {"not_started", "partial", "done"}
 
 
@@ -121,8 +126,12 @@ def upsert_progress(db: Session, student_id: int, task_id: int, is_done: bool) -
     return progress
 
 
-def get_deep_su1_exp_log_progress(db: Session, student_id: int) -> Optional[dict]:
-    textbook = get_textbook_by_full_title(db, DEEP_SU1_EXP_LOG_FULL_TITLE)
+def get_textbook_progress(db: Session, student_id: int, textbook_key: str) -> Optional[dict]:
+    full_title = TEXTBOOK_PROGRESS_CONFIG.get(textbook_key)
+    if full_title is None:
+        return None
+
+    textbook = get_textbook_by_full_title(db, full_title)
     if textbook is None:
         return None
 
@@ -170,7 +179,7 @@ def get_deep_su1_exp_log_progress(db: Session, student_id: int) -> Optional[dict
     return {
         "textbook": {
             "id": textbook.id,
-            "key": DEEP_SU1_EXP_LOG_KEY,
+            "key": textbook_key,
             "subject": textbook.subject,
             "title": textbook.title,
             "full_title": textbook.full_title,

@@ -101,16 +101,16 @@ def student_summary(student_id: int, db: Session = Depends(get_db)):
 
 
 @app.get(
-    "/student/textbook-progress/deep-su1-exp-log",
+    "/student/textbook-progress/{textbook_key}",
     response_model=schemas.TextbookProgressResponse,
     tags=["Student"],
 )
-def deep_su1_exp_log_progress(student_id: int, db: Session = Depends(get_db)):
+def textbook_progress(textbook_key: str, student_id: int, db: Session = Depends(get_db)):
     student = crud.get_student_by_id(db, student_id)
     if student is None:
         raise HTTPException(status_code=404, detail="Student not found")
 
-    progress = crud.get_deep_su1_exp_log_progress(db, student_id)
+    progress = crud.get_textbook_progress(db, student_id, textbook_key)
     if progress is None:
         raise HTTPException(status_code=404, detail="Textbook not found")
     return progress
