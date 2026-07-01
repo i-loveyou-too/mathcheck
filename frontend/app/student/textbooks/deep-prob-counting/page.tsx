@@ -5,6 +5,7 @@ export default function DeepProbCountingPage() {
     <TextbookChecklistPage
       backHref="/student/subjects/probability"
       endNumber={18}
+      progressKey="deep-prob-counting"
       startNumber={1}
       title="딥러닝 Deep Learning 확률과 통계 - 경우의 수"
     />

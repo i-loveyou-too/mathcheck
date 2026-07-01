@@ -11,6 +11,12 @@ import { cn } from "@/lib/utils";
 
 type ProblemStatus = "not-started" | "question" | "done";
 type ApiProblemStatus = "not_started" | "partial" | "done";
+type TextbookProgressKey =
+  | "deep-su1-exp-log"
+  | "deep-su1-trig-graph"
+  | "deep-su1-sequence-basic"
+  | "deep-su1-sequence-sum"
+  | "deep-prob-counting";
 
 type ChecklistItem = {
   id?: number;
@@ -54,7 +60,7 @@ type TextbookChecklistPageProps = {
   backHref: string;
   startNumber: number;
   endNumber: number;
-  progressKey?: "deep-su1-exp-log";
+  progressKey?: TextbookProgressKey;
 };
 
 const statusOptions: { label: string; value: ProblemStatus }[] = [
