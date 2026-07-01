@@ -17,12 +17,14 @@ Mathcheck is a student math progress tracking app with a FastAPI backend and a N
 
 Backend environment variables:
 
+- `DATABASE_URL`
+- `SECRET_KEY`
+- `FRONTEND_ORIGINS`
 - `DB_NAME`
 - `DB_USER`
 - `DB_PASSWORD`
 - `DB_HOST`
 - `DB_PORT`
-- `FRONTEND_ORIGIN`
 
 ## Local frontend
 
@@ -36,16 +38,20 @@ Backend environment variables:
 
 Frontend environment variables:
 
-- `NEXT_PUBLIC_API_BASE_URL`
+- `NEXT_PUBLIC_API_URL`
 
-## Render backend deployment
+## Backend deployment
 
-- Root Directory: `backend`
-- Build Command: `pip install -r requirements.txt`
-- Start Command: `uvicorn main:app --host 0.0.0.0 --port $PORT`
+- Set `DATABASE_URL` for Postgres.
+- Set `SECRET_KEY` to a long random value.
+- Set `FRONTEND_ORIGINS` to a comma-separated list:
+  `https://your-vercel-app.vercel.app,https://aimon.teamzsoft.com,http://localhost:3000`
+- `FRONTEND_ORIGIN_REGEX` defaults to `https://.*\.vercel\.app` for Vercel deployments.
+- Run FastAPI with PM2/uvicorn on the home server as usual.
+- Public frontend traffic should call only `https://api.aimon.teamzsoft.com`.
 
 ## Vercel frontend deployment
 
 - Root Directory: `frontend`
 - Environment variable:
-  `NEXT_PUBLIC_API_BASE_URL=https://YOUR_RENDER_BACKEND_URL`
+  `NEXT_PUBLIC_API_URL=https://api.aimon.teamzsoft.com`

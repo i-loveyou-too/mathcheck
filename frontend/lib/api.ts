@@ -1,12 +1,20 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
 type RequestOptions = Omit<RequestInit, "body"> & {
   body?: unknown;
 };
 
 export async function apiFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  if (!API_BASE_URL) {
+    throw new Error("NEXT_PUBLIC_API_URL is not configured.");
+  }
+
+  const baseUrl = API_BASE_URL.replace(/\/$/, "");
+  const apiPath = path.startsWith("/") ? path : `/${path}`;
+
+  const response = await fetch(`${baseUrl}${apiPath}`, {
     ...options,
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
       ...(options.headers ?? {}),
@@ -16,7 +24,7 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
   });
 
   if (!response.ok) {
-    let message = "요청에 실패했습니다.";
+    let message = "Request failed.";
 
     try {
       const data = (await response.json()) as { detail?: string };

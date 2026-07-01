@@ -18,7 +18,11 @@ def read_env(name: str, default: str = "") -> str:
     return str(value).strip()
 
 
-def build_database_url() -> URL:
+def build_database_url() -> str | URL:
+    database_url = read_env("DATABASE_URL")
+    if database_url:
+        return database_url
+
     db_name = read_env("DB_NAME", "mathcheck")
     db_user = read_env("DB_USER", "postgres")
     db_password = read_env("DB_PASSWORD", "") or None

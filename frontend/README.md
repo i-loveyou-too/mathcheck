@@ -13,6 +13,7 @@ Next.js App Router frontend for the math progress tracking app.
 
 ## Notes
 
-- The frontend calls the FastAPI backend at `http://127.0.0.1:8000`.
+- Set `NEXT_PUBLIC_API_URL=https://api.aimon.teamzsoft.com` in Vercel.
+- API requests are sent through the shared `apiFetch` helper.
 - Student login uses `/auth/student-login` with `{ phone }`.
 - Admin login uses `/auth/admin-login` with `{ username, password }`.

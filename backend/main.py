@@ -21,22 +21,27 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Math Progress API", lifespan=lifespan)
 
 allowed_origins = [
+    "https://aimon.teamzsoft.com",
     "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://localhost:3007",
-    "http://127.0.0.1:3007",
-    "http://192.168.99.99:3007",
 ]
 
-frontend_origin = os.getenv("FRONTEND_ORIGIN", "")
-for origin in frontend_origin.split(","):
-    cleaned_origin = origin.strip()
+frontend_origins = ",".join(
+    value
+    for value in [
+        os.getenv("FRONTEND_ORIGINS", ""),
+        os.getenv("FRONTEND_ORIGIN", ""),
+    ]
+    if value
+)
+for origin in frontend_origins.split(","):
+    cleaned_origin = origin.strip().rstrip("/")
     if cleaned_origin and cleaned_origin not in allowed_origins:
         allowed_origins.append(cleaned_origin)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
+    allow_origin_regex=os.getenv("FRONTEND_ORIGIN_REGEX", r"https://.*\.vercel\.app"),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
