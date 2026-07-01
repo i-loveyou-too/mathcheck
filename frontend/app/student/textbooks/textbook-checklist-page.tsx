@@ -23,6 +23,35 @@ const statusOptions: { label: string; value: ProblemStatus }[] = [
   { label: "○", value: "done" },
 ];
 
+const statusStyles: Record<
+  ProblemStatus,
+  {
+    card: string;
+    label: string;
+    selectedButton: string;
+    idleButton: string;
+  }
+> = {
+  "not-started": {
+    card: "bg-gray-100 text-gray-600",
+    label: "text-gray-400",
+    selectedButton: "bg-gray-700 text-white shadow-sm",
+    idleButton: "bg-gray-100 text-gray-400 hover:bg-gray-200",
+  },
+  question: {
+    card: "bg-amber-100 text-amber-700",
+    label: "text-amber-600",
+    selectedButton: "bg-amber-400 text-amber-950 shadow-sm",
+    idleButton: "bg-amber-50 text-amber-500 hover:bg-amber-100",
+  },
+  done: {
+    card: "bg-emerald-100 text-emerald-700",
+    label: "text-emerald-600",
+    selectedButton: "bg-emerald-500 text-white shadow-sm",
+    idleButton: "bg-emerald-50 text-emerald-500 hover:bg-emerald-100",
+  },
+};
+
 function getStatusLabel(status: ProblemStatus) {
   if (status === "done") return "완료";
   if (status === "question") return "질문";
@@ -85,16 +114,16 @@ export function TextbookChecklistPage({
             <p className="text-xs text-white/50">전체</p>
             <p className="mt-1 text-2xl font-black">{summary.total}문항</p>
           </div>
-          <div className="rounded-2xl bg-white/10 p-3">
-            <p className="text-xs text-white/50">○ 완료</p>
+          <div className={cn("rounded-2xl p-3", statusStyles.done.card)}>
+            <p className="text-xs">○ 완료</p>
             <p className="mt-1 text-2xl font-black">{summary.done}개</p>
           </div>
-          <div className="rounded-2xl bg-white/10 p-3">
-            <p className="text-xs text-white/50">△ 질문</p>
+          <div className={cn("rounded-2xl p-3", statusStyles.question.card)}>
+            <p className="text-xs">△ 질문</p>
             <p className="mt-1 text-2xl font-black">{summary.question}개</p>
           </div>
-          <div className="rounded-2xl bg-white/10 p-3">
-            <p className="text-xs text-white/50">아직 안함</p>
+          <div className={cn("rounded-2xl p-3", statusStyles["not-started"].card)}>
+            <p className="text-xs">아직 안함</p>
             <p className="mt-1 text-2xl font-black">{summary.notStarted}개</p>
           </div>
         </div>
@@ -107,14 +136,16 @@ export function TextbookChecklistPage({
             const selectedStatus = statuses[problemNumber] ?? "not-started";
 
             return (
-              <article
-                className="rounded-2xl bg-white p-4 shadow-card"
-                key={problemNumber}
-              >
+              <article className="rounded-2xl bg-white p-4 shadow-card" key={problemNumber}>
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <h3 className="text-base font-bold text-gray-900">{problemNumber}번</h3>
-                    <p className="mt-1 text-xs font-medium text-gray-400">
+                    <p
+                      className={cn(
+                        "mt-1 text-xs font-semibold",
+                        statusStyles[selectedStatus].label
+                      )}
+                    >
                       {getStatusLabel(selectedStatus)}
                     </p>
                   </div>
@@ -125,10 +156,10 @@ export function TextbookChecklistPage({
                       return (
                         <button
                           className={cn(
-                            "h-9 rounded-full px-3 text-xs font-bold transition",
+                            "h-9 min-w-16 rounded-full px-3 text-xs font-bold transition",
                             isSelected
-                              ? "bg-[#0F172A] text-white"
-                              : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                              ? statusStyles[option.value].selectedButton
+                              : statusStyles[option.value].idleButton
                           )}
                           key={option.value}
                           onClick={() => handleStatusChange(problemNumber, option.value)}
