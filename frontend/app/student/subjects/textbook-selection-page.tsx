@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/header";
 import { ScreenShell } from "@/components/screen-shell";
 import { StudentBottomNav } from "@/components/student-bottom-nav";
+import { apiFetch } from "@/lib/api";
 import { getStudent } from "@/lib/storage";
+import { StudentTextbook, StudentTextbookListResponse } from "@/lib/types";
 
 type TextbookCard = {
   title: string;
@@ -16,9 +18,9 @@ type TextbookCard = {
 
 type TextbookSelectionPageProps = {
   title: string;
-  deepLearningBooks: TextbookCard[];
-  protocolBooks: TextbookCard[];
+  subjectQueryValues: string[];
   deepLearningEmptyMessage?: string;
+  protocolEmptyMessage?: string;
 };
 
 function PlaceholderCard({ detail, href, title }: TextbookCard) {
@@ -49,17 +51,29 @@ function PlaceholderCard({ detail, href, title }: TextbookCard) {
 
 function TextbookSection({
   emptyMessage,
+  errorMessage,
   items,
+  loading,
   title,
 }: {
   emptyMessage?: string;
+  errorMessage?: string;
   items: TextbookCard[];
+  loading?: boolean;
   title: string;
 }) {
   return (
     <section>
       <h2 className="mb-3 text-lg font-bold text-gray-900">{title}</h2>
-      {items.length > 0 ? (
+      {loading ? (
+        <div className="rounded-2xl border border-dashed border-gray-200 bg-white p-5 text-center text-sm font-medium text-gray-400">
+          불러오는 중...
+        </div>
+      ) : errorMessage ? (
+        <div className="rounded-2xl border border-red-100 bg-red-50 p-5 text-center text-sm font-medium text-red-500">
+          {errorMessage}
+        </div>
+      ) : items.length > 0 ? (
         <div className="space-y-3">
           {items.map((item) => (
             <PlaceholderCard
@@ -80,18 +94,59 @@ function TextbookSection({
 }
 
 export function TextbookSelectionPage({
-  deepLearningBooks,
   deepLearningEmptyMessage,
-  protocolBooks,
+  protocolEmptyMessage = "아직 공개된 프로토콜 교재가 없습니다.",
+  subjectQueryValues,
   title,
 }: TextbookSelectionPageProps) {
   const router = useRouter();
+  const [deepLearningBooks, setDeepLearningBooks] = useState<TextbookCard[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
     if (!getStudent()) {
       router.push("/login");
+      return;
     }
-  }, [router]);
+
+    const loadTextbooks = async () => {
+      setLoading(true);
+      setLoadError("");
+
+      try {
+        let textbooks: StudentTextbook[] = [];
+
+        for (const subjectValue of subjectQueryValues) {
+          const data = await apiFetch<StudentTextbookListResponse>(
+            `/student/textbooks/by-subject/${encodeURIComponent(subjectValue)}`
+          );
+          textbooks = data.textbooks.filter(
+            (textbook) => textbook.is_active && textbook.is_published
+          );
+          if (textbooks.length > 0) {
+            break;
+          }
+        }
+
+        setDeepLearningBooks(
+          textbooks.map((textbook) => ({
+            title: textbook.full_title,
+            detail: `${textbook.item_count}문항`,
+            href: textbook.textbook_key
+              ? `/student/textbooks/${textbook.textbook_key}`
+              : undefined,
+          }))
+        );
+      } catch {
+        setLoadError("교재 정보를 불러오지 못했습니다.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void loadTextbooks();
+  }, [router, subjectQueryValues]);
 
   return (
     <ScreenShell withBottomNav>
@@ -104,11 +159,13 @@ export function TextbookSelectionPage({
 
       <TextbookSection
         emptyMessage={deepLearningEmptyMessage}
+        errorMessage={loadError}
         items={deepLearningBooks}
+        loading={loading}
         title="딥러닝 Deep Learning"
       />
 
-      <TextbookSection items={protocolBooks} title="프로토콜 Protocol" />
+      <TextbookSection emptyMessage={protocolEmptyMessage} items={[]} title="프로토콜 Protocol" />
 
       <StudentBottomNav />
     </ScreenShell>

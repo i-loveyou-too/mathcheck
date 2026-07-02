@@ -121,3 +121,20 @@ export type StoredAdmin = {
   username: string;
   isLoggedIn: boolean;
 };
+
+export type StudentTextbook = {
+  id: number;
+  textbook_key: string;
+  subject: string | null;
+  title: string;
+  full_title: string;
+  type: string;
+  is_checkable: boolean;
+  is_published: boolean;
+  is_active: boolean;
+  item_count: number;
+};
+
+export type StudentTextbookListResponse = {
+  textbooks: StudentTextbook[];
+};
