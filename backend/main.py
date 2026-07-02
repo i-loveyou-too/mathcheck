@@ -4,18 +4,46 @@ from datetime import date
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 
 import crud
 import models  # noqa: F401 - importing models registers them with SQLAlchemy
 import schemas
-from database import Base, engine, get_db
+from database import Base, SessionLocal, engine, get_db
+
+
+def ensure_textbook_key_column():
+    inspector = inspect(engine)
+    if not inspector.has_table("math_textbooks"):
+        return
+
+    column_names = {column["name"] for column in inspector.get_columns("math_textbooks")}
+
+    with engine.begin() as connection:
+        if "textbook_key" not in column_names:
+            connection.execute(
+                text("ALTER TABLE math_textbooks ADD COLUMN textbook_key VARCHAR(100)")
+            )
+
+        connection.execute(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ix_math_textbooks_textbook_key "
+                "ON math_textbooks (textbook_key) WHERE textbook_key IS NOT NULL"
+            )
+        )
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Create tables automatically on startup so the app is easy to run locally.
     Base.metadata.create_all(bind=engine)
+    ensure_textbook_key_column()
+    db = SessionLocal()
+    try:
+        crud.sync_textbook_keys(db)
+    finally:
+        db.close()
     yield
 
 
@@ -166,6 +194,27 @@ def student_achievement_tracker(
         raise HTTPException(status_code=404, detail="Student not found")
 
     return crud.get_student_achievement_tracker(db, student_id, year, month)
+
+
+@app.get(
+    "/student/textbooks/by-subject/{subject}",
+    response_model=schemas.StudentTextbookListResponse,
+    tags=["Student"],
+)
+def student_textbooks_by_subject(subject: str, db: Session = Depends(get_db)):
+    return {"textbooks": crud.get_active_textbooks_by_subject(db, subject)}
+
+
+@app.get(
+    "/student/textbooks/{textbook_key}",
+    response_model=schemas.StudentTextbookResponse,
+    tags=["Student"],
+)
+def student_textbook_by_key(textbook_key: str, db: Session = Depends(get_db)):
+    textbook = crud.get_student_textbook_by_key(db, textbook_key)
+    if textbook is None:
+        raise HTTPException(status_code=404, detail="Textbook not found")
+    return textbook
 
 
 @app.get(
@@ -326,3 +375,63 @@ def admin_student_progress(student_id: int, db: Session = Depends(get_db)):
     if summary is None:
         raise HTTPException(status_code=404, detail="Student not found")
     return summary
+
+
+@app.get(
+    "/admin/textbook-series",
+    response_model=list[schemas.TextbookSeriesResponse],
+    tags=["Admin"],
+)
+def list_textbook_series(db: Session = Depends(get_db)):
+    return crud.get_textbook_series_list(db)
+
+
+@app.post(
+    "/admin/textbook-series",
+    response_model=schemas.TextbookSeriesResponse,
+    tags=["Admin"],
+)
+def create_textbook_series(
+    payload: schemas.TextbookSeriesCreateRequest,
+    db: Session = Depends(get_db),
+):
+    series, _ = crud.create_or_get_textbook_series(db, payload.model_dump())
+    return series
+
+
+@app.post(
+    "/admin/textbooks",
+    response_model=schemas.TextbookDetailResponse,
+    tags=["Admin"],
+)
+def create_textbook(
+    payload: schemas.TextbookCreateRequest,
+    db: Session = Depends(get_db),
+):
+    try:
+        textbook = crud.create_textbook_with_items(db, payload)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    result = crud.get_textbook_detail_admin(db, textbook.id)
+    return result
+
+
+@app.get(
+    "/admin/textbook-list",
+    response_model=schemas.TextbookListResponse,
+    tags=["Admin"],
+)
+def admin_textbook_list(db: Session = Depends(get_db)):
+    return {"textbooks": crud.get_admin_textbook_list(db)}
+
+
+@app.get(
+    "/admin/textbooks/{textbook_id}",
+    response_model=schemas.TextbookDetailResponse,
+    tags=["Admin"],
+)
+def admin_textbook_detail(textbook_id: int, db: Session = Depends(get_db)):
+    result = crud.get_textbook_detail_admin(db, textbook_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Textbook not found")
+    return result

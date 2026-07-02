@@ -1,5 +1,27 @@
+import crud
+from sqlalchemy import inspect, text
+
 from database import Base, SessionLocal, engine
 import models  # noqa: F401
+
+
+def ensure_textbook_key_column():
+    inspector = inspect(engine)
+    if not inspector.has_table("math_textbooks"):
+        return
+
+    column_names = {column["name"] for column in inspector.get_columns("math_textbooks")}
+    with engine.begin() as connection:
+        if "textbook_key" not in column_names:
+            connection.execute(
+                text("ALTER TABLE math_textbooks ADD COLUMN textbook_key VARCHAR(100)")
+            )
+        connection.execute(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ix_math_textbooks_textbook_key "
+                "ON math_textbooks (textbook_key) WHERE textbook_key IS NOT NULL"
+            )
+        )
 
 
 SAMPLE_STUDENTS = [
@@ -202,6 +224,19 @@ TEXTBOOK_SEED_DATA = [
         "item_start": 1,
         "item_end": 18,
     },
+    {
+        "key": "deep-su1-trig-shape",
+        "subject": "수1",
+        "title": "삼각함수 도형",
+        "full_title": "딥러닝 Deep Learning 수1 - 삼각함수 도형",
+        "type": "problem",
+        "is_checkable": True,
+        "is_published": True,
+        "is_active": True,
+        "order_index": 6,
+        "item_start": 1,
+        "item_end": 15,
+    },
 ]
 
 def get_or_create_student(db, name: str, phone: str, grade: str):
@@ -339,9 +374,12 @@ def seed_textbooks(db):
         item_start = textbook_data["item_start"]
         item_end = textbook_data["item_end"]
         textbook_values = {
-            key: value
-            for key, value in textbook_data.items()
-            if key not in {"key", "item_start", "item_end"}
+            **{
+                key: value
+                for key, value in textbook_data.items()
+                if key not in {"key", "item_start", "item_end"}
+            },
+            "textbook_key": textbook_data["key"],
         }
         textbook = get_or_create_textbook(db, series.id, textbook_values)
 
@@ -355,9 +393,12 @@ def seed_textbooks(db):
                 order_index=order_index,
             )
 
+    crud.sync_textbook_keys(db)
+
 
 def seed():
     Base.metadata.create_all(bind=engine)
+    ensure_textbook_key_column()
     db = SessionLocal()
     try:
         get_or_create_admin(db, "admin", "1234")

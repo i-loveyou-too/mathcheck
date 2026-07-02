@@ -62,12 +62,15 @@ type DailyTasksResponse = {
   tasks: DailyTask[];
 };
 
+type RangeType = "item" | "free" | "none";
+
 type TaskFormState = {
   category: string;
   detail: string;
   difficulty: string;
   endNumber: string;
   orderIndex: string;
+  rangeType: RangeType;
   selectedTextbookValue: string;
   startNumber: string;
   status: DailyTaskStatus;
@@ -147,6 +150,7 @@ function makeEmptyForm(today: string): TaskFormState {
     difficulty: "보통",
     endNumber: "",
     orderIndex: "1",
+    rangeType: "item",
     selectedTextbookValue: customTextbookValue,
     startNumber: "",
     status: "todo",
@@ -220,6 +224,22 @@ export default function AdminDailyTasksPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
+  // Page auto-distribution state (create form only)
+  const [freeInputMode, setFreeInputMode] = useState<"direct" | "auto_page">("direct");
+  const [autoPageStart, setAutoPageStart] = useState("");
+  const [autoPageEnd, setAutoPageEnd] = useState("");
+  const [autoPageLabel, setAutoPageLabel] = useState("p.");
+  const [autoPageNote, setAutoPageNote] = useState("");
+  const [autoPageDates, setAutoPageDates] = useState<string[]>([]);
+  const [autoPageDateInput, setAutoPageDateInput] = useState(today);
+
+  // Item auto-distribution state (create form only)
+  const [itemInputMode, setItemInputMode] = useState<"manual" | "auto">("manual");
+  const [autoItemStart, setAutoItemStart] = useState("");
+  const [autoItemEnd, setAutoItemEnd] = useState("");
+  const [autoItemDates, setAutoItemDates] = useState<string[]>([]);
+  const [autoItemDateInput, setAutoItemDateInput] = useState(today);
+
   const textbookOptions = useMemo(
     () => [...catalogTextbooks, customTextbookOption],
     [catalogTextbooks],
@@ -229,12 +249,12 @@ export default function AdminDailyTasksPage() {
   const isCustomTask = selectedTextbook.textbookKey === null;
 
   const generatedTitle = useMemo(() => {
-    if (isCustomTask || !selectedTextbook.shortTitle || !createForm.startNumber || !createForm.endNumber) {
+    if (createForm.rangeType !== "item" || isCustomTask || !selectedTextbook.shortTitle || !createForm.startNumber || !createForm.endNumber) {
       return "";
     }
 
     return `${selectedTextbook.shortTitle} ${createForm.startNumber}번 ~ ${createForm.endNumber}번`;
-  }, [createForm.endNumber, createForm.startNumber, isCustomTask, selectedTextbook.shortTitle]);
+  }, [createForm.endNumber, createForm.rangeType, createForm.startNumber, isCustomTask, selectedTextbook.shortTitle]);
 
   const autoPlan = useMemo<AutoPlanDay[]>(() => {
     const minProblems = Math.max(1, Number(autoMinProblems) || 10);
@@ -365,6 +385,54 @@ export default function AdminDailyTasksPage() {
     return errors;
   }, [assignmentTextbookOptions, autoRows]);
 
+  const autoPagePlan = useMemo<{ date: string; detail: string }[]>(() => {
+    const start = parseInt(autoPageStart, 10);
+    const end = parseInt(autoPageEnd, 10);
+    if (!autoPageStart || !autoPageEnd || isNaN(start) || isNaN(end) || end < start || autoPageDates.length === 0) {
+      return [];
+    }
+    const totalPages = end - start + 1;
+    const numDates = autoPageDates.length;
+    const base = Math.floor(totalPages / numDates);
+    const remainder = totalPages % numDates;
+    const sorted = [...autoPageDates].sort();
+    let cursor = start;
+    return sorted.map((date, i) => {
+      const pages = base + (i < remainder ? 1 : 0);
+      const dayStart = cursor;
+      const dayEnd = cursor + pages - 1;
+      cursor = dayEnd + 1;
+      const lbl = autoPageLabel;
+      const rangeText = dayStart === dayEnd ? `${lbl}${dayStart}` : `${lbl}${dayStart}~${lbl}${dayEnd}`;
+      const detail = autoPageNote.trim() ? `${autoPageNote.trim()} ${rangeText}` : rangeText;
+      return { date, detail };
+    });
+  }, [autoPageStart, autoPageEnd, autoPageLabel, autoPageNote, autoPageDates]);
+
+  const autoItemPlan = useMemo<{ date: string; startNum: number; endNum: number; title: string }[]>(() => {
+    const start = parseInt(autoItemStart, 10);
+    const end = parseInt(autoItemEnd, 10);
+    if (!autoItemStart || !autoItemEnd || isNaN(start) || isNaN(end) || end < start || autoItemDates.length === 0) {
+      return [];
+    }
+    const totalItems = end - start + 1;
+    const numDates = autoItemDates.length;
+    const base = Math.floor(totalItems / numDates);
+    const remainder = totalItems % numDates;
+    const sorted = [...autoItemDates].sort();
+    const shortTitle = selectedTextbook.shortTitle;
+    let cursor = start;
+    return sorted.map((date, i) => {
+      const items = base + (i < remainder ? 1 : 0);
+      const dayStart = cursor;
+      const dayEnd = cursor + items - 1;
+      cursor = dayEnd + 1;
+      const rangeLabel = dayStart === dayEnd ? `${dayStart}번` : `${dayStart}번 ~ ${dayEnd}번`;
+      const title = shortTitle ? `${shortTitle} ${rangeLabel}` : rangeLabel;
+      return { date, startNum: dayStart, endNum: dayEnd, title };
+    });
+  }, [autoItemStart, autoItemEnd, autoItemDates, selectedTextbook.shortTitle]);
+
   const fetchTasks = useCallback(async (studentId: string, taskDate: string) => {
     if (!studentId || !taskDate) {
       setTasks([]);
@@ -443,13 +511,13 @@ export default function AdminDailyTasksPage() {
   }, [generatedTitle, titleEdited]);
 
   useEffect(() => {
-    if (!createForm.detail && createForm.startNumber && createForm.endNumber && !isCustomTask) {
+    if (!createForm.detail && createForm.startNumber && createForm.endNumber && !isCustomTask && createForm.rangeType === "item") {
       setCreateForm((current) => ({
         ...current,
         detail: `${current.startNumber}번 ~ ${current.endNumber}번`,
       }));
     }
-  }, [createForm.detail, createForm.endNumber, createForm.startNumber, isCustomTask]);
+  }, [createForm.detail, createForm.endNumber, createForm.rangeType, createForm.startNumber, isCustomTask]);
 
   const updateCreateForm = (updates: Partial<TaskFormState>) => {
     setCreateForm((current) => ({ ...current, ...updates }));
@@ -481,6 +549,24 @@ export default function AdminDailyTasksPage() {
     setAutoRows((current) => current.filter((row) => row.id !== rowId));
   };
 
+  const addAutoPageDate = () => {
+    if (!autoPageDateInput || autoPageDates.includes(autoPageDateInput)) return;
+    setAutoPageDates((current) => [...current, autoPageDateInput].sort());
+  };
+
+  const removeAutoPageDate = (date: string) => {
+    setAutoPageDates((current) => current.filter((d) => d !== date));
+  };
+
+  const addAutoItemDate = () => {
+    if (!autoItemDateInput || autoItemDates.includes(autoItemDateInput)) return;
+    setAutoItemDates((current) => [...current, autoItemDateInput].sort());
+  };
+
+  const removeAutoItemDate = (date: string) => {
+    setAutoItemDates((current) => current.filter((d) => d !== date));
+  };
+
   const handleTextbookChange = (value: string) => {
     const option = getTextbookByValue(value, textbookOptions);
     updateCreateForm({
@@ -495,21 +581,121 @@ export default function AdminDailyTasksPage() {
     setMessage("");
     setError("");
 
-    if (!selectedStudentId || !selectedDate || !createForm.title.trim()) {
-      setError("학생, 날짜, 제목을 확인해주세요.");
+    if (!selectedStudentId || !selectedDate) {
+      setError("학생과 날짜를 확인해주세요.");
       return;
     }
+
+    if (createForm.rangeType === "item" && itemInputMode === "auto") {
+      if (autoItemDates.length === 0) { setError("날짜를 1개 이상 추가해주세요."); return; }
+      if (!autoItemStart || !autoItemEnd) { setError("시작/끝 문항 번호를 입력해주세요."); return; }
+      const is = parseInt(autoItemStart, 10);
+      const ie = parseInt(autoItemEnd, 10);
+      if (isNaN(is) || isNaN(ie)) { setError("문항 번호는 숫자로 입력해주세요."); return; }
+      if (ie < is) { setError("끝 번호는 시작 번호 이상이어야 합니다."); return; }
+      if (!isCustomTask && selectedTextbook.minItemNumber !== undefined && is < selectedTextbook.minItemNumber) {
+        setError(`시작 번호는 ${selectedTextbook.minItemNumber}번 이상이어야 합니다.`); return;
+      }
+      if (!isCustomTask && selectedTextbook.maxItemNumber !== undefined && ie > selectedTextbook.maxItemNumber) {
+        setError(`끝 번호는 ${selectedTextbook.maxItemNumber}번 이하여야 합니다.`); return;
+      }
+      if (autoItemPlan.length === 0) { setError("문항 분배 계획을 확인해주세요."); return; }
+
+      setSubmitting(true);
+      try {
+        for (const plan of autoItemPlan) {
+          await apiFetch<DailyTask>("/admin/daily-tasks", {
+            method: "POST",
+            body: {
+              student_id: Number(selectedStudentId),
+              task_date: plan.date,
+              title: plan.title,
+              detail: createForm.detail.trim() || null,
+              textbook_key: selectedTextbook.textbookKey,
+              start_item_number: plan.startNum,
+              end_item_number: plan.endNum,
+              status: "todo",
+              difficulty: createForm.difficulty,
+              category: createForm.category,
+              order_index: Number(createForm.orderIndex) || 1,
+            },
+          });
+        }
+        setMessage(`${autoItemPlan.length}일치 숙제가 배정되었습니다.`);
+        setAutoItemStart("");
+        setAutoItemEnd("");
+        setAutoItemDates([]);
+        setCreateForm((c) => ({ ...makeEmptyForm(today), rangeType: "item", selectedTextbookValue: c.selectedTextbookValue, category: c.category, difficulty: c.difficulty, orderIndex: c.orderIndex }));
+        setItemInputMode("auto");
+        await fetchTasks(selectedStudentId, selectedDate);
+      } catch {
+        setError("숙제 배정에 실패했습니다. 다시 시도해주세요.");
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
+    if (!createForm.title.trim()) {
+      setError("제목을 확인해주세요.");
+      return;
+    }
+
+    if (createForm.rangeType === "free" && freeInputMode === "auto_page") {
+      if (autoPageDates.length === 0) { setError("날짜를 1개 이상 추가해주세요."); return; }
+      if (!autoPageStart || !autoPageEnd) { setError("시작 페이지와 끝 페이지를 입력해주세요."); return; }
+      const ps = parseInt(autoPageStart, 10);
+      const pe = parseInt(autoPageEnd, 10);
+      if (isNaN(ps) || isNaN(pe)) { setError("페이지는 숫자로 입력해주세요."); return; }
+      if (pe < ps) { setError("끝 페이지는 시작 페이지 이상이어야 합니다."); return; }
+      if (autoPagePlan.length === 0) { setError("페이지 분배 계획을 확인해주세요."); return; }
+
+      setSubmitting(true);
+      try {
+        for (const plan of autoPagePlan) {
+          await apiFetch<DailyTask>("/admin/daily-tasks", {
+            method: "POST",
+            body: {
+              student_id: Number(selectedStudentId),
+              task_date: plan.date,
+              title: createForm.title.trim(),
+              detail: plan.detail,
+              textbook_key: selectedTextbook.textbookKey,
+              start_item_number: null,
+              end_item_number: null,
+              status: "todo",
+              difficulty: createForm.difficulty,
+              category: createForm.category,
+              order_index: Number(createForm.orderIndex) || 1,
+            },
+          });
+        }
+        setMessage(`${autoPagePlan.length}일치 숙제가 배정되었습니다.`);
+        setAutoPageStart("");
+        setAutoPageEnd("");
+        setAutoPageNote("");
+        setAutoPageDates([]);
+        setCreateForm((c) => ({ ...makeEmptyForm(today), rangeType: "free", selectedTextbookValue: c.selectedTextbookValue, category: c.category, difficulty: c.difficulty, orderIndex: c.orderIndex }));
+        await fetchTasks(selectedStudentId, selectedDate);
+      } catch {
+        setError("숙제 배정에 실패했습니다. 다시 시도해주세요.");
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
     const createStartNumber = Number(createForm.startNumber);
     const createEndNumber = Number(createForm.endNumber);
-    if (!isCustomTask && createForm.startNumber && selectedTextbook.minItemNumber !== undefined && createStartNumber < selectedTextbook.minItemNumber) {
+    if (createForm.rangeType === "item" && !isCustomTask && createForm.startNumber && selectedTextbook.minItemNumber !== undefined && createStartNumber < selectedTextbook.minItemNumber) {
       setError(`시작 번호는 ${selectedTextbook.minItemNumber}번 이상이어야 합니다.`);
       return;
     }
-    if (!isCustomTask && createForm.endNumber && selectedTextbook.maxItemNumber !== undefined && createEndNumber > selectedTextbook.maxItemNumber) {
+    if (createForm.rangeType === "item" && !isCustomTask && createForm.endNumber && selectedTextbook.maxItemNumber !== undefined && createEndNumber > selectedTextbook.maxItemNumber) {
       setError(`끝 번호는 ${selectedTextbook.maxItemNumber}번 이하여야 합니다.`);
       return;
     }
-    if (createForm.startNumber && createForm.endNumber && createStartNumber > createEndNumber) {
+    if (createForm.rangeType === "item" && createForm.startNumber && createForm.endNumber && createStartNumber > createEndNumber) {
       setError("시작 번호는 끝 번호보다 클 수 없습니다.");
       return;
     }
@@ -524,8 +710,8 @@ export default function AdminDailyTasksPage() {
           title: createForm.title.trim(),
           detail: createForm.detail.trim() || null,
           textbook_key: selectedTextbook.textbookKey,
-          start_item_number: toNullableNumber(createForm.startNumber),
-          end_item_number: toNullableNumber(createForm.endNumber),
+          start_item_number: createForm.rangeType === "item" ? toNullableNumber(createForm.startNumber) : null,
+          end_item_number: createForm.rangeType === "item" ? toNullableNumber(createForm.endNumber) : null,
           status: "todo",
           difficulty: createForm.difficulty,
           category: createForm.category,
@@ -603,6 +789,7 @@ export default function AdminDailyTasksPage() {
       difficulty: task.difficulty ?? "보통",
       endNumber: task.end_item_number === null ? "" : String(task.end_item_number),
       orderIndex: String(task.order_index),
+      rangeType: task.start_item_number !== null ? "item" : "none",
       selectedTextbookValue: getTextbookValue(task.textbook_key),
       startNumber: task.start_item_number === null ? "" : String(task.start_item_number),
       status: task.status,
@@ -632,8 +819,8 @@ export default function AdminDailyTasksPage() {
           title: editForm.title.trim(),
           detail: editForm.detail.trim() || null,
           textbook_key: editTextbook.textbookKey,
-          start_item_number: toNullableNumber(editForm.startNumber),
-          end_item_number: toNullableNumber(editForm.endNumber),
+          start_item_number: editForm.rangeType === "item" ? toNullableNumber(editForm.startNumber) : null,
+          end_item_number: editForm.rangeType === "item" ? toNullableNumber(editForm.endNumber) : null,
           status: editForm.status,
           difficulty: editForm.difficulty,
           category: editForm.category.trim() || editTextbook.category,
@@ -980,29 +1167,315 @@ export default function AdminDailyTasksPage() {
             ) : null}
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="mb-2 block text-sm font-bold text-gray-700">시작 번호</label>
-              <input
-                className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
-                min={selectedTextbook.minItemNumber ?? 1}
-                max={selectedTextbook.maxItemNumber}
-                onChange={(event) => updateCreateForm({ startNumber: event.target.value })}
-                type="number"
-                value={createForm.startNumber}
-              />
+          <div>
+            <label className="mb-2 block text-sm font-bold text-gray-700">범위 방식</label>
+            <div className="flex gap-2">
+              {(["item", "free", "none"] as const).map((type) => (
+                <button
+                  className={`flex-1 rounded-xl py-2.5 text-xs font-bold transition ${
+                    createForm.rangeType === type
+                      ? "bg-[#0F172A] text-white"
+                      : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                  }`}
+                  key={type}
+                  onClick={() => { updateCreateForm({ rangeType: type, startNumber: "", endNumber: "" }); setFreeInputMode("direct"); setItemInputMode("manual"); }}
+                  type="button"
+                >
+                  {type === "item" ? "문항 번호" : type === "free" ? "페이지/자유" : "범위 없음"}
+                </button>
+              ))}
             </div>
-            <div>
-              <label className="mb-2 block text-sm font-bold text-gray-700">끝 번호</label>
-              <input
-                className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
-                min={selectedTextbook.minItemNumber ?? 1}
-                max={selectedTextbook.maxItemNumber}
-                onChange={(event) => updateCreateForm({ endNumber: event.target.value })}
-                type="number"
-                value={createForm.endNumber}
-              />
-            </div>
+          </div>
+
+          {createForm.rangeType === "item" ? (
+            <>
+              <div>
+                <label className="mb-2 block text-sm font-bold text-gray-700">입력 방식</label>
+                <div className="flex gap-2">
+                  {(["manual", "auto"] as const).map((mode) => (
+                    <button
+                      className={`flex-1 rounded-xl py-2.5 text-xs font-bold transition ${
+                        itemInputMode === mode
+                          ? "bg-[#0F172A] text-white"
+                          : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                      }`}
+                      key={mode}
+                      onClick={() => setItemInputMode(mode)}
+                      type="button"
+                    >
+                      {mode === "manual" ? "직접 입력" : "문항 자동 분배"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {itemInputMode === "manual" ? (
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="mb-2 block text-sm font-bold text-gray-700">시작 번호</label>
+                    <input
+                      className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
+                      min={selectedTextbook.minItemNumber ?? 1}
+                      max={selectedTextbook.maxItemNumber}
+                      onChange={(event) => updateCreateForm({ startNumber: event.target.value })}
+                      type="number"
+                      value={createForm.startNumber}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm font-bold text-gray-700">끝 번호</label>
+                    <input
+                      className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
+                      min={selectedTextbook.minItemNumber ?? 1}
+                      max={selectedTextbook.maxItemNumber}
+                      onChange={(event) => updateCreateForm({ endNumber: event.target.value })}
+                      type="number"
+                      value={createForm.endNumber}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm font-bold text-gray-700">난이도</label>
+                    <select
+                      className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-3 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
+                      onChange={(event) => updateCreateForm({ difficulty: event.target.value })}
+                      value={createForm.difficulty}
+                    >
+                      <option>쉬움</option>
+                      <option>보통</option>
+                      <option>어려움</option>
+                    </select>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <label className="mb-2 block text-sm font-bold text-gray-700">난이도</label>
+                    <select
+                      className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-3 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
+                      onChange={(event) => updateCreateForm({ difficulty: event.target.value })}
+                      value={createForm.difficulty}
+                    >
+                      <option>쉬움</option>
+                      <option>보통</option>
+                      <option>어려움</option>
+                    </select>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="mb-2 block text-sm font-bold text-gray-700">시작 문항</label>
+                      <input
+                        className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
+                        min={selectedTextbook.minItemNumber ?? 1}
+                        onChange={(e) => setAutoItemStart(e.target.value)}
+                        placeholder={String(selectedTextbook.minItemNumber ?? 1)}
+                        type="number"
+                        value={autoItemStart}
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-sm font-bold text-gray-700">끝 문항</label>
+                      <input
+                        className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
+                        min={selectedTextbook.minItemNumber ?? 1}
+                        max={selectedTextbook.maxItemNumber}
+                        onChange={(e) => setAutoItemEnd(e.target.value)}
+                        placeholder={String(selectedTextbook.maxItemNumber ?? 15)}
+                        type="number"
+                        value={autoItemEnd}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-bold text-gray-700">날짜 추가</label>
+                    <div className="flex gap-2">
+                      <input
+                        className="flex-1 rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
+                        onChange={(e) => setAutoItemDateInput(e.target.value)}
+                        type="date"
+                        value={autoItemDateInput}
+                      />
+                      <button
+                        className="rounded-2xl bg-gray-100 px-4 py-3 text-sm font-bold text-gray-700"
+                        onClick={addAutoItemDate}
+                        type="button"
+                      >
+                        + 추가
+                      </button>
+                    </div>
+                    {autoItemDates.length > 0 ? (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {autoItemDates.map((date) => (
+                          <span
+                            className="flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1 text-xs font-bold text-gray-700"
+                            key={date}
+                          >
+                            {date}
+                            <button
+                              className="ml-1 text-gray-400 hover:text-red-400"
+                              onClick={() => removeAutoItemDate(date)}
+                              type="button"
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  {autoItemPlan.length > 0 ? (
+                    <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                      <p className="text-xs font-black text-gray-700">자동 배정 미리보기</p>
+                      <div className="mt-2 space-y-1">
+                        {autoItemPlan.map((plan) => (
+                          <p className="text-xs font-bold text-gray-600" key={plan.date}>
+                            {plan.date}: {plan.title}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </>
+              )}
+            </>
+          ) : createForm.rangeType === "free" ? (
+            <>
+              <div>
+                <label className="mb-2 block text-sm font-bold text-gray-700">난이도</label>
+                <select
+                  className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-3 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
+                  onChange={(event) => updateCreateForm({ difficulty: event.target.value })}
+                  value={createForm.difficulty}
+                >
+                  <option>쉬움</option>
+                  <option>보통</option>
+                  <option>어려움</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-bold text-gray-700">입력 방식</label>
+                <div className="flex gap-2">
+                  {(["direct", "auto_page"] as const).map((mode) => (
+                    <button
+                      className={`flex-1 rounded-xl py-2.5 text-xs font-bold transition ${
+                        freeInputMode === mode
+                          ? "bg-[#3730A3] text-white"
+                          : "bg-[#EEF2FF] text-[#3730A3] hover:bg-[#E0E7FF]"
+                      }`}
+                      key={mode}
+                      onClick={() => setFreeInputMode(mode)}
+                      type="button"
+                    >
+                      {mode === "direct" ? "직접 입력" : "페이지 자동 분배"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {freeInputMode === "auto_page" ? (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="mb-2 block text-sm font-bold text-gray-700">시작 페이지</label>
+                      <input
+                        className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
+                        min="1"
+                        onChange={(e) => setAutoPageStart(e.target.value)}
+                        placeholder="32"
+                        type="number"
+                        value={autoPageStart}
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-sm font-bold text-gray-700">끝 페이지</label>
+                      <input
+                        className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
+                        min="1"
+                        onChange={(e) => setAutoPageEnd(e.target.value)}
+                        placeholder="45"
+                        type="number"
+                        value={autoPageEnd}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="mb-2 block text-sm font-bold text-gray-700">라벨</label>
+                      <input
+                        className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
+                        onChange={(e) => setAutoPageLabel(e.target.value)}
+                        placeholder="p."
+                        value={autoPageLabel}
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-sm font-bold text-gray-700">메모 (선택)</label>
+                      <input
+                        className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
+                        onChange={(e) => setAutoPageNote(e.target.value)}
+                        placeholder="쎈 수1 풀기"
+                        value={autoPageNote}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-bold text-gray-700">날짜 추가</label>
+                    <div className="flex gap-2">
+                      <input
+                        className="flex-1 rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
+                        onChange={(e) => setAutoPageDateInput(e.target.value)}
+                        type="date"
+                        value={autoPageDateInput}
+                      />
+                      <button
+                        className="rounded-2xl bg-[#EEF2FF] px-4 py-3 text-sm font-bold text-[#3730A3]"
+                        onClick={addAutoPageDate}
+                        type="button"
+                      >
+                        + 추가
+                      </button>
+                    </div>
+                    {autoPageDates.length > 0 ? (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {autoPageDates.map((date) => (
+                          <span
+                            className="flex items-center gap-1 rounded-full bg-[#EEF2FF] px-3 py-1 text-xs font-bold text-[#3730A3]"
+                            key={date}
+                          >
+                            {date}
+                            <button
+                              className="ml-1 text-[#6366F1] hover:text-red-400"
+                              onClick={() => removeAutoPageDate(date)}
+                              type="button"
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  {autoPagePlan.length > 0 ? (
+                    <div className="rounded-2xl border border-[#C7D2FE] bg-[#F5F3FF] p-4">
+                      <p className="text-xs font-black text-[#3730A3]">자동 배정 미리보기</p>
+                      <div className="mt-2 space-y-1">
+                        {autoPagePlan.map((plan) => (
+                          <p className="text-xs font-bold text-gray-600" key={plan.date}>
+                            {plan.date}: {plan.detail}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
+            </>
+          ) : (
             <div>
               <label className="mb-2 block text-sm font-bold text-gray-700">난이도</label>
               <select
@@ -1015,7 +1488,7 @@ export default function AdminDailyTasksPage() {
                 <option>어려움</option>
               </select>
             </div>
-          </div>
+          )}
 
           <div>
             <label className="mb-2 block text-sm font-bold text-gray-700">제목</label>
@@ -1030,15 +1503,23 @@ export default function AdminDailyTasksPage() {
             />
           </div>
 
-          <div>
-            <label className="mb-2 block text-sm font-bold text-gray-700">상세</label>
-            <input
-              className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
-              onChange={(event) => updateCreateForm({ detail: event.target.value })}
-              placeholder="1번 ~ 10번 / △ 문제는 질문 표시하기"
-              value={createForm.detail}
-            />
-          </div>
+          {!(createForm.rangeType === "free" && freeInputMode === "auto_page") ? (
+            <div>
+              <label className="mb-2 block text-sm font-bold text-gray-700">
+                {createForm.rangeType === "free" ? "범위 (detail에 저장)" : "상세"}
+              </label>
+              <input
+                className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
+                onChange={(event) => updateCreateForm({ detail: event.target.value })}
+                placeholder={
+                  createForm.rangeType === "free"
+                    ? "예: p.32~p.36 / 프린트 1장 / 오답 5문제"
+                    : "1번 ~ 10번 / △ 문제는 질문 표시하기"
+                }
+                value={createForm.detail}
+              />
+            </div>
+          ) : null}
 
           <div>
             <label className="mb-2 block text-sm font-bold text-gray-700">순서</label>
@@ -1097,24 +1578,43 @@ export default function AdminDailyTasksPage() {
                       <input
                         className="w-full rounded-xl border border-gray-100 bg-white px-3 py-2 text-sm font-bold outline-none"
                         onChange={(event) => updateEditForm({ detail: event.target.value })}
+                        placeholder={editForm.rangeType === "free" ? "예: p.32~p.36 / 프린트 1장" : "상세 설명"}
                         value={editForm.detail}
                       />
-                      <div className="grid grid-cols-2 gap-2">
-                        <input
-                          className="rounded-xl border border-gray-100 bg-white px-3 py-2 text-sm font-bold outline-none"
-                          onChange={(event) => updateEditForm({ startNumber: event.target.value })}
-                          placeholder="시작 번호"
-                          type="number"
-                          value={editForm.startNumber}
-                        />
-                        <input
-                          className="rounded-xl border border-gray-100 bg-white px-3 py-2 text-sm font-bold outline-none"
-                          onChange={(event) => updateEditForm({ endNumber: event.target.value })}
-                          placeholder="끝 번호"
-                          type="number"
-                          value={editForm.endNumber}
-                        />
+                      <div className="flex gap-1">
+                        {(["item", "free", "none"] as const).map((type) => (
+                          <button
+                            className={`flex-1 rounded-lg py-1.5 text-xs font-bold transition ${
+                              editForm.rangeType === type
+                                ? "bg-[#0F172A] text-white"
+                                : "bg-gray-100 text-gray-500"
+                            }`}
+                            key={type}
+                            onClick={() => updateEditForm({ rangeType: type, startNumber: "", endNumber: "" })}
+                            type="button"
+                          >
+                            {type === "item" ? "문항" : type === "free" ? "페이지" : "없음"}
+                          </button>
+                        ))}
                       </div>
+                      {editForm.rangeType === "item" ? (
+                        <div className="grid grid-cols-2 gap-2">
+                          <input
+                            className="rounded-xl border border-gray-100 bg-white px-3 py-2 text-sm font-bold outline-none"
+                            onChange={(event) => updateEditForm({ startNumber: event.target.value })}
+                            placeholder="시작 번호"
+                            type="number"
+                            value={editForm.startNumber}
+                          />
+                          <input
+                            className="rounded-xl border border-gray-100 bg-white px-3 py-2 text-sm font-bold outline-none"
+                            onChange={(event) => updateEditForm({ endNumber: event.target.value })}
+                            placeholder="끝 번호"
+                            type="number"
+                            value={editForm.endNumber}
+                          />
+                        </div>
+                      ) : null}
                       <div className="grid grid-cols-3 gap-2">
                         <select
                           className="rounded-xl border border-gray-100 bg-white px-2 py-2 text-sm font-bold outline-none"

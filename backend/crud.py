@@ -2,6 +2,7 @@ from calendar import monthrange
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
+from sqlalchemy import and_, func
 from sqlalchemy.orm import Session, selectinload
 
 from models import (
@@ -10,6 +11,7 @@ from models import (
     MathStudentItemProgress,
     MathTextbook,
     MathTextbookItem,
+    MathTextbookSeries,
     Progress,
     Student,
     Subject,
@@ -24,6 +26,7 @@ TEXTBOOK_PROGRESS_CONFIG = {
     "deep-su1-sequence-basic": "딥러닝 Deep Learning 수1 - 수열 등차수열·등비수열",
     "deep-su1-sequence-sum": "딥러닝 Deep Learning 수1 - 수열의 합과 시그마",
     "deep-prob-counting": "딥러닝 Deep Learning 확률과 통계 - 경우의 수",
+    "deep-su1-trig-shape": "딥러닝 Deep Learning 수1 - 삼각함수 도형",
 }
 ITEM_PROGRESS_STATUSES = {"not_started", "partial", "done"}
 DAILY_TASK_STATUSES = {"todo", "in_progress", "done"}
@@ -69,9 +72,39 @@ def get_textbook_by_full_title(db: Session, full_title: str) -> Optional[MathTex
     return db.query(MathTextbook).filter(MathTextbook.full_title == full_title).first()
 
 
+def sync_textbook_keys(db: Session) -> None:
+    for textbook_key, full_title in TEXTBOOK_PROGRESS_CONFIG.items():
+        textbook = get_textbook_by_full_title(db, full_title)
+        if textbook is None:
+            continue
+        if textbook.textbook_key != textbook_key:
+            textbook.textbook_key = textbook_key
+
+    db.commit()
+
+
+def resolve_textbook_key(textbook: MathTextbook) -> Optional[str]:
+    if textbook.textbook_key:
+        return textbook.textbook_key
+
+    for textbook_key, full_title in TEXTBOOK_PROGRESS_CONFIG.items():
+        if textbook.full_title == full_title:
+            return textbook_key
+
+    return None
+
+
 def get_textbook_by_key(db: Session, textbook_key: Optional[str]) -> Optional[MathTextbook]:
     if not textbook_key:
         return None
+
+    textbook = (
+        db.query(MathTextbook)
+        .filter(MathTextbook.textbook_key == textbook_key)
+        .first()
+    )
+    if textbook is not None:
+        return textbook
 
     full_title = TEXTBOOK_PROGRESS_CONFIG.get(textbook_key)
     if full_title is None:
@@ -84,19 +117,99 @@ def build_textbook_short_title(full_title: str) -> str:
     return full_title.replace("딥러닝 Deep Learning", "딥러닝").strip()
 
 
+def build_textbook_summary_payload(textbook: MathTextbook, item_count: int) -> dict:
+    return {
+        "id": textbook.id,
+        "textbook_key": resolve_textbook_key(textbook),
+        "subject": textbook.subject,
+        "title": textbook.title,
+        "full_title": textbook.full_title,
+        "type": textbook.type,
+        "is_checkable": textbook.is_checkable,
+        "is_published": textbook.is_published,
+        "is_active": textbook.is_active,
+        "item_count": item_count,
+    }
+
+
+def get_checkable_textbooks(db: Session) -> list[MathTextbook]:
+    return (
+        db.query(MathTextbook)
+        .filter(
+            MathTextbook.is_checkable.is_(True),
+            MathTextbook.is_active.is_(True),
+            MathTextbook.is_published.is_(True),
+        )
+        .order_by(MathTextbook.order_index, MathTextbook.id)
+        .all()
+    )
+
+
+def get_active_textbooks_by_subject(db: Session, subject: str) -> list[dict]:
+    textbooks = (
+        db.query(MathTextbook)
+        .filter(
+            MathTextbook.subject == subject,
+            MathTextbook.is_active.is_(True),
+            MathTextbook.is_published.is_(True),
+        )
+        .order_by(MathTextbook.order_index, MathTextbook.id)
+        .all()
+    )
+
+    return build_student_textbook_payloads(db, textbooks)
+
+
+def build_student_textbook_payloads(db: Session, textbooks: list[MathTextbook]) -> list[dict]:
+    textbook_ids = [textbook.id for textbook in textbooks]
+    item_counts = (
+        db.query(MathTextbookItem.textbook_id, func.count(MathTextbookItem.id).label("cnt"))
+        .filter(
+            MathTextbookItem.textbook_id.in_(textbook_ids),
+            MathTextbookItem.is_active.is_(True),
+        )
+        .group_by(MathTextbookItem.textbook_id)
+        .all()
+        if textbook_ids
+        else []
+    )
+    count_map = {row.textbook_id: row.cnt for row in item_counts}
+
+    payloads = []
+    for textbook in textbooks:
+        payload = build_textbook_summary_payload(textbook, count_map.get(textbook.id, 0))
+        if payload["textbook_key"] is None:
+            continue
+        payloads.append(payload)
+    return payloads
+
+
+def get_student_textbook_by_key(db: Session, textbook_key: str) -> Optional[dict]:
+    textbook = get_textbook_by_key(db, textbook_key)
+    if textbook is None:
+        return None
+
+    item_count = (
+        db.query(func.count(MathTextbookItem.id))
+        .filter(
+            MathTextbookItem.textbook_id == textbook.id,
+            MathTextbookItem.is_active.is_(True),
+        )
+        .scalar()
+        or 0
+    )
+    payload = build_textbook_summary_payload(textbook, item_count)
+    if payload["textbook_key"] is None:
+        return None
+    return payload
+
+
 def get_admin_textbook_catalog(db: Session) -> dict:
     textbooks = []
 
-    for textbook_key, full_title in TEXTBOOK_PROGRESS_CONFIG.items():
-        textbook = (
-            db.query(MathTextbook)
-            .filter(
-                MathTextbook.full_title == full_title,
-                MathTextbook.is_checkable.is_(True),
-            )
-            .first()
-        )
-        if textbook is None:
+    for textbook in get_checkable_textbooks(db):
+        textbook_key = resolve_textbook_key(textbook)
+        if textbook_key is None:
             continue
 
         items = (
@@ -735,3 +848,147 @@ def get_admin_student_list(db: Session) -> list[dict]:
         )
 
     return result
+
+
+# Textbook management CRUD
+
+def get_textbook_series_list(db: Session) -> list[MathTextbookSeries]:
+    return (
+        db.query(MathTextbookSeries)
+        .order_by(MathTextbookSeries.order_index, MathTextbookSeries.id)
+        .all()
+    )
+
+
+def create_or_get_textbook_series(db: Session, data: dict) -> tuple[MathTextbookSeries, bool]:
+    existing = (
+        db.query(MathTextbookSeries)
+        .filter(
+            MathTextbookSeries.display_name == data["display_name"],
+            MathTextbookSeries.type == data["type"],
+        )
+        .first()
+    )
+    if existing:
+        return existing, False
+    series = MathTextbookSeries(**data)
+    db.add(series)
+    db.commit()
+    db.refresh(series)
+    return series, True
+
+
+def create_textbook_with_items(db: Session, payload) -> MathTextbook:
+    existing = db.query(MathTextbook).filter(MathTextbook.full_title == payload.full_title).first()
+    if existing:
+        raise ValueError(f"이미 존재하는 교재입니다: {payload.full_title}")
+
+    textbook = MathTextbook(
+        series_id=payload.series_id,
+        textbook_key=getattr(payload, "textbook_key", None),
+        subject=payload.subject,
+        title=payload.title,
+        full_title=payload.full_title,
+        type=payload.type,
+        is_checkable=payload.is_checkable,
+        is_published=payload.is_published,
+        is_active=payload.is_active,
+        order_index=payload.order_index,
+    )
+    db.add(textbook)
+    db.flush()
+
+    for i in range(1, payload.item_count + 1):
+        item = MathTextbookItem(
+            textbook_id=textbook.id,
+            item_number=i,
+            title=f"{i}번",
+            item_type="problem",
+            order_index=i,
+            is_active=True,
+        )
+        db.add(item)
+
+    db.commit()
+    db.refresh(textbook)
+    return textbook
+
+
+def get_admin_textbook_list(db: Session) -> list[dict]:
+    textbooks = (
+        db.query(MathTextbook, MathTextbookSeries.korean_name)
+        .join(MathTextbookSeries, MathTextbook.series_id == MathTextbookSeries.id)
+        .order_by(MathTextbook.order_index, MathTextbook.id)
+        .all()
+    )
+
+    item_counts = (
+        db.query(MathTextbookItem.textbook_id, func.count(MathTextbookItem.id).label("cnt"))
+        .filter(MathTextbookItem.is_active.is_(True))
+        .group_by(MathTextbookItem.textbook_id)
+        .all()
+    )
+    count_map = {row.textbook_id: row.cnt for row in item_counts}
+
+    return [
+        {
+            "id": textbook.id,
+            "series_id": textbook.series_id,
+            "series_name": series_name,
+            "subject": textbook.subject,
+            "title": textbook.title,
+            "full_title": textbook.full_title,
+            "type": textbook.type,
+            "is_checkable": textbook.is_checkable,
+            "is_published": textbook.is_published,
+            "is_active": textbook.is_active,
+            "item_count": count_map.get(textbook.id, 0),
+            "order_index": textbook.order_index,
+            "created_at": textbook.created_at,
+        }
+        for textbook, series_name in textbooks
+    ]
+
+
+def get_textbook_detail_admin(db: Session, textbook_id: int) -> Optional[dict]:
+    result = (
+        db.query(MathTextbook, MathTextbookSeries.korean_name)
+        .join(MathTextbookSeries, MathTextbook.series_id == MathTextbookSeries.id)
+        .filter(MathTextbook.id == textbook_id)
+        .first()
+    )
+    if result is None:
+        return None
+
+    textbook, series_name = result
+    items = (
+        db.query(MathTextbookItem)
+        .filter(MathTextbookItem.textbook_id == textbook_id)
+        .order_by(MathTextbookItem.order_index, MathTextbookItem.id)
+        .all()
+    )
+
+    return {
+        "id": textbook.id,
+        "series_id": textbook.series_id,
+        "series_name": series_name,
+        "subject": textbook.subject,
+        "title": textbook.title,
+        "full_title": textbook.full_title,
+        "type": textbook.type,
+        "is_checkable": textbook.is_checkable,
+        "is_published": textbook.is_published,
+        "is_active": textbook.is_active,
+        "order_index": textbook.order_index,
+        "item_count": len(items),
+        "items": [
+            {
+                "id": item.id,
+                "item_number": item.item_number,
+                "title": item.title,
+                "item_type": item.item_type,
+                "is_active": item.is_active,
+            }
+            for item in items
+        ],
+    }

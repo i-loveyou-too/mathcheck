@@ -117,10 +117,14 @@ class MathTextbookSeries(Base):
 
 class MathTextbook(Base):
     __tablename__ = "math_textbooks"
-    __table_args__ = (UniqueConstraint("full_title", name="uq_math_textbooks_full_title"),)
+    __table_args__ = (
+        UniqueConstraint("full_title", name="uq_math_textbooks_full_title"),
+        UniqueConstraint("textbook_key", name="uq_math_textbooks_textbook_key"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     series_id = Column(Integer, ForeignKey("math_textbook_series.id"), nullable=False)
+    textbook_key = Column(String(100), nullable=True)
     subject = Column(String(50), nullable=True)
     title = Column(String(200), nullable=False)
     full_title = Column(String(300), nullable=False)

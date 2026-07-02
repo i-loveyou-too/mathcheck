@@ -309,3 +309,99 @@ class AdminTextbookCatalogItem(BaseModel):
 
 class AdminTextbookCatalogResponse(BaseModel):
     textbooks: list[AdminTextbookCatalogItem]
+
+
+class StudentTextbookResponse(BaseModel):
+    id: int
+    textbook_key: str
+    subject: Optional[str] = None
+    title: str
+    full_title: str
+    type: str
+    is_checkable: bool
+    is_published: bool
+    is_active: bool
+    item_count: int
+
+
+class StudentTextbookListResponse(BaseModel):
+    textbooks: list[StudentTextbookResponse]
+
+
+# Textbook management schemas
+
+class TextbookSeriesResponse(BaseModel):
+    id: int
+    korean_name: str
+    english_name: str
+    display_name: str
+    type: str
+    order_index: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TextbookSeriesCreateRequest(BaseModel):
+    korean_name: str
+    english_name: str
+    display_name: str
+    type: str = "problem"
+    order_index: int = 0
+
+
+class TextbookCreateRequest(BaseModel):
+    series_id: int
+    textbook_key: Optional[str] = None
+    subject: Optional[str] = None
+    title: str
+    full_title: str
+    type: str = "problem"
+    is_checkable: bool = True
+    is_published: bool = True
+    is_active: bool = True
+    order_index: int = 0
+    item_count: int
+
+
+class TextbookListItem(BaseModel):
+    id: int
+    series_id: int
+    series_name: str
+    subject: Optional[str] = None
+    title: str
+    full_title: str
+    type: str
+    is_checkable: bool
+    is_published: bool
+    is_active: bool
+    item_count: int
+    order_index: int
+    created_at: datetime
+
+
+class TextbookListResponse(BaseModel):
+    textbooks: list[TextbookListItem]
+
+
+class TextbookDetailItem(BaseModel):
+    id: int
+    item_number: int
+    title: str
+    item_type: str
+    is_active: bool
+
+
+class TextbookDetailResponse(BaseModel):
+    id: int
+    series_id: int
+    series_name: str
+    subject: Optional[str] = None
+    title: str
+    full_title: str
+    type: str
+    is_checkable: bool
+    is_published: bool
+    is_active: bool
+    order_index: int
+    item_count: int
+    items: list[TextbookDetailItem]
