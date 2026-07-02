@@ -7,13 +7,14 @@ import { AdminBottomNav } from "@/components/admin-bottom-nav";
 import { ScreenShell } from "@/components/screen-shell";
 import { StudentCard } from "@/components/student-card";
 import { apiFetch } from "@/lib/api";
+import { AdminStudentCardProgress, loadAdminStudentCardProgress } from "@/lib/admin-student-progress";
 import { getAdmin } from "@/lib/storage";
-import { AdminStudentProgress, AdminStudentSummary, StudentCardSubjectProgress } from "@/lib/types";
+import { AdminStudentSummary } from "@/lib/types";
 
 export default function AdminDashboardPage() {
   const router = useRouter();
   const [students, setStudents] = useState<AdminStudentSummary[]>([]);
-  const [subjectMap, setSubjectMap] = useState<Record<number, StudentCardSubjectProgress[]>>({});
+  const [cardProgressMap, setCardProgressMap] = useState<Record<number, AdminStudentCardProgress>>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -26,25 +27,15 @@ export default function AdminDashboardPage() {
     const load = async () => {
       try {
         const data = await apiFetch<AdminStudentSummary[]>("/admin/students");
-        setStudents(data);
+        const progressMap = await loadAdminStudentCardProgress(data.map((student) => student.id));
 
-        const detailEntries = await Promise.all(
-          data.map(async (student) => {
-            const detail = await apiFetch<AdminStudentProgress>(
-              `/admin/students/${student.id}/progress`
-            );
-            return [
-              student.id,
-              detail.subjects.map((subject) => ({
-                id: subject.id,
-                name: subject.name,
-                progressPercentage: subject.progress_percentage,
-              })),
-            ] as const;
-          })
+        setStudents(
+          data.map((student) => ({
+            ...student,
+            progress_percentage: progressMap[student.id]?.progressPercentage ?? 0,
+          }))
         );
-
-        setSubjectMap(Object.fromEntries(detailEntries));
+        setCardProgressMap(progressMap);
       } finally {
         setLoading(false);
       }
@@ -100,6 +91,22 @@ export default function AdminDashboardPage() {
         </div>
       </Link>
 
+      <Link
+        className="block rounded-2xl bg-white p-4 shadow-card transition hover:-translate-y-0.5"
+        href="/admin/textbooks-management"
+      >
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-xs font-bold text-[#818CF8]">교재 관리</p>
+            <h2 className="mt-1 text-lg font-black text-gray-900">교재 등록</h2>
+            <p className="mt-1 text-sm font-medium text-gray-500">
+              교재와 문항을 등록하고 목록을 관리해요.
+            </p>
+          </div>
+          <span className="text-2xl font-bold text-gray-300">›</span>
+        </div>
+      </Link>
+
       {/* Student list */}
       <div>
         <div className="mb-4 flex items-center justify-between">
@@ -116,7 +123,7 @@ export default function AdminDashboardPage() {
               key={student.id}
               name={student.name}
               progressPercentage={student.progress_percentage}
-              subjects={subjectMap[student.id]}
+              subjects={cardProgressMap[student.id]?.subjects}
             />
           ))}
         </div>

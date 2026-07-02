@@ -208,6 +208,7 @@ class DailyTaskResponse(BaseModel):
     difficulty: Optional[str] = None
     category: Optional[str] = None
     order_index: int
+    completed_at: Optional[datetime] = None
     textbook: Optional[DailyTaskTextbookInfo] = None
 
 
@@ -305,6 +306,7 @@ class AdminTextbookCatalogItem(BaseModel):
     total_items: int
     is_active: bool
     is_checkable: bool
+    is_student_only: bool = False
 
 
 class AdminTextbookCatalogResponse(BaseModel):
@@ -374,6 +376,7 @@ class TextbookListItem(BaseModel):
     is_checkable: bool
     is_published: bool
     is_active: bool
+    is_student_only: bool = False
     item_count: int
     order_index: int
     created_at: datetime
@@ -402,6 +405,29 @@ class TextbookDetailResponse(BaseModel):
     is_checkable: bool
     is_published: bool
     is_active: bool
+    is_student_only: bool = False
     order_index: int
     item_count: int
     items: list[TextbookDetailItem]
+
+
+class StudentTextbookAssignment(BaseModel):
+    student_id: int
+    student_name: str
+    student_grade: str
+    is_active: bool
+    assigned_at: datetime
+
+
+class TextbookAssignmentsResponse(BaseModel):
+    textbook_id: int
+    is_student_only: bool
+    assignments: list[StudentTextbookAssignment]
+
+
+class TextbookStudentOnlyRequest(BaseModel):
+    is_student_only: bool
+
+
+class StudentTextbookIdsResponse(BaseModel):
+    textbook_ids: list[int]

@@ -4,6 +4,22 @@ from sqlalchemy.orm import relationship
 from database import Base
 
 
+class MathStudentTextbook(Base):
+    __tablename__ = "math_student_textbooks"
+    __table_args__ = (
+        UniqueConstraint("student_id", "textbook_id", name="uq_math_student_textbooks"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("math_students.id"), nullable=False, index=True)
+    textbook_id = Column(Integer, ForeignKey("math_textbooks.id"), nullable=False, index=True)
+    assigned_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    is_active = Column(Boolean, nullable=False, default=True)
+
+    student = relationship("Student", back_populates="student_textbooks")
+    textbook = relationship("MathTextbook", back_populates="student_assignments")
+
+
 class Student(Base):
     __tablename__ = "math_students"
 
@@ -21,6 +37,11 @@ class Student(Base):
     )
     daily_tasks = relationship(
         "MathDailyTask",
+        back_populates="student",
+        cascade="all, delete-orphan",
+    )
+    student_textbooks = relationship(
+        "MathStudentTextbook",
         back_populates="student",
         cascade="all, delete-orphan",
     )
@@ -131,6 +152,7 @@ class MathTextbook(Base):
     type = Column(String(50), nullable=False)
     is_checkable = Column(Boolean, nullable=False, default=True)
     is_published = Column(Boolean, nullable=False, default=True)
+    is_student_only = Column(Boolean, nullable=False, default=False)
     order_index = Column(Integer, nullable=False, default=0)
     is_active = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -143,6 +165,11 @@ class MathTextbook(Base):
         order_by="MathTextbookItem.order_index, MathTextbookItem.id",
     )
     daily_tasks = relationship("MathDailyTask", back_populates="textbook")
+    student_assignments = relationship(
+        "MathStudentTextbook",
+        back_populates="textbook",
+        cascade="all, delete-orphan",
+    )
 
 
 class MathTextbookItem(Base):
@@ -200,6 +227,7 @@ class MathDailyTask(Base):
     category = Column(String(100), nullable=True)
     order_index = Column(Integer, nullable=False, default=0)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
     updated_at = Column(DateTime(timezone=True), nullable=True)
 
     student = relationship("Student", back_populates="daily_tasks")

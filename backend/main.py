@@ -1,6 +1,7 @@
 import os
 from contextlib import asynccontextmanager
 from datetime import date
+from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -34,11 +35,44 @@ def ensure_textbook_key_column():
         )
 
 
+def ensure_daily_task_completed_at_column():
+    inspector = inspect(engine)
+    if not inspector.has_table("math_daily_tasks"):
+        return
+
+    column_names = {column["name"] for column in inspector.get_columns("math_daily_tasks")}
+
+    with engine.begin() as connection:
+        if "completed_at" not in column_names:
+            connection.execute(
+                text("ALTER TABLE math_daily_tasks ADD COLUMN completed_at TIMESTAMP NULL")
+            )
+
+
+def ensure_textbook_is_student_only_column():
+    inspector = inspect(engine)
+    if not inspector.has_table("math_textbooks"):
+        return
+
+    column_names = {column["name"] for column in inspector.get_columns("math_textbooks")}
+
+    with engine.begin() as connection:
+        if "is_student_only" not in column_names:
+            connection.execute(
+                text(
+                    "ALTER TABLE math_textbooks "
+                    "ADD COLUMN is_student_only BOOLEAN NOT NULL DEFAULT FALSE"
+                )
+            )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Create tables automatically on startup so the app is easy to run locally.
     Base.metadata.create_all(bind=engine)
     ensure_textbook_key_column()
+    ensure_daily_task_completed_at_column()
+    ensure_textbook_is_student_only_column()
     db = SessionLocal()
     try:
         crud.sync_textbook_keys(db)
@@ -201,8 +235,12 @@ def student_achievement_tracker(
     response_model=schemas.StudentTextbookListResponse,
     tags=["Student"],
 )
-def student_textbooks_by_subject(subject: str, db: Session = Depends(get_db)):
-    return {"textbooks": crud.get_active_textbooks_by_subject(db, subject)}
+def student_textbooks_by_subject(
+    subject: str,
+    student_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+):
+    return {"textbooks": crud.get_active_textbooks_by_subject(db, subject, student_id)}
 
 
 @app.get(
@@ -435,3 +473,82 @@ def admin_textbook_detail(textbook_id: int, db: Session = Depends(get_db)):
     if result is None:
         raise HTTPException(status_code=404, detail="Textbook not found")
     return result
+
+
+@app.get(
+    "/admin/textbooks/{textbook_id}/assignments",
+    response_model=schemas.TextbookAssignmentsResponse,
+    tags=["Admin"],
+)
+def get_textbook_assignments(textbook_id: int, db: Session = Depends(get_db)):
+    result = crud.get_textbook_detail_admin(db, textbook_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Textbook not found")
+    assignments = crud.get_textbook_assignments(db, textbook_id)
+    return {
+        "textbook_id": textbook_id,
+        "is_student_only": result["is_student_only"],
+        "assignments": assignments,
+    }
+
+
+@app.post(
+    "/admin/textbooks/{textbook_id}/assign/{student_id}",
+    response_model=schemas.DeleteResponse,
+    tags=["Admin"],
+)
+def assign_student_textbook(textbook_id: int, student_id: int, db: Session = Depends(get_db)):
+    if crud.get_textbook_detail_admin(db, textbook_id) is None:
+        raise HTTPException(status_code=404, detail="Textbook not found")
+    if crud.get_student_by_id(db, student_id) is None:
+        raise HTTPException(status_code=404, detail="Student not found")
+    crud.assign_student_textbook(db, textbook_id, student_id)
+    return {"ok": True}
+
+
+@app.delete(
+    "/admin/textbooks/{textbook_id}/assign/{student_id}",
+    response_model=schemas.DeleteResponse,
+    tags=["Admin"],
+)
+def unassign_student_textbook(textbook_id: int, student_id: int, db: Session = Depends(get_db)):
+    crud.unassign_student_textbook(db, textbook_id, student_id)
+    return {"ok": True}
+
+
+@app.patch(
+    "/admin/textbooks/{textbook_id}/student-only",
+    response_model=schemas.DeleteResponse,
+    tags=["Admin"],
+)
+def set_textbook_student_only(
+    textbook_id: int,
+    payload: schemas.TextbookStudentOnlyRequest,
+    db: Session = Depends(get_db),
+):
+    ok = crud.set_textbook_student_only(db, textbook_id, payload.is_student_only)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Textbook not found")
+    return {"ok": True}
+
+
+@app.get(
+    "/admin/students/{student_id}/textbook-ids",
+    response_model=schemas.StudentTextbookIdsResponse,
+    tags=["Admin"],
+)
+def get_student_textbook_ids(student_id: int, db: Session = Depends(get_db)):
+    if crud.get_student_by_id(db, student_id) is None:
+        raise HTTPException(status_code=404, detail="Student not found")
+    return {"textbook_ids": crud.get_student_textbook_ids(db, student_id)}
+
+
+@app.get(
+    "/admin/textbooks-for-student/{student_id}",
+    response_model=schemas.AdminTextbookCatalogResponse,
+    tags=["Admin"],
+)
+def admin_textbooks_for_student(student_id: int, db: Session = Depends(get_db)):
+    if crud.get_student_by_id(db, student_id) is None:
+        raise HTTPException(status_code=404, detail="Student not found")
+    return crud.get_textbooks_for_student_catalog(db, student_id)

@@ -59,8 +59,8 @@ type TextbookChecklistPageProps = {
 
 const statusOptions: { label: string; value: ProblemStatus }[] = [
   { label: "아직 안함", value: "not-started" },
-  { label: "△", value: "question" },
-  { label: "○", value: "done" },
+  { label: "질문", value: "question" },
+  { label: "완료", value: "done" },
 ];
 
 const statusStyles: Record<
@@ -253,24 +253,28 @@ export function TextbookChecklistPage({
         title={apiTitle ?? title}
       />
 
-      <section className="rounded-3xl bg-[#0F172A] p-5 text-white">
-        <p className="text-xs font-semibold uppercase tracking-widest text-white/40">진도 요약</p>
-        <div className="mt-4 grid grid-cols-2 gap-3">
-          <div className="rounded-2xl bg-white/10 p-3">
-            <p className="text-xs text-white/50">전체</p>
-            <p className="mt-1 text-2xl font-black">{summary.total}문항</p>
+      <section className="rounded-3xl bg-white p-5 shadow-card">
+        <h2 className="text-base font-bold text-indigo-500">진도 요약</h2>
+        <div className="mt-3 grid grid-cols-2 gap-3">
+          <div className="rounded-2xl bg-[#EEF2FF] p-4">
+            <p className="text-xl leading-none">📋</p>
+            <p className="mt-2 text-xs font-semibold text-indigo-400">전체</p>
+            <p className="mt-0.5 text-2xl font-black text-indigo-900">{summary.total}문항</p>
           </div>
-          <div className={cn("rounded-2xl p-3", statusStyles.done.card)}>
-            <p className="text-xs">○ 완료</p>
-            <p className="mt-1 text-2xl font-black">{summary.done}개</p>
+          <div className={cn("rounded-2xl p-4", statusStyles.done.card)}>
+            <p className="text-xl leading-none">✅</p>
+            <p className="mt-2 text-xs font-semibold">완료</p>
+            <p className="mt-0.5 text-2xl font-black">{summary.done}개</p>
           </div>
-          <div className={cn("rounded-2xl p-3", statusStyles.question.card)}>
-            <p className="text-xs">△ 질문</p>
-            <p className="mt-1 text-2xl font-black">{summary.question}개</p>
+          <div className={cn("rounded-2xl p-4", statusStyles.question.card)}>
+            <p className="text-xl leading-none">⚠️</p>
+            <p className="mt-2 text-xs font-semibold">질문</p>
+            <p className="mt-0.5 text-2xl font-black">{summary.question}개</p>
           </div>
-          <div className={cn("rounded-2xl p-3", statusStyles["not-started"].card)}>
-            <p className="text-xs">아직 안함</p>
-            <p className="mt-1 text-2xl font-black">{summary.notStarted}개</p>
+          <div className={cn("rounded-2xl p-4", statusStyles["not-started"].card)}>
+            <p className="text-xl leading-none">🕐</p>
+            <p className="mt-2 text-xs font-semibold">아직 안함</p>
+            <p className="mt-0.5 text-2xl font-black">{summary.notStarted}개</p>
           </div>
         </div>
       </section>
@@ -335,6 +339,13 @@ export function TextbookChecklistPage({
           })}
         </div>
       </section>
+
+      <div className="flex items-start gap-2.5 rounded-2xl bg-indigo-50 px-4 py-3.5">
+        <span className="shrink-0 text-base">ℹ️</span>
+        <p className="text-xs font-medium leading-relaxed text-indigo-400">
+          상태를 변경하면 자동으로 저장돼요.
+        </p>
+      </div>
 
       <StudentBottomNav />
     </ScreenShell>

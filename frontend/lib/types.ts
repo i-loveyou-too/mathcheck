@@ -138,3 +138,68 @@ export type StudentTextbook = {
 export type StudentTextbookListResponse = {
   textbooks: StudentTextbook[];
 };
+
+export type TextbookSeriesItem = {
+  id: number;
+  korean_name: string;
+  english_name: string;
+  display_name: string;
+  type: string;
+  order_index: number;
+};
+
+export type TextbookMgmtListItem = {
+  id: number;
+  series_id: number;
+  series_name: string;
+  subject: string | null;
+  title: string;
+  full_title: string;
+  type: string;
+  is_checkable: boolean;
+  is_published: boolean;
+  is_active: boolean;
+  is_student_only: boolean;
+  item_count: number;
+  order_index: number;
+  created_at: string;
+};
+
+export type TextbookMgmtDetailItem = {
+  id: number;
+  item_number: number;
+  title: string;
+  item_type: string;
+  is_active: boolean;
+};
+
+export type TextbookMgmtDetail = {
+  id: number;
+  series_id: number;
+  series_name: string;
+  subject: string | null;
+  title: string;
+  full_title: string;
+  type: string;
+  is_checkable: boolean;
+  is_published: boolean;
+  is_active: boolean;
+  is_student_only: boolean;
+  order_index: number;
+  item_count: number;
+  items: TextbookMgmtDetailItem[];
+};
+
+export type StudentTextbookAssignment = {
+  student_id: number;
+  student_name: string;
+  student_grade: string;
+  is_active: boolean;
+  assigned_at: string;
+};
+
+export type TextbookAssignmentsResponse = {
+  textbook_id: number;
+  is_student_only: boolean;
+  assignments: StudentTextbookAssignment[];
+};

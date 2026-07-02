@@ -2,11 +2,10 @@
 
 import { MouseEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Header } from "@/components/header";
 import { ScreenShell } from "@/components/screen-shell";
 import { StudentBottomNav } from "@/components/student-bottom-nav";
 import { apiFetch } from "@/lib/api";
-import { getStudent } from "@/lib/storage";
+import { clearStudent, getStudent } from "@/lib/storage";
 import { STUDENT_PAGE_TITLES } from "@/lib/student-page-titles";
 import { cn } from "@/lib/utils";
 
@@ -75,7 +74,6 @@ function addLocalDays(date: Date, days: number) {
 
 function getWeekDays(weekStart: Date) {
   const monday = startOfLocalDay(weekStart);
-
   return Array.from({ length: 7 }, (_, index) => addLocalDays(monday, index));
 }
 
@@ -106,21 +104,32 @@ function getStatusLabel(status: DailyTaskStatus) {
 }
 
 function getStatusClass(status: DailyTaskStatus) {
-  if (status === "done") return "bg-emerald-100 text-emerald-600";
+  if (status === "done") return "bg-emerald-100 text-emerald-700";
   if (status === "in_progress") return "bg-sky-100 text-sky-600";
   return "bg-gray-100 text-gray-500";
 }
 
 function getTaskCardClass(status: DailyTaskStatus) {
-  if (status === "done") return "bg-[#EAF6FF] text-[#17213B]";
-  return "bg-white text-[#17213B] shadow-sm ring-1 ring-gray-100";
+  if (status === "done") {
+    return "border border-[#EEF2FF] bg-[#F8FAFF]";
+  }
+
+  if (status === "in_progress") {
+    return "border border-[#E3E8FF] bg-white";
+  }
+
+  return "border border-gray-100 bg-white";
 }
 
 function formatSelectedDate(date: Date) {
-  const weekday = ["일요일", "월요일", "화요일", "수요일", "목요일", "금요일", "토요일"][
-    date.getDay()
-  ];
+  const weekday = ["일요일", "월요일", "화요일", "수요일", "목요일", "금요일", "토요일"][date.getDay()];
   return `${weekday} ${date.getMonth() + 1}/${date.getDate()}`;
+}
+
+function getSummaryIcon(label: "rate" | "goal" | "done") {
+  if (label === "rate") return "📈";
+  if (label === "goal") return "📝";
+  return "🔥";
 }
 
 export default function StudentTodayPage() {
@@ -138,12 +147,15 @@ export default function StudentTodayPage() {
   const [loadError, setLoadError] = useState("");
   const [saveError, setSaveError] = useState("");
 
-  const fetchWeeklyTasks = useCallback(async (targetStudentId: number) => {
-    const data = await apiFetch<WeeklyTasksResponse>(
-      `/student/weekly-tasks?student_id=${targetStudentId}&week_start=${currentWeekStartKey}`,
-    );
-    setWeeklyData(data);
-  }, [currentWeekStartKey]);
+  const fetchWeeklyTasks = useCallback(
+    async (targetStudentId: number) => {
+      const data = await apiFetch<WeeklyTasksResponse>(
+        `/student/weekly-tasks?student_id=${targetStudentId}&week_start=${currentWeekStartKey}`,
+      );
+      setWeeklyData(data);
+    },
+    [currentWeekStartKey],
+  );
 
   useEffect(() => {
     const student = getStudent();
@@ -177,42 +189,33 @@ export default function StudentTodayPage() {
 
     return weeklyData.days.map((day) => parseLocalDateKey(day.date));
   }, [fallbackWeekDays, weeklyData]);
-  const weekLabel = formatWeekLabel(weekDays);
 
-  const selectedDayIndex = weekDays.findIndex((date) => toLocalDateKey(date) === selectedDateKey);
-  const selectedDate = weekDays[selectedDayIndex] ?? today;
+  const weekLabel = formatWeekLabel(weekDays);
+  const selectedDate = weekDays.find((date) => toLocalDateKey(date) === selectedDateKey) ?? today;
   const selectedDay = weeklyData?.days.find((day) => day.date === selectedDateKey);
   const tasks = selectedDay?.tasks ?? [];
-  const selectedSummary = selectedDay?.summary ?? {
-    total: 0,
-    done: 0,
-    todo: 0,
-    completion_rate: 0,
-  };
-  const completionRate = selectedSummary.completion_rate;
   const weeklySummary = useMemo(() => {
     const days = weeklyData?.days ?? [];
     const total = days.reduce((sum, day) => sum + day.summary.total, 0);
     const done = days.reduce((sum, day) => sum + day.summary.done, 0);
-    const todayTasks = days.find((day) => day.date === todayKey)?.tasks ?? [];
-    const todayRemaining = todayTasks.filter((task) => task.status !== "done").length;
 
     return {
       done,
       rate: total > 0 ? Math.round((done / total) * 100) : 0,
-      todayRemaining,
       total,
     };
-  }, [todayKey, weeklyData]);
+  }, [weeklyData]);
+
+  const todayTaskDay = weeklyData?.days.find((day) => day.date === todayKey);
+  const todayRemaining = (todayTaskDay?.tasks ?? []).filter((task) => task.status !== "done").length;
+  const todayCompletionRate = todayTaskDay?.summary.completion_rate ?? 0;
 
   const updateTaskInWeek = (taskId: number, status: DailyTaskStatus) => {
     setWeeklyData((current) => {
       if (!current) return current;
 
       const days = current.days.map((day) => {
-        const nextTasks = day.tasks.map((task) =>
-          task.id === taskId ? { ...task, status } : task,
-        );
+        const nextTasks = day.tasks.map((task) => (task.id === taskId ? { ...task, status } : task));
         const done = nextTasks.filter((task) => task.status === "done").length;
         const total = nextTasks.length;
 
@@ -288,25 +291,186 @@ export default function StudentTodayPage() {
     setSelectedDateKey(todayKey);
   };
 
+  const handleLogout = () => {
+    clearStudent();
+    router.push("/login");
+  };
+
   return (
     <ScreenShell withBottomNav>
-      <Header
-        logoutType="student"
-        subtitle="오늘 해야 할 일을 하나씩 해내요."
-        title={STUDENT_PAGE_TITLES.today}
-      />
 
-      <section className="rounded-2xl border border-indigo-100 bg-white p-4 shadow-card">
-        <div className="mb-4 flex items-start justify-between gap-3">
+      {/* 헤더 */}
+      <div className="flex items-start justify-between gap-4 pt-1">
+        <div>
+          <h1 className="text-[1.5rem] font-black tracking-tight text-[#17213B]">
+            {STUDENT_PAGE_TITLES.today}
+          </h1>
+          <p className="mt-1 text-sm font-medium text-[#8A94A8]">
+            오늘 해야 할 일을 하나씩 해내요.
+          </p>
+        </div>
+        <button
+          className="inline-flex h-10 items-center justify-center gap-1.5 rounded-full bg-white px-4 text-sm font-bold text-[#17213B] shadow-card transition hover:bg-gray-50"
+          onClick={handleLogout}
+          type="button"
+        >
+          <span className="text-base">↪</span>
+          <span>로그아웃</span>
+        </button>
+      </div>
+
+      {/* 오늘 진행률 컴팩트 카드 */}
+      <div className="rounded-[20px] border border-[#EEF2FF] bg-white px-5 py-3.5 shadow-card">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm font-bold text-[#17213B]">
+            {loading
+              ? "불러오는 중..."
+              : todayRemaining === 0 && (todayTaskDay?.tasks.length ?? 0) > 0
+              ? "오늘 미션 모두 완료 🎉"
+              : `${todayRemaining}개 남았어요`}
+          </p>
+          <span className="shrink-0 text-sm font-black text-[#6D73FF]">
+            {todayCompletionRate}%
+          </span>
+        </div>
+        <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#E9EDF7]">
+          <div
+            className="h-full rounded-full bg-[linear-gradient(90deg,#6676FF_0%,#8E84FF_100%)] transition-all duration-500"
+            style={{ width: `${todayCompletionRate}%` }}
+          />
+        </div>
+      </div>
+
+      {/* 오늘 미션 목록 */}
+      <section>
+        <div className="mb-3 flex items-center justify-between gap-4">
+          <h2 className="text-[1.2rem] font-black tracking-tight text-[#17213B]">
+            {selectedDateKey === todayKey ? "오늘의 미션" : formatSelectedDate(selectedDate)}
+          </h2>
+          <button
+            aria-label="직접 추가"
+            className="inline-flex h-9 items-center justify-center rounded-full bg-white px-4 text-sm font-black text-[#6D73FF] shadow-card transition hover:bg-gray-50"
+            type="button"
+          >
+            + 직접 추가
+          </button>
+        </div>
+
+        {loading ? (
+          <p className="text-sm font-bold text-gray-400">불러오는 중...</p>
+        ) : null}
+        {loadError ? (
+          <p className="text-sm font-bold text-red-500">{loadError}</p>
+        ) : null}
+        {saveError ? (
+          <p className="mb-3 rounded-2xl bg-red-50 px-4 py-3 text-sm font-bold text-red-500">{saveError}</p>
+        ) : null}
+
+        {!loading && !loadError ? (
+          <>
+            {/* 미완료 미션 */}
+            {tasks.filter((t) => t.status !== "done").length > 0 ? (
+              <div className="space-y-3">
+                {tasks
+                  .filter((t) => t.status !== "done")
+                  .map((task) => (
+                    <article
+                      className={cn(
+                        "flex min-h-[96px] w-full items-center gap-3 rounded-[28px] px-4 py-4 text-left shadow-card transition",
+                        task.textbook_key ? "cursor-pointer" : "",
+                        getTaskCardClass(task.status),
+                      )}
+                      key={task.id}
+                      onClick={() => openTask(task)}
+                    >
+                      <button
+                        aria-label={`${task.title} 완료 상태 변경`}
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 border-[#B8C1FF] bg-white text-sm font-black text-transparent transition"
+                        onClick={(event) => void toggleTaskStatus(task, event)}
+                        type="button"
+                      >
+                        ✓
+                      </button>
+                      <div className="min-w-0 flex-1">
+                        <h3 className="truncate text-[1.05rem] font-black leading-snug text-[#17213B]">
+                          {task.title}
+                        </h3>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <span className="rounded-full bg-[#F1F0FF] px-3 py-1 text-xs font-bold text-[#6D73FF]">
+                            {task.category ?? "기타"}
+                          </span>
+                          {task.detail ? (
+                            <span className="rounded-full bg-[#F1F0FF] px-3 py-1 text-xs font-bold text-[#6D73FF]">
+                              {task.detail}
+                            </span>
+                          ) : null}
+                          <span className={cn("rounded-full px-3 py-1 text-xs font-bold", getStatusClass(task.status))}>
+                            {getStatusLabel(task.status)}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#F7F8FC] text-2xl font-black text-[#8A94A8]">
+                        …
+                      </div>
+                    </article>
+                  ))}
+              </div>
+            ) : null}
+
+            {/* 완료한 미션 */}
+            {tasks.filter((t) => t.status === "done").length > 0 ? (
+              <>
+                <p className="mb-2 mt-5 text-xs font-bold text-[#98A1B3]">✓ 완료한 미션</p>
+                <div className="space-y-2">
+                  {tasks
+                    .filter((t) => t.status === "done")
+                    .map((task) => (
+                      <article
+                        className="flex items-center gap-3 rounded-[22px] border border-[#EEF2FF] bg-[#F8FAFF] px-4 py-3 opacity-55"
+                        key={task.id}
+                      >
+                        <button
+                          aria-label={`${task.title} 완료 상태 변경`}
+                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-[#6D73FF] bg-[#6D73FF] text-sm font-black text-white shadow-[0_4px_10px_rgba(109,115,255,0.22)] transition"
+                          onClick={(event) => void toggleTaskStatus(task, event)}
+                          type="button"
+                        >
+                          ✓
+                        </button>
+                        <p className="min-w-0 flex-1 truncate text-sm font-semibold text-[#9AA3B6] line-through">
+                          {task.title}
+                        </p>
+                      </article>
+                    ))}
+                </div>
+              </>
+            ) : null}
+
+            {/* 빈 상태 */}
+            {tasks.length === 0 ? (
+              <div className="flex min-h-[160px] flex-col items-center justify-center rounded-[28px] border border-dashed border-[#E4EAF6] bg-white px-4 py-6 text-center shadow-card">
+                <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-[#F5F7FB] text-2xl">
+                  ☁
+                </div>
+                <p className="text-sm font-black text-[#17213B]">오늘 배정된 미션이 없어요.</p>
+                <p className="mt-1 text-xs font-semibold text-[#98A1B3]">잠깐 쉬어가도 괜찮아요.</p>
+              </div>
+            ) : null}
+          </>
+        ) : null}
+      </section>
+
+      {/* 이번 주 미션 */}
+      <section className="rounded-[30px] border border-[#EEF2FF] bg-white p-5 shadow-card">
+        <div className="mb-4 flex items-center justify-between gap-3">
           <div>
-            <h2 className="text-sm font-black text-[#17213B]">이번 주 미션</h2>
+            <h2 className="text-base font-black text-[#17213B]">이번 주 미션</h2>
             <p className="mt-1 text-xs font-semibold text-[#98A1B3]">{weekLabel}</p>
           </div>
-
-          <div className="flex shrink-0 items-center gap-1.5">
+          <div className="flex shrink-0 items-center gap-2">
             <button
               aria-label="이전 주"
-              className="flex h-8 w-8 items-center justify-center rounded-full bg-[#F1F5F9] text-base font-black text-[#64748B] transition hover:bg-[#E2E8F0]"
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-[#F5F7FB] text-lg font-black text-[#7A859F] transition hover:bg-[#EAEFF7]"
               onClick={() => moveWeek(-7)}
               type="button"
             >
@@ -314,9 +478,9 @@ export default function StudentTodayPage() {
             </button>
             <button
               className={cn(
-                "rounded-full px-3 py-1.5 text-xs font-black transition",
+                "rounded-full px-3.5 py-2 text-xs font-black transition",
                 isSameLocalWeek(currentWeekStart, today)
-                  ? "bg-[#EEF2FF] text-[#818CF8]"
+                  ? "bg-[#EEF2FF] text-[#6C73FF]"
                   : "bg-[#0F172A] text-white",
               )}
               onClick={returnToThisWeek}
@@ -326,7 +490,7 @@ export default function StudentTodayPage() {
             </button>
             <button
               aria-label="다음 주"
-              className="flex h-8 w-8 items-center justify-center rounded-full bg-[#F1F5F9] text-base font-black text-[#64748B] transition hover:bg-[#E2E8F0]"
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-[#F5F7FB] text-lg font-black text-[#7A859F] transition hover:bg-[#EAEFF7]"
               onClick={() => moveWeek(7)}
               type="button"
             >
@@ -335,7 +499,7 @@ export default function StudentTodayPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-7 gap-1.5">
+        <div className="grid grid-cols-7 gap-2">
           {weekDays.map((date, index) => {
             const dateKey = toLocalDateKey(date);
             const isSelected = dateKey === selectedDateKey;
@@ -344,146 +508,60 @@ export default function StudentTodayPage() {
             return (
               <button
                 className={cn(
-                  "flex h-20 flex-col items-center justify-center gap-1 rounded-2xl border px-1 text-center leading-none transition",
+                  "flex h-[92px] flex-col items-center justify-center gap-1 rounded-[22px] border px-1 text-center transition",
                   isSelected
-                    ? "border-[#0F172A] bg-[#0F172A] text-white shadow-sm"
-                    : "border-gray-100 bg-[#F8FAFC] text-[#17213B] hover:bg-gray-100",
+                    ? "border-[#7C83FF] bg-[#7C83FF] text-white shadow-sm"
+                    : "border-[#EEF2FF] bg-white text-[#17213B] hover:border-[#D9E1F5] hover:bg-[#F8FAFF]",
                 )}
                 key={dateKey}
                 onClick={() => setSelectedDateKey(dateKey)}
                 type="button"
               >
-                <span className={cn("text-xs font-bold leading-none", isSelected ? "text-white/70" : "text-[#98A1B3]")}>
+                <span className={cn("text-sm font-bold", isSelected ? "text-white/68" : "text-[#8A94A8]")}>
                   {dayLabels[index]}
                 </span>
-                <span className="text-lg font-black leading-none">{date.getDate()}</span>
+                <span className="text-[1.35rem] font-black leading-none">{date.getDate()}</span>
                 <span
                   className={cn(
-                    "flex h-3 items-center justify-center text-[10px] font-bold leading-none",
-                    isSelected ? "text-indigo-100" : "text-indigo-500",
+                    "text-[12px] font-black",
+                    isSelected ? "text-white/78" : isToday ? "text-[#6C73FF]" : "text-transparent",
                   )}
                 >
-                  {isToday ? "오늘" : ""}
+                  {isToday ? "오늘" : "오늘"}
                 </span>
               </button>
             );
           })}
         </div>
+      </section>
 
-        <div className="mt-4 grid grid-cols-4 gap-2">
+      {/* 주간 분석 */}
+      <section className="rounded-[30px] border border-[#EEF2FF] bg-white p-5 shadow-card">
+        <p className="mb-4 text-sm font-black text-[#17213B]">주간 분석</p>
+        <div className="grid grid-cols-3 divide-x divide-[#EEF1F7]">
           {[
-            { label: "이번 주 완료율", value: `${weeklySummary.rate}%` },
-            { label: "오늘 남은 할 일", value: `${weeklySummary.todayRemaining}` },
-            { label: "이번 주 목표", value: `${weeklySummary.total}` },
-            { label: "갓생챌린지", value: `${weeklySummary.done}` },
+            { key: "rate" as const, label: "진도율", value: `${weeklySummary.rate}%` },
+            { key: "goal" as const, label: "목표", value: `${weeklySummary.total}개` },
+            { key: "done" as const, label: "갓생", value: `${weeklySummary.done}일` },
           ].map((item) => (
-            <div className="rounded-2xl bg-[#F8FAFC] px-2 py-3 text-center" key={item.label}>
-              <p className="text-[10px] font-bold leading-tight text-[#98A1B3]">{item.label}</p>
-              <p className="mt-1 text-lg font-black text-[#17213B]">{item.value}</p>
+            <div className="flex items-center justify-center gap-3 px-2 text-center first:pl-0 last:pr-0" key={item.label}>
+              <div
+                className={cn(
+                  "flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-xl",
+                  item.key === "done" ? "bg-orange-50 text-orange-500" : "bg-[#F3F2FF] text-[#6D73FF]",
+                )}
+              >
+                {getSummaryIcon(item.key)}
+              </div>
+              <div className="min-w-0">
+                <p className="text-[12px] font-semibold leading-tight text-[#8A94A8]">{item.label}</p>
+                <p className="mt-1 text-[1.35rem] font-black leading-none tracking-tight text-[#17213B]">
+                  {item.value}
+                </p>
+              </div>
             </div>
           ))}
         </div>
-      </section>
-
-      <section className="rounded-[1.75rem] bg-white p-5 shadow-card">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 className="text-xl font-black leading-none text-[#17213B]">
-              {formatSelectedDate(selectedDate)}
-            </h2>
-            <p className="mt-2 text-sm font-bold text-[#98A1B3]">완료율 {completionRate}%</p>
-          </div>
-
-          <button
-            aria-label="할일 추가"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#EEF7FF] text-2xl font-light leading-none text-[#60A5FA]"
-            type="button"
-          >
-            +
-          </button>
-        </div>
-
-        <div className="mt-4 h-2 overflow-hidden rounded-full bg-[#F0F2F5]">
-          <div
-            className="h-full rounded-full bg-[#7DBBFF] transition-all"
-            style={{ width: `${completionRate}%` }}
-          />
-        </div>
-
-        {loading ? <p className="mt-5 text-center text-sm font-bold text-[#98A1B3]">불러오는 중...</p> : null}
-        {loadError ? <p className="mt-5 text-center text-sm font-bold text-red-500">{loadError}</p> : null}
-        {saveError ? <p className="mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm font-bold text-red-500">{saveError}</p> : null}
-
-        {!loading && !loadError && tasks.length > 0 ? (
-          <div className="mt-4 space-y-3">
-            {tasks.map((task) => {
-              const isDone = task.status === "done";
-
-              return (
-                <article
-                  className={cn(
-                    "flex min-h-[74px] w-full items-center gap-3 rounded-2xl px-4 py-3 text-left transition",
-                    task.textbook_key ? "cursor-pointer" : "",
-                    getTaskCardClass(task.status),
-                  )}
-                  key={task.id}
-                  onClick={() => openTask(task)}
-                >
-                  <button
-                    aria-label={`${task.title} 완료 상태 변경`}
-                    className={cn(
-                      "flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 text-xs font-black",
-                      isDone
-                        ? "border-[#8CA9FF] bg-[#8CA9FF] text-white"
-                        : "border-[#B9D8FF] bg-white/40 text-transparent",
-                    )}
-                    onClick={(event) => void toggleTaskStatus(task, event)}
-                    type="button"
-                  >
-                    ✓
-                  </button>
-
-                  <div className="min-w-0 flex-1">
-                    <h3
-                      className={cn(
-                        "truncate text-sm font-black leading-snug",
-                        isDone ? "text-[#98A1B3] line-through" : "text-[#17213B]",
-                      )}
-                    >
-                      {task.title}
-                    </h3>
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      <span className="rounded-full bg-[#D9ECFF] px-2.5 py-0.5 text-xs font-bold text-[#60A5FA]">
-                        {task.category ?? "할일"}
-                      </span>
-                      {task.detail ? (
-                        <span className="rounded-full bg-[#D9ECFF] px-2.5 py-0.5 text-xs font-bold text-[#60A5FA]">
-                          {task.detail}
-                        </span>
-                      ) : null}
-                      <span
-                        className={cn(
-                          "rounded-full px-2.5 py-0.5 text-xs font-bold",
-                          getStatusClass(task.status),
-                        )}
-                      >
-                        {getStatusLabel(task.status)}
-                      </span>
-                    </div>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        ) : null}
-
-        {!loading && !loadError && tasks.length === 0 ? (
-          <div className="flex min-h-[190px] flex-col items-center justify-center px-4 py-8 text-center">
-            <div className="text-5xl leading-none">😴</div>
-            <p className="mt-4 text-sm font-black text-[#17213B]">오늘 배정된 미션이 없어요.</p>
-            <p className="mt-1 text-xs font-bold text-[#98A1B3]">오늘 해낼 일을 추가해볼까요?</p>
-          </div>
-        ) : null}
       </section>
 
       <StudentBottomNav />

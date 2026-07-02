@@ -1,14 +1,15 @@
 from calendar import monthrange
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Optional
 
-from sqlalchemy import and_, func
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session, selectinload
 
 from models import (
     Admin,
     MathDailyTask,
     MathStudentItemProgress,
+    MathStudentTextbook,
     MathTextbook,
     MathTextbookItem,
     MathTextbookSeries,
@@ -31,12 +32,43 @@ TEXTBOOK_PROGRESS_CONFIG = {
 ITEM_PROGRESS_STATUSES = {"not_started", "partial", "done"}
 DAILY_TASK_STATUSES = {"todo", "in_progress", "done"}
 STUDENT_PROGRESS_SUMMARY_SUBJECTS = ["수1", "수2", "확률과 통계"]
+KST = timezone(timedelta(hours=9))
 
 
 def percentage(completed_tasks: int, total_tasks: int) -> float:
     if total_tasks == 0:
         return 0.0
     return round((completed_tasks / total_tasks) * 100, 1)
+
+
+def now_kst() -> datetime:
+    return datetime.now(KST)
+
+
+def to_kst_datetime(value: Optional[datetime]) -> Optional[datetime]:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=KST)
+    return value.astimezone(KST)
+
+
+def get_task_completion_window(task_date: date) -> tuple[datetime, datetime]:
+    day_start = datetime.combine(task_date, time.min, tzinfo=KST)
+    deadline = day_start + timedelta(days=1, hours=5)
+    return day_start, deadline
+
+
+def is_task_completed_within_deadline(task: MathDailyTask) -> bool:
+    if task.status != "done" or task.completed_at is None:
+        return False
+
+    completed_at = to_kst_datetime(task.completed_at)
+    if completed_at is None:
+        return False
+
+    day_start, deadline = get_task_completion_window(task.task_date)
+    return day_start <= completed_at < deadline
 
 
 def get_student_by_phone(db: Session, phone: str) -> Optional[Student]:
@@ -145,18 +177,30 @@ def get_checkable_textbooks(db: Session) -> list[MathTextbook]:
     )
 
 
-def get_active_textbooks_by_subject(db: Session, subject: str) -> list[dict]:
+def get_active_textbooks_by_subject(db: Session, subject: str, student_id: Optional[int] = None) -> list[dict]:
+    base_filter = [
+        MathTextbook.subject == subject,
+        MathTextbook.is_active.is_(True),
+    ]
+
+    if student_id is not None:
+        assigned_ids = get_student_textbook_ids(db, student_id)
+        visibility = or_(
+            and_(MathTextbook.is_student_only.is_(False), MathTextbook.is_published.is_(True)),
+            MathTextbook.id.in_(assigned_ids),
+        ) if assigned_ids else and_(
+            MathTextbook.is_student_only.is_(False), MathTextbook.is_published.is_(True)
+        )
+        base_filter.append(visibility)
+    else:
+        base_filter.append(MathTextbook.is_published.is_(True))
+
     textbooks = (
         db.query(MathTextbook)
-        .filter(
-            MathTextbook.subject == subject,
-            MathTextbook.is_active.is_(True),
-            MathTextbook.is_published.is_(True),
-        )
+        .filter(*base_filter)
         .order_by(MathTextbook.order_index, MathTextbook.id)
         .all()
     )
-
     return build_student_textbook_payloads(db, textbooks)
 
 
@@ -238,6 +282,7 @@ def get_admin_textbook_catalog(db: Session) -> dict:
                 "total_items": len(items),
                 "is_active": textbook.is_active,
                 "is_checkable": textbook.is_checkable,
+                "is_student_only": textbook.is_student_only,
             }
         )
 
@@ -292,6 +337,7 @@ def serialize_daily_task(task: MathDailyTask) -> dict:
         "difficulty": task.difficulty,
         "category": task.category,
         "order_index": task.order_index,
+        "completed_at": task.completed_at,
         "textbook": textbook,
     }
 
@@ -354,13 +400,14 @@ def build_task_day_bucket(task_date: date, tasks: list[MathDailyTask]) -> dict:
     done = sum(1 for task in tasks if task.status == "done")
     todo = total - done
     has_tasks = total > 0
+    is_completed = has_tasks and all(is_task_completed_within_deadline(task) for task in tasks)
 
     return {
         "date": task_date,
         "total": total,
         "done": done,
         "todo": todo,
-        "is_completed": has_tasks and done == total,
+        "is_completed": is_completed,
         "has_tasks": has_tasks,
     }
 
@@ -442,6 +489,7 @@ def get_student_achievement_tracker(
 
 def create_daily_task(db: Session, payload) -> MathDailyTask:
     textbook = get_textbook_by_key(db, payload.textbook_key)
+    completed_at = now_kst() if payload.status == "done" else None
     task = MathDailyTask(
         student_id=payload.student_id,
         task_date=payload.task_date,
@@ -455,6 +503,7 @@ def create_daily_task(db: Session, payload) -> MathDailyTask:
         difficulty=payload.difficulty,
         category=payload.category,
         order_index=payload.order_index,
+        completed_at=completed_at,
     )
     db.add(task)
     db.commit()
@@ -485,7 +534,11 @@ def update_daily_task(db: Session, task: MathDailyTask, payload) -> MathDailyTas
         if field in update_data:
             setattr(task, field, update_data[field])
 
-    task.updated_at = datetime.now(timezone.utc)
+    now = now_kst()
+    if "status" in update_data:
+        task.completed_at = now if task.status == "done" else None
+
+    task.updated_at = now
     db.commit()
     db.refresh(task)
     return get_daily_task(db, task.id) or task
@@ -942,6 +995,7 @@ def get_admin_textbook_list(db: Session) -> list[dict]:
             "is_checkable": textbook.is_checkable,
             "is_published": textbook.is_published,
             "is_active": textbook.is_active,
+            "is_student_only": textbook.is_student_only,
             "item_count": count_map.get(textbook.id, 0),
             "order_index": textbook.order_index,
             "created_at": textbook.created_at,
@@ -979,6 +1033,7 @@ def get_textbook_detail_admin(db: Session, textbook_id: int) -> Optional[dict]:
         "is_checkable": textbook.is_checkable,
         "is_published": textbook.is_published,
         "is_active": textbook.is_active,
+        "is_student_only": textbook.is_student_only,
         "order_index": textbook.order_index,
         "item_count": len(items),
         "items": [
@@ -992,3 +1047,134 @@ def get_textbook_detail_admin(db: Session, textbook_id: int) -> Optional[dict]:
             for item in items
         ],
     }
+
+
+# ── Student textbook assignment ──────────────────────────────────────────────
+
+def get_student_textbook_ids(db: Session, student_id: int) -> list[int]:
+    rows = (
+        db.query(MathStudentTextbook.textbook_id)
+        .filter(
+            MathStudentTextbook.student_id == student_id,
+            MathStudentTextbook.is_active.is_(True),
+        )
+        .all()
+    )
+    return [r.textbook_id for r in rows]
+
+
+def get_textbook_assignments(db: Session, textbook_id: int) -> list[dict]:
+    rows = (
+        db.query(MathStudentTextbook, Student)
+        .join(Student, MathStudentTextbook.student_id == Student.id)
+        .filter(MathStudentTextbook.textbook_id == textbook_id)
+        .order_by(MathStudentTextbook.assigned_at)
+        .all()
+    )
+    return [
+        {
+            "student_id": assignment.student_id,
+            "student_name": student.name,
+            "student_grade": student.grade,
+            "is_active": assignment.is_active,
+            "assigned_at": assignment.assigned_at,
+        }
+        for assignment, student in rows
+    ]
+
+
+def assign_student_textbook(db: Session, textbook_id: int, student_id: int) -> None:
+    existing = (
+        db.query(MathStudentTextbook)
+        .filter(
+            MathStudentTextbook.textbook_id == textbook_id,
+            MathStudentTextbook.student_id == student_id,
+        )
+        .first()
+    )
+    if existing:
+        existing.is_active = True
+    else:
+        db.add(MathStudentTextbook(student_id=student_id, textbook_id=textbook_id, is_active=True))
+    db.commit()
+
+
+def unassign_student_textbook(db: Session, textbook_id: int, student_id: int) -> None:
+    existing = (
+        db.query(MathStudentTextbook)
+        .filter(
+            MathStudentTextbook.textbook_id == textbook_id,
+            MathStudentTextbook.student_id == student_id,
+        )
+        .first()
+    )
+    if existing:
+        db.delete(existing)
+        db.commit()
+
+
+def set_textbook_student_only(db: Session, textbook_id: int, is_student_only: bool) -> bool:
+    textbook = db.query(MathTextbook).filter(MathTextbook.id == textbook_id).first()
+    if textbook is None:
+        return False
+    textbook.is_student_only = is_student_only
+    db.commit()
+    return True
+
+
+def get_textbooks_for_student_catalog(db: Session, student_id: int) -> dict:
+    assigned_ids = get_student_textbook_ids(db, student_id)
+    if assigned_ids:
+        visibility = or_(
+            and_(MathTextbook.is_student_only.is_(False), MathTextbook.is_published.is_(True)),
+            MathTextbook.id.in_(assigned_ids),
+        )
+    else:
+        visibility = and_(MathTextbook.is_student_only.is_(False), MathTextbook.is_published.is_(True))
+
+    checkable_textbooks = (
+        db.query(MathTextbook)
+        .filter(
+            MathTextbook.is_checkable.is_(True),
+            MathTextbook.is_active.is_(True),
+            visibility,
+        )
+        .order_by(MathTextbook.order_index, MathTextbook.id)
+        .all()
+    )
+
+    result = []
+    for textbook in checkable_textbooks:
+        textbook_key = resolve_textbook_key(textbook)
+        if textbook_key is None:
+            continue
+        items = (
+            db.query(MathTextbookItem)
+            .filter(
+                MathTextbookItem.textbook_id == textbook.id,
+                MathTextbookItem.is_active.is_(True),
+            )
+            .order_by(MathTextbookItem.item_number)
+            .all()
+        )
+        if not items:
+            continue
+        item_numbers = [item.item_number for item in items]
+        result.append(
+            {
+                "id": textbook.id,
+                "textbook_key": textbook_key,
+                "title": textbook.full_title,
+                "short_title": build_textbook_short_title(textbook.full_title),
+                "category": textbook.subject,
+                "subject": textbook.subject,
+                "min_item_number": min(item_numbers),
+                "max_item_number": max(item_numbers),
+                "total_items": len(items),
+                "is_active": textbook.is_active,
+                "is_checkable": textbook.is_checkable,
+                "is_student_only": textbook.is_student_only,
+            }
+        )
+
+    return {"textbooks": result}

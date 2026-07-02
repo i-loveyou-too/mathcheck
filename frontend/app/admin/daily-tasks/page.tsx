@@ -1,13 +1,26 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AdminBottomNav } from "@/components/admin-bottom-nav";
 import { apiFetch } from "@/lib/api";
 import { getAdmin } from "@/lib/storage";
-import { AdminStudentSummary } from "@/lib/types";
+import { AdminStudentSummary, TextbookSeriesItem } from "@/lib/types";
+
+type TextbookListEntry = {
+  id: number;
+  subject: string | null;
+  title: string;
+  full_title: string;
+  series_name: string;
+  is_checkable: boolean;
+  is_active: boolean;
+  item_count: number;
+};
 
 type TextbookOption = {
+  id?: number;
   category: string;
   label: string;
   maxItemNumber?: number;
@@ -15,6 +28,7 @@ type TextbookOption = {
   shortTitle: string;
   totalItems?: number;
   textbookKey: string | null;
+  isStudentOnly?: boolean;
 };
 
 type AdminTextbookCatalogItem = {
@@ -29,6 +43,7 @@ type AdminTextbookCatalogItem = {
   total_items: number;
   is_active: boolean;
   is_checkable: boolean;
+  is_student_only: boolean;
 };
 
 type AdminTextbookCatalogResponse = {
@@ -101,6 +116,18 @@ type AutoPlanDay = {
   date: string;
   problemCount: number;
   tasks: AutoPlanTask[];
+};
+
+type WeeklyDay = {
+  date: string;
+  summary: { total: number; done: number; todo: number; completion_rate: number };
+  tasks: DailyTask[];
+};
+
+type WeeklyTasksApiResponse = {
+  student_id: number;
+  week_start: string;
+  days: WeeklyDay[];
 };
 
 const customTextbookValue = "__custom__";
@@ -190,6 +217,13 @@ function makeAutoTitle(option: TextbookOption, startNumber: number, endNumber: n
   return `${option.shortTitle} ${startNumber}번 ~ ${endNumber}번`;
 }
 
+const WEEKDAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
+
+function getDayLabel(dateStr: string) {
+  const d = new Date(`${dateStr}T00:00:00`);
+  return WEEKDAY_LABELS[d.getDay()];
+}
+
 export default function AdminDailyTasksPage() {
   const router = useRouter();
   const today = useMemo(() => toLocalDateKey(new Date()), []);
@@ -223,6 +257,30 @@ export default function AdminDailyTasksPage() {
   const [savingEdit, setSavingEdit] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [studentTextbookIds, setStudentTextbookIds] = useState<Set<number>>(new Set());
+
+  // Series + quick textbook registration
+  const [seriesList, setSeriesList] = useState<TextbookSeriesItem[]>([]);
+  const [showQuickReg, setShowQuickReg] = useState(false);
+  const [quickRegSeriesId, setQuickRegSeriesId] = useState("");
+  const [quickRegSubject, setQuickRegSubject] = useState("수1");
+  const [quickRegTitle, setQuickRegTitle] = useState("");
+  const [quickRegItemCount, setQuickRegItemCount] = useState("");
+  const [quickRegSubmitting, setQuickRegSubmitting] = useState(false);
+  const [quickRegError, setQuickRegError] = useState("");
+
+  // Weekly plan
+  const [weeklyTasks, setWeeklyTasks] = useState<WeeklyDay[]>([]);
+  const [loadingWeekly, setLoadingWeekly] = useState(false);
+  const [taskRefreshKey, setTaskRefreshKey] = useState(0);
+
+  // Todo quick-add form
+  const [showTodoForm, setShowTodoForm] = useState(false);
+  const [todoDate, setTodoDate] = useState(today);
+  const [todoTitle, setTodoTitle] = useState("");
+  const [todoMemo, setTodoMemo] = useState("");
+  const [todoSubmitting, setTodoSubmitting] = useState(false);
 
   // Page auto-distribution state (create form only)
   const [freeInputMode, setFreeInputMode] = useState<"direct" | "auto_page">("direct");
@@ -240,11 +298,15 @@ export default function AdminDailyTasksPage() {
   const [autoItemDates, setAutoItemDates] = useState<string[]>([]);
   const [autoItemDateInput, setAutoItemDateInput] = useState(today);
 
-  const textbookOptions = useMemo(
-    () => [...catalogTextbooks, customTextbookOption],
-    [catalogTextbooks],
+  const visibleCatalogTextbooks = useMemo(
+    () => catalogTextbooks.filter((t) => !t.isStudentOnly || studentTextbookIds.has(t.id ?? -1)),
+    [catalogTextbooks, studentTextbookIds],
   );
-  const assignmentTextbookOptions = catalogTextbooks;
+  const textbookOptions = useMemo(
+    () => [...visibleCatalogTextbooks, customTextbookOption],
+    [visibleCatalogTextbooks],
+  );
+  const assignmentTextbookOptions = visibleCatalogTextbooks;
   const selectedTextbook = getTextbookByValue(createForm.selectedTextbookValue, textbookOptions);
   const isCustomTask = selectedTextbook.textbookKey === null;
 
@@ -433,6 +495,15 @@ export default function AdminDailyTasksPage() {
     });
   }, [autoItemStart, autoItemEnd, autoItemDates, selectedTextbook.shortTitle]);
 
+  const weekStart = useMemo(() => {
+    const d = new Date(`${selectedDate}T00:00:00`);
+    const day = d.getDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    const mon = new Date(d);
+    mon.setDate(d.getDate() + diff);
+    return toLocalDateKey(mon);
+  }, [selectedDate]);
+
   const fetchTasks = useCallback(async (studentId: string, taskDate: string) => {
     if (!studentId || !taskDate) {
       setTasks([]);
@@ -459,11 +530,14 @@ export default function AdminDailyTasksPage() {
 
     const loadStudents = async () => {
       try {
-        const [studentData, textbookData] = await Promise.all([
+        const [studentData, textbookData, listData, seriesData] = await Promise.all([
           apiFetch<AdminStudentSummary[]>("/admin/students"),
           apiFetch<AdminTextbookCatalogResponse>("/admin/textbooks"),
+          apiFetch<{ textbooks: TextbookListEntry[] }>("/admin/textbook-list").catch(() => ({ textbooks: [] })),
+          apiFetch<{ series: TextbookSeriesItem[] }>("/admin/textbook-series").catch(() => ({ series: [] })),
         ]);
-        const loadedTextbooks = textbookData.textbooks
+
+        const catalogMapped = textbookData.textbooks
           .filter(
             (textbook) =>
               Boolean(textbook.textbook_key) &&
@@ -471,17 +545,36 @@ export default function AdminDailyTasksPage() {
               textbook.is_checkable
           )
           .map((textbook) => ({
+            id: textbook.id,
             category: textbook.category ?? textbook.subject ?? "기타",
-            label: textbook.title,
+            label: `${textbook.short_title || textbook.title}${textbook.subject ? " · " + textbook.subject : ""} (${textbook.total_items}문항)`,
             maxItemNumber: textbook.max_item_number ?? textbook.total_items,
             minItemNumber: textbook.min_item_number ?? (textbook.total_items > 0 ? 1 : undefined),
             shortTitle: textbook.short_title,
             textbookKey: textbook.textbook_key,
             totalItems: textbook.total_items,
+            isStudentOnly: textbook.is_student_only ?? false,
           }));
+
+        const catalogIds = new Set(textbookData.textbooks.map((t) => t.id));
+        const extraMapped = listData.textbooks
+          .filter((t) => !catalogIds.has(t.id) && t.is_active && t.is_checkable && t.item_count > 0)
+          .map((t) => ({
+            category: t.subject ?? t.series_name ?? "기타",
+            label: `${t.title}${t.subject ? " · " + t.subject : ""} (${t.item_count}문항)`,
+            maxItemNumber: t.item_count,
+            minItemNumber: 1,
+            shortTitle: t.title,
+            textbookKey: null as string | null,
+            totalItems: t.item_count,
+          }));
+
+        const loadedTextbooks = [...catalogMapped, ...extraMapped];
 
         setStudents(studentData);
         setCatalogTextbooks(loadedTextbooks);
+        setSeriesList(seriesData.series ?? []);
+        if (seriesData.series?.[0]) setQuickRegSeriesId(String(seriesData.series[0].id));
         if (studentData[0]) setSelectedStudentId(String(studentData[0].id));
         if (loadedTextbooks[0]) {
           const firstTextbookValue = getTextbookValue(loadedTextbooks[0].textbookKey);
@@ -510,6 +603,22 @@ export default function AdminDailyTasksPage() {
     void fetchTasks(selectedStudentId, selectedDate);
     setEditTaskId(null);
   }, [fetchTasks, selectedDate, selectedStudentId]);
+
+  useEffect(() => {
+    if (!selectedStudentId) return;
+    apiFetch<{ textbook_ids: number[] }>(`/admin/students/${selectedStudentId}/textbook-ids`)
+      .then((data) => setStudentTextbookIds(new Set(data.textbook_ids)))
+      .catch(() => setStudentTextbookIds(new Set()));
+  }, [selectedStudentId]);
+
+  useEffect(() => {
+    if (!selectedStudentId || !weekStart) { setWeeklyTasks([]); return; }
+    setLoadingWeekly(true);
+    apiFetch<WeeklyTasksApiResponse>(`/student/weekly-tasks?student_id=${selectedStudentId}&week_start=${weekStart}`)
+      .then((data) => setWeeklyTasks(data.days ?? []))
+      .catch(() => setWeeklyTasks([]))
+      .finally(() => setLoadingWeekly(false));
+  }, [selectedStudentId, weekStart, taskRefreshKey]);
 
   useEffect(() => {
     if (generatedTitle && !titleEdited) {
@@ -781,6 +890,7 @@ export default function AdminDailyTasksPage() {
 
       setMessage("자동 숙제가 배정되었습니다.");
       await fetchTasks(selectedStudentId, selectedDate);
+      setTaskRefreshKey((k) => k + 1);
     } catch {
       setError("자동 배정에 실패했습니다. 다시 시도해주세요.");
     } finally {
@@ -838,6 +948,7 @@ export default function AdminDailyTasksPage() {
       setMessage("숙제가 수정되었습니다.");
       setEditTaskId(null);
       await fetchTasks(selectedStudentId, selectedDate);
+      setTaskRefreshKey((k) => k + 1);
     } catch {
       setError("숙제 수정에 실패했습니다. 다시 시도해주세요.");
     } finally {
@@ -857,866 +968,883 @@ export default function AdminDailyTasksPage() {
       });
       setMessage("숙제가 삭제되었습니다.");
       await fetchTasks(selectedStudentId, selectedDate);
+      setTaskRefreshKey((k) => k + 1);
     } catch {
       setError("삭제에 실패했습니다. 다시 시도해주세요.");
     }
   };
 
+  const handleTodoSubmit = async () => {
+    setMessage("");
+    setError("");
+    if (!selectedStudentId || !todoTitle.trim()) return;
+    setTodoSubmitting(true);
+    try {
+      await apiFetch<DailyTask>("/admin/daily-tasks", {
+        method: "POST",
+        body: {
+          student_id: Number(selectedStudentId),
+          task_date: todoDate,
+          title: todoTitle.trim(),
+          detail: todoMemo.trim() || null,
+          textbook_key: null,
+          start_item_number: null,
+          end_item_number: null,
+          status: "todo",
+          difficulty: "보통",
+          category: "기타",
+          order_index: 1,
+        },
+      });
+      setMessage("할 일이 추가됐습니다.");
+      setTodoTitle("");
+      setTodoMemo("");
+      await fetchTasks(selectedStudentId, selectedDate);
+      setTaskRefreshKey((k) => k + 1);
+    } catch {
+      setError("추가에 실패했습니다. 다시 시도해주세요.");
+    } finally {
+      setTodoSubmitting(false);
+    }
+  };
+
+  const handleQuickRegister = async () => {
+    setQuickRegError("");
+    if (!quickRegTitle.trim()) { setQuickRegError("교재명을 입력해주세요."); return; }
+    if (!quickRegSeriesId) { setQuickRegError("시리즈를 선택해주세요."); return; }
+    const series = seriesList.find((s) => String(s.id) === quickRegSeriesId);
+    if (!series) { setQuickRegError("시리즈를 선택해주세요."); return; }
+    const subjectMap: Record<string, string> = { "수1": "math1", "수2": "math2", "확통": "statistics" };
+    const fullTitle = `${series.display_name} ${quickRegSubject} - ${quickRegTitle.trim()}`;
+    const textbookKey = `${series.english_name.toLowerCase().replace(/\s+/g, "-")}-${subjectMap[quickRegSubject] ?? quickRegSubject}-${quickRegTitle.trim().toLowerCase().replace(/\s+/g, "-").slice(0, 20)}`;
+    setQuickRegSubmitting(true);
+    try {
+      await apiFetch("/admin/textbooks", {
+        method: "POST",
+        body: {
+          series_id: Number(quickRegSeriesId),
+          subject: quickRegSubject,
+          title: quickRegTitle.trim(),
+          full_title: fullTitle,
+          textbook_key: textbookKey,
+          type: "problem",
+          is_checkable: true,
+          is_published: true,
+          is_active: true,
+          order_index: 0,
+          item_count: Number(quickRegItemCount) || 0,
+        },
+      });
+      // Refetch textbooks
+      const [textbookData, listData] = await Promise.all([
+        apiFetch<AdminTextbookCatalogResponse>("/admin/textbooks"),
+        apiFetch<{ textbooks: TextbookListEntry[] }>("/admin/textbook-list").catch(() => ({ textbooks: [] })),
+      ]);
+      const catalogMapped = textbookData.textbooks
+        .filter((t) => Boolean(t.textbook_key) && t.is_active && t.is_checkable)
+        .map((t) => ({
+          id: t.id,
+          category: t.category ?? t.subject ?? "기타",
+          label: `${t.short_title || t.title}${t.subject ? " · " + t.subject : ""} (${t.total_items}문항)`,
+          maxItemNumber: t.max_item_number ?? t.total_items,
+          minItemNumber: t.min_item_number ?? (t.total_items > 0 ? 1 : undefined),
+          shortTitle: t.short_title,
+          textbookKey: t.textbook_key,
+          totalItems: t.total_items,
+          isStudentOnly: t.is_student_only ?? false,
+        }));
+      const catalogIds = new Set(textbookData.textbooks.map((t) => t.id));
+      const extraMapped = listData.textbooks
+        .filter((t) => !catalogIds.has(t.id) && t.is_active && t.is_checkable && t.item_count > 0)
+        .map((t) => ({
+          category: t.subject ?? t.series_name ?? "기타",
+          label: `${t.title}${t.subject ? " · " + t.subject : ""} (${t.item_count}문항)`,
+          maxItemNumber: t.item_count,
+          minItemNumber: 1,
+          shortTitle: t.title,
+          textbookKey: null as string | null,
+          totalItems: t.item_count,
+        }));
+      setCatalogTextbooks([...catalogMapped, ...extraMapped]);
+      setQuickRegTitle("");
+      setQuickRegItemCount("");
+      setShowQuickReg(false);
+      setMessage(`"${fullTitle}" 교재가 등록됐습니다.`);
+    } catch {
+      setQuickRegError("등록에 실패했습니다. 교재명 중복 또는 서버 오류.");
+    } finally {
+      setQuickRegSubmitting(false);
+    }
+  };
+
   return (
     <main className="min-h-screen bg-[#EEF2F6]">
-      <div className="mx-auto min-h-screen w-full max-w-7xl px-5 py-8 pb-32 lg:px-8">
-        <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="text-sm font-medium text-gray-400">관리자</p>
-            <h1 className="mt-1 text-3xl font-black tracking-tight text-gray-900">숙제 배정</h1>
-            <p className="mt-1 text-sm leading-relaxed text-gray-500">
-              학생별 날짜와 교재 범위를 선택해 해냄리스트에 숙제를 등록하고 관리해요.
-            </p>
-          </div>
-          <div className="rounded-2xl bg-[#0F172A] px-5 py-3 text-sm font-bold text-white shadow-card">
-            {tasks.length}개 배정됨
-          </div>
+      <div className="mx-auto min-h-screen w-full max-w-2xl space-y-4 px-5 py-8 pb-32 lg:px-8">
+
+        {/* Header */}
+        <div className="pb-1">
+          <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">관리자</p>
+          <h1 className="mt-1.5 text-2xl font-black tracking-tight text-gray-900">숙제 배정</h1>
+          <p className="mt-1 text-sm text-gray-500">학생별 교재 범위와 할 일을 배정해요.</p>
         </div>
 
-      <section className="rounded-3xl bg-white p-5 shadow-card lg:p-6">
-        <div className="flex flex-col gap-1 lg:flex-row lg:items-center lg:justify-between">
-          <h2 className="text-lg font-black text-gray-900">필터</h2>
-          <p className="text-xs font-bold text-gray-400">학생과 날짜를 바꾸면 목록이 바로 갱신돼요.</p>
-        </div>
-        <div className="mt-4 grid gap-3 md:grid-cols-2">
-          <div>
-            <label className="mb-2 block text-sm font-bold text-gray-700">학생 선택</label>
-            <select
-              className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
-              disabled={loadingStudents}
-              onChange={(event) => setSelectedStudentId(event.target.value)}
-              value={selectedStudentId}
+        {/* 학생 선택 */}
+        <section className="rounded-3xl bg-white p-5 shadow-card">
+          <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">학생</p>
+          <h2 className="mt-1 text-lg font-black text-gray-900">누구에게 배정할까요?</h2>
+          <select
+            className="mt-4 w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
+            disabled={loadingStudents}
+            onChange={(event) => setSelectedStudentId(event.target.value)}
+            value={selectedStudentId}
+          >
+            {students.map((student) => (
+              <option key={student.id} value={student.id}>
+                {student.name} ({student.grade})
+              </option>
+            ))}
+          </select>
+        </section>
+
+        {/* Step 1: 배정 방식 */}
+        <section className="rounded-3xl bg-white p-5 shadow-card">
+          <p className="text-xs font-semibold uppercase tracking-widest text-indigo-400">Step 1</p>
+          <h2 className="mt-1 text-lg font-black text-gray-900">배정 방식</h2>
+          <p className="mt-0.5 text-xs text-gray-400">어떤 방식으로 숙제를 배정할지 선택하세요.</p>
+          <div className="mt-4 grid grid-cols-3 gap-3">
+            <button
+              className={`rounded-2xl p-4 text-left transition ${!showCreateForm ? "bg-[#0F172A] text-white" : "bg-gray-50 text-gray-700 hover:bg-gray-100"}`}
+              onClick={() => setShowCreateForm(false)}
+              type="button"
             >
-              {students.map((student) => (
-                <option key={student.id} value={student.id}>
-                  {student.name} ({student.grade})
-                </option>
-              ))}
-            </select>
+              <p className="text-2xl">📚</p>
+              <p className="mt-3 text-sm font-black">문항수</p>
+              <p className={`mt-0.5 text-xs font-medium ${!showCreateForm ? "text-white/60" : "text-gray-400"}`}>자동 분배</p>
+            </button>
+            <button
+              className={`rounded-2xl p-4 text-left transition ${showCreateForm && createForm.rangeType === "free" ? "bg-[#0F172A] text-white" : "bg-gray-50 text-gray-700 hover:bg-gray-100"}`}
+              onClick={() => { setShowCreateForm(true); updateCreateForm({ rangeType: "free", startNumber: "", endNumber: "" }); setFreeInputMode("direct"); setItemInputMode("manual"); }}
+              type="button"
+            >
+              <p className="text-2xl">📄</p>
+              <p className="mt-3 text-sm font-black">페이지</p>
+              <p className={`mt-0.5 text-xs font-medium ${showCreateForm && createForm.rangeType === "free" ? "text-white/60" : "text-gray-400"}`}>직접 입력</p>
+            </button>
+            <button
+              className={`rounded-2xl p-4 text-left transition ${showCreateForm && createForm.rangeType !== "free" ? "bg-[#0F172A] text-white" : "bg-gray-50 text-gray-700 hover:bg-gray-100"}`}
+              onClick={() => { setShowCreateForm(true); updateCreateForm({ rangeType: "none", startNumber: "", endNumber: "" }); setFreeInputMode("direct"); setItemInputMode("manual"); }}
+              type="button"
+            >
+              <p className="text-2xl">✏️</p>
+              <p className="mt-3 text-sm font-black">직접 등록</p>
+              <p className={`mt-0.5 text-xs font-medium ${showCreateForm && createForm.rangeType !== "free" ? "text-white/60" : "text-gray-400"}`}>단건 등록</p>
+            </button>
           </div>
-          <div>
-            <label className="mb-2 block text-sm font-bold text-gray-700">날짜 선택</label>
-            <input
-              className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
-              onChange={(event) => setSelectedDate(event.target.value)}
-              type="date"
-              value={selectedDate}
-            />
+
+          {/* 교재 빠른 등록 */}
+          <div className="mt-4 border-t border-gray-50 pt-4">
+            <button
+              className={`rounded-full px-4 py-1.5 text-xs font-bold transition ${showQuickReg ? "bg-[#0F172A] text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
+              onClick={() => setShowQuickReg((v) => !v)}
+              type="button"
+            >
+              + 교재 빠른 등록
+            </button>
+            {showQuickReg ? (
+              <div className="mt-3 rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-4">
+                <p className="mb-3 text-sm font-black text-gray-800">교재 빠른 등록</p>
+                {seriesList.length === 0 ? (
+                  <p className="text-xs font-bold text-yellow-600">
+                    등록된 시리즈가 없습니다.{" "}
+                    <Link className="underline" href="/admin/textbooks-management">
+                      교재 관리에서 시리즈를 먼저 추가해주세요 →
+                    </Link>
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <div>
+                        <label className="mb-1 block text-xs font-bold text-gray-600">시리즈</label>
+                        <select
+                          className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-900 outline-none"
+                          onChange={(e) => setQuickRegSeriesId(e.target.value)}
+                          value={quickRegSeriesId}
+                        >
+                          {seriesList.map((s) => (
+                            <option key={s.id} value={s.id}>{s.display_name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-bold text-gray-600">과목</label>
+                        <div className="flex gap-1.5">
+                          {(["수1", "수2", "확통"] as const).map((subj) => (
+                            <button
+                              key={subj}
+                              type="button"
+                              onClick={() => setQuickRegSubject(subj)}
+                              className={`flex-1 rounded-xl py-2 text-xs font-bold transition ${quickRegSubject === subj ? "bg-[#0F172A] text-white" : "bg-white text-gray-600 hover:bg-gray-100"}`}
+                            >
+                              {subj}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <div>
+                        <label className="mb-1 block text-xs font-bold text-gray-600">교재명</label>
+                        <input
+                          className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-900 outline-none"
+                          onChange={(e) => setQuickRegTitle(e.target.value)}
+                          placeholder="예: 유형 마스터"
+                          value={quickRegTitle}
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-bold text-gray-600">문항 수 (선택)</label>
+                        <input
+                          className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-900 outline-none"
+                          min="0"
+                          onChange={(e) => setQuickRegItemCount(e.target.value)}
+                          placeholder="0"
+                          type="number"
+                          value={quickRegItemCount}
+                        />
+                      </div>
+                    </div>
+                    {quickRegError ? <p className="text-xs font-bold text-red-500">{quickRegError}</p> : null}
+                    <div className="flex gap-2">
+                      <button
+                        className="rounded-xl bg-[#0F172A] px-4 py-2 text-xs font-bold text-white disabled:opacity-50"
+                        disabled={quickRegSubmitting || !quickRegTitle.trim()}
+                        onClick={() => void handleQuickRegister()}
+                        type="button"
+                      >
+                        {quickRegSubmitting ? "등록 중..." : "등록"}
+                      </button>
+                      <button
+                        className="rounded-xl bg-white px-4 py-2 text-xs font-bold text-gray-600"
+                        onClick={() => { setShowQuickReg(false); setQuickRegError(""); }}
+                        type="button"
+                      >
+                        취소
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : null}
           </div>
-        </div>
-      </section>
+        </section>
 
-      <section className="mt-5 rounded-3xl bg-white p-5 shadow-card lg:p-6">
-        <div className="flex flex-col gap-1 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <h2 className="text-lg font-black text-gray-900">자동 숙제 배정</h2>
-            <p className="mt-1 text-xs font-bold text-gray-400">
-              여러 교재 범위를 넣으면 날짜별 10~15문항 계획으로 나눠요.
-            </p>
-          </div>
-          <span className="rounded-full bg-[#EEF2FF] px-3 py-1 text-xs font-bold text-[#3730A3]">
-            {autoPlan.length}일 계획
-          </span>
-        </div>
+        {/* 문항수 자동 배정 흐름 */}
+        {!showCreateForm ? (
+          <>
+            {/* Step 2: 배정 기준 */}
+            <section className="rounded-3xl bg-white p-5 shadow-card">
+              <p className="text-xs font-semibold uppercase tracking-widest text-indigo-400">Step 2</p>
+              <h2 className="mt-1 text-lg font-black text-gray-900">배정 기준</h2>
+              <p className="mt-0.5 text-xs text-gray-400">날짜와 하루 분량 기준을 설정하세요.</p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="mb-2 block text-xs font-bold text-gray-500">시작 날짜</label>
+                  <input
+                    className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
+                    onChange={(event) => setAutoStartDate(event.target.value)}
+                    type="date"
+                    value={autoStartDate}
+                  />
+                </div>
+                <label className="flex cursor-pointer items-center gap-3 rounded-2xl bg-gray-50 px-4 py-3">
+                  <input
+                    checked={autoExcludeWeekends}
+                    className="h-4 w-4 accent-[#0F172A]"
+                    onChange={(event) => setAutoExcludeWeekends(event.target.checked)}
+                    type="checkbox"
+                  />
+                  <span className="text-sm font-bold text-gray-700">주말 제외</span>
+                </label>
+                <div>
+                  <label className="mb-2 block text-xs font-bold text-gray-500">하루 최소 문항</label>
+                  <input
+                    className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
+                    min="1"
+                    onChange={(event) => setAutoMinProblems(event.target.value)}
+                    type="number"
+                    value={autoMinProblems}
+                  />
+                </div>
+                <div>
+                  <label className="mb-2 block text-xs font-bold text-gray-500">하루 최대 문항</label>
+                  <input
+                    className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
+                    min="1"
+                    onChange={(event) => setAutoMaxProblems(event.target.value)}
+                    type="number"
+                    value={autoMaxProblems}
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="mb-2 block text-xs font-bold text-gray-500">하루 최대 교재 수</label>
+                  <input
+                    className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
+                    min="1"
+                    onChange={(event) => setAutoMaxTextbooks(event.target.value)}
+                    type="number"
+                    value={autoMaxTextbooks}
+                  />
+                </div>
+              </div>
+            </section>
 
-        <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
-          <div className="space-y-4">
-            <div className="grid gap-3 md:grid-cols-5">
-              <div>
-                <label className="mb-2 block text-sm font-bold text-gray-700">시작 날짜</label>
-                <input
-                  className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
-                  onChange={(event) => setAutoStartDate(event.target.value)}
-                  type="date"
-                  value={autoStartDate}
-                />
-              </div>
-              <div>
-                <label className="mb-2 block text-sm font-bold text-gray-700">하루 최소</label>
-                <input
-                  className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
-                  min="1"
-                  onChange={(event) => setAutoMinProblems(event.target.value)}
-                  type="number"
-                  value={autoMinProblems}
-                />
-              </div>
-              <div>
-                <label className="mb-2 block text-sm font-bold text-gray-700">하루 최대</label>
-                <input
-                  className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
-                  min="1"
-                  onChange={(event) => setAutoMaxProblems(event.target.value)}
-                  type="number"
-                  value={autoMaxProblems}
-                />
-              </div>
-              <div>
-                <label className="mb-2 block text-sm font-bold text-gray-700">최대 교재</label>
-                <input
-                  className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
-                  min="1"
-                  onChange={(event) => setAutoMaxTextbooks(event.target.value)}
-                  type="number"
-                  value={autoMaxTextbooks}
-                />
-              </div>
-              <label className="flex items-end gap-2 rounded-2xl bg-gray-50 px-4 py-3 text-sm font-bold text-gray-700">
-                <input
-                  checked={autoExcludeWeekends}
-                  className="h-4 w-4"
-                  onChange={(event) => setAutoExcludeWeekends(event.target.checked)}
-                  type="checkbox"
-                />
-                주말 제외
-              </label>
-            </div>
+            {/* Step 3: 교재 선택 */}
+            <section className="rounded-3xl bg-white p-5 shadow-card">
+              <p className="text-xs font-semibold uppercase tracking-widest text-indigo-400">Step 3</p>
+              <h2 className="mt-1 text-lg font-black text-gray-900">교재 선택</h2>
+              <p className="mt-0.5 text-xs text-gray-400">배정할 교재와 문항 범위를 입력하세요.</p>
 
-            <div className="space-y-3">
-              {autoRows.map((row) => {
-                const rowTextbook = getTextbookByValue(row.textbookValue, assignmentTextbookOptions);
+              {!loadingTextbooks && assignmentTextbookOptions.length === 0 ? (
+                <div className="mt-4 rounded-2xl bg-yellow-50 px-4 py-3 text-xs font-bold text-yellow-700">
+                  교재가 없습니다.{" "}
+                  <Link className="underline" href="/admin/textbooks-management">
+                    교재 관리에서 교재를 먼저 등록해주세요 →
+                  </Link>
+                </div>
+              ) : null}
 
-                return (
-                  <div className="rounded-2xl bg-[#F8FAFC] p-3" key={row.id}>
-                    <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_120px_120px_auto]">
+              <div className="mt-4 space-y-3">
+                {autoRows.map((row) => {
+                  const rowTextbook = getTextbookByValue(row.textbookValue, assignmentTextbookOptions);
+                  return (
+                    <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4" key={row.id}>
                       <select
-                        className="rounded-xl border border-gray-100 bg-white px-3 py-2 text-sm font-bold text-gray-900 outline-none"
+                        className="w-full rounded-xl border border-gray-100 bg-white px-3 py-2.5 text-sm font-bold text-gray-900 outline-none"
                         disabled={loadingTextbooks}
                         onChange={(event) => updateAutoRow(row.id, { textbookValue: event.target.value })}
                         value={row.textbookValue}
                       >
                         {assignmentTextbookOptions.map((option) => (
-                          <option
-                            key={getTextbookValue(option.textbookKey)}
-                            value={getTextbookValue(option.textbookKey)}
-                          >
+                          <option key={getTextbookValue(option.textbookKey)} value={getTextbookValue(option.textbookKey)}>
                             {option.label}
                           </option>
                         ))}
                       </select>
-                      <input
-                        className="rounded-xl border border-gray-100 bg-white px-3 py-2 text-sm font-bold text-gray-900 outline-none"
-                        min={rowTextbook.minItemNumber ?? 1}
-                        max={rowTextbook.maxItemNumber}
-                        onChange={(event) => updateAutoRow(row.id, { startNumber: event.target.value })}
-                        placeholder="시작 번호"
-                        type="number"
-                        value={row.startNumber}
-                      />
-                      <input
-                        className="rounded-xl border border-gray-100 bg-white px-3 py-2 text-sm font-bold text-gray-900 outline-none"
-                        min={rowTextbook.minItemNumber ?? 1}
-                        max={rowTextbook.maxItemNumber}
-                        onChange={(event) => updateAutoRow(row.id, { endNumber: event.target.value })}
-                        placeholder="끝 번호"
-                        type="number"
-                        value={row.endNumber}
-                      />
-                      <button
-                        className="rounded-xl bg-white px-4 py-2 text-sm font-bold text-red-400"
-                        disabled={autoRows.length === 1}
-                        onClick={() => removeAutoRow(row.id)}
-                        type="button"
-                      >
-                        삭제
-                      </button>
-                    </div>
-
-                    {rowTextbook.textbookKey ? (
-                      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs font-bold text-gray-400">
-                        <span>
-                          총 {rowTextbook.totalItems}문항 / {rowTextbook.minItemNumber}~
-                          {rowTextbook.maxItemNumber}번
-                        </span>
+                      <div className="mt-3 grid grid-cols-[1fr_1fr_auto] gap-2">
+                        <input
+                          className="rounded-xl border border-gray-100 bg-white px-3 py-2 text-sm font-bold text-gray-900 outline-none"
+                          min={rowTextbook.minItemNumber ?? 1}
+                          max={rowTextbook.maxItemNumber}
+                          onChange={(event) => updateAutoRow(row.id, { startNumber: event.target.value })}
+                          placeholder="시작 번호"
+                          type="number"
+                          value={row.startNumber}
+                        />
+                        <input
+                          className="rounded-xl border border-gray-100 bg-white px-3 py-2 text-sm font-bold text-gray-900 outline-none"
+                          min={rowTextbook.minItemNumber ?? 1}
+                          max={rowTextbook.maxItemNumber}
+                          onChange={(event) => updateAutoRow(row.id, { endNumber: event.target.value })}
+                          placeholder="끝 번호"
+                          type="number"
+                          value={row.endNumber}
+                        />
                         <button
-                          className="rounded-full bg-white px-3 py-1 text-[#3730A3]"
-                          onClick={() =>
-                            updateAutoRow(row.id, {
-                              endNumber: String(rowTextbook.maxItemNumber),
-                              startNumber: String(rowTextbook.minItemNumber),
-                            })
-                          }
+                          className="rounded-xl bg-white px-3 py-2 text-xs font-bold text-red-400 disabled:opacity-30"
+                          disabled={autoRows.length === 1}
+                          onClick={() => removeAutoRow(row.id)}
                           type="button"
                         >
-                          전체 배정
+                          삭제
                         </button>
                       </div>
-                    ) : null}
-                  </div>
-                );
-              })}
-            </div>
-
-            {autoValidationErrors.length > 0 ? (
-              <div className="rounded-2xl bg-red-50 px-4 py-3 text-sm font-bold text-red-500">
-                {autoValidationErrors.map((validationError) => (
-                  <p key={validationError}>{validationError}</p>
-                ))}
+                      {rowTextbook.textbookKey ? (
+                        <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                          <span className="text-xs font-bold text-gray-400">총 {rowTextbook.totalItems}문항 · {rowTextbook.minItemNumber}~{rowTextbook.maxItemNumber}번</span>
+                          <button
+                            className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-500"
+                            onClick={() => updateAutoRow(row.id, { endNumber: String(rowTextbook.maxItemNumber), startNumber: String(rowTextbook.minItemNumber) })}
+                            type="button"
+                          >
+                            전체 배정
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
               </div>
-            ) : null}
 
-            <div className="flex flex-col gap-2 sm:flex-row">
               <button
-                className="rounded-2xl bg-[#EEF2FF] px-5 py-3 text-sm font-black text-[#3730A3]"
+                className="mt-3 w-full rounded-2xl border-2 border-dashed border-gray-200 py-3.5 text-sm font-bold text-gray-400 transition hover:border-indigo-200 hover:text-indigo-400"
                 onClick={addAutoRow}
                 type="button"
               >
-                교재 추가
+                + 교재 추가
               </button>
-              <button
-                className="rounded-2xl bg-[#0F172A] px-5 py-3 text-sm font-black text-white disabled:opacity-50"
-                disabled={
-                  autoSubmitting ||
-                  autoPlan.length === 0 ||
-                  autoValidationErrors.length > 0 ||
-                  !selectedStudentId
-                }
-                onClick={() => void handleAutoSubmit()}
-                type="button"
-              >
-                {autoSubmitting ? "자동 배정 중..." : "자동 배정하기"}
-              </button>
-            </div>
-          </div>
 
-          <div className="rounded-2xl border border-gray-100 bg-[#F8FAFC] p-4">
-            <h3 className="text-sm font-black text-gray-900">미리보기</h3>
-            {autoPlan.length > 0 ? (
-              <div className="mt-3 max-h-[420px] space-y-3 overflow-auto pr-1">
-                {autoPlan.map((day) => (
-                  <article className="rounded-2xl bg-white p-3" key={day.date}>
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-black text-gray-900">{day.date}</p>
-                      <span className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-bold text-sky-600">
-                        총 {day.problemCount}문항
-                      </span>
-                    </div>
-                    <div className="mt-2 space-y-1.5">
-                      {day.tasks.map((task) => (
-                        <p className="text-xs font-bold leading-relaxed text-gray-500" key={`${task.textbookKey}-${task.startNumber}`}>
-                          {task.title}
-                        </p>
-                      ))}
-                    </div>
-                  </article>
-                ))}
-              </div>
-            ) : (
-              <p className="mt-3 rounded-2xl border border-dashed border-gray-200 bg-white p-5 text-center text-sm font-bold text-gray-400">
-                교재 범위를 입력하면 계획이 표시됩니다.
-              </p>
-            )}
-          </div>
-        </div>
-      </section>
-
-      {(message || error) ? (
-        <div className="space-y-2">
-          {message ? (
-            <p className="rounded-xl bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-600">
-              {message}
-            </p>
-          ) : null}
-          {error ? (
-            <p className="rounded-xl bg-red-50 px-4 py-3 text-sm font-bold text-red-500">
-              {error}
-            </p>
-          ) : null}
-        </div>
-      ) : null}
-
-      <div className="mt-5 grid gap-5 xl:grid-cols-[440px_minmax(0,1fr)]">
-        <form className="space-y-4 rounded-3xl bg-white p-5 shadow-card lg:p-6" onSubmit={handleSubmit}>
-          <h2 className="text-lg font-black text-gray-900">새 숙제 등록</h2>
-
-          <div>
-            <label className="mb-2 block text-sm font-bold text-gray-700">교재 선택</label>
-            <select
-              className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
-              onChange={(event) => handleTextbookChange(event.target.value)}
-              value={createForm.selectedTextbookValue}
-              disabled={loadingTextbooks}
-            >
-              {textbookOptions.map((option) => (
-                <option
-                  key={getTextbookValue(option.textbookKey)}
-                  value={getTextbookValue(option.textbookKey)}
-                >
-                  {option.label}
-                </option>
-              ))}
-            </select>
-            {!isCustomTask && selectedTextbook.totalItems ? (
-              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs font-bold text-gray-400">
-                <span>
-                  총 {selectedTextbook.totalItems}문항 / {selectedTextbook.minItemNumber}~
-                  {selectedTextbook.maxItemNumber}번
-                </span>
-                <button
-                  className="rounded-full bg-[#EEF2FF] px-3 py-1 text-[#3730A3]"
-                  onClick={() => {
-                    updateCreateForm({
-                      endNumber: String(selectedTextbook.maxItemNumber),
-                      startNumber: String(selectedTextbook.minItemNumber),
-                    });
-                    setTitleEdited(false);
-                  }}
-                  type="button"
-                >
-                  전체 배정
-                </button>
-              </div>
-            ) : null}
-          </div>
-
-          <div>
-            <label className="mb-2 block text-sm font-bold text-gray-700">범위 방식</label>
-            <div className="flex gap-2">
-              {(["item", "free", "none"] as const).map((type) => (
-                <button
-                  className={`flex-1 rounded-xl py-2.5 text-xs font-bold transition ${
-                    createForm.rangeType === type
-                      ? "bg-[#0F172A] text-white"
-                      : "bg-gray-100 text-gray-500 hover:bg-gray-200"
-                  }`}
-                  key={type}
-                  onClick={() => { updateCreateForm({ rangeType: type, startNumber: "", endNumber: "" }); setFreeInputMode("direct"); setItemInputMode("manual"); }}
-                  type="button"
-                >
-                  {type === "item" ? "문항 번호" : type === "free" ? "페이지/자유" : "범위 없음"}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {createForm.rangeType === "item" ? (
-            <>
-              <div>
-                <label className="mb-2 block text-sm font-bold text-gray-700">입력 방식</label>
-                <div className="flex gap-2">
-                  {(["manual", "auto"] as const).map((mode) => (
-                    <button
-                      className={`flex-1 rounded-xl py-2.5 text-xs font-bold transition ${
-                        itemInputMode === mode
-                          ? "bg-[#0F172A] text-white"
-                          : "bg-gray-100 text-gray-500 hover:bg-gray-200"
-                      }`}
-                      key={mode}
-                      onClick={() => setItemInputMode(mode)}
-                      type="button"
-                    >
-                      {mode === "manual" ? "직접 입력" : "문항 자동 분배"}
-                    </button>
+              {autoValidationErrors.length > 0 ? (
+                <div className="mt-3 rounded-2xl bg-red-50 px-4 py-3 text-sm font-bold text-red-500">
+                  {autoValidationErrors.map((validationError) => (
+                    <p key={validationError}>{validationError}</p>
                   ))}
                 </div>
-              </div>
+              ) : null}
+            </section>
 
-              {itemInputMode === "manual" ? (
-                <div className="grid grid-cols-3 gap-3">
-                  <div>
-                    <label className="mb-2 block text-sm font-bold text-gray-700">시작 번호</label>
-                    <input
-                      className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
-                      min={selectedTextbook.minItemNumber ?? 1}
-                      max={selectedTextbook.maxItemNumber}
-                      onChange={(event) => updateCreateForm({ startNumber: event.target.value })}
-                      type="number"
-                      value={createForm.startNumber}
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-2 block text-sm font-bold text-gray-700">끝 번호</label>
-                    <input
-                      className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
-                      min={selectedTextbook.minItemNumber ?? 1}
-                      max={selectedTextbook.maxItemNumber}
-                      onChange={(event) => updateCreateForm({ endNumber: event.target.value })}
-                      type="number"
-                      value={createForm.endNumber}
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-2 block text-sm font-bold text-gray-700">난이도</label>
-                    <select
-                      className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-3 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
-                      onChange={(event) => updateCreateForm({ difficulty: event.target.value })}
-                      value={createForm.difficulty}
-                    >
-                      <option>쉬움</option>
-                      <option>보통</option>
-                      <option>어려움</option>
-                    </select>
-                  </div>
+            {/* Step 4: 미리보기 */}
+            <section className="rounded-3xl bg-white p-5 shadow-card">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-widest text-indigo-400">Step 4</p>
+                  <h2 className="mt-1 text-lg font-black text-gray-900">미리보기</h2>
+                </div>
+                {autoPlan.length > 0 ? (
+                  <span className="mt-1 shrink-0 rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-500">
+                    총 {autoPlan.length}일
+                  </span>
+                ) : null}
+              </div>
+              {autoPlan.length > 0 ? (
+                <div className="mt-4 space-y-2">
+                  {autoPlan.map((day, dayIndex) => (
+                    <article className="rounded-2xl bg-gray-50 p-4" key={day.date}>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5">
+                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#0F172A] text-[10px] font-black text-white">{dayIndex + 1}</span>
+                          <p className="text-sm font-black text-gray-900">{day.date}</p>
+                        </div>
+                        <span className="rounded-full bg-sky-50 px-2.5 py-1 text-xs font-bold text-sky-500">{day.problemCount}문항</span>
+                      </div>
+                      <div className="mt-2.5 space-y-1 pl-8">
+                        {day.tasks.map((task) => (
+                          <p className="text-xs font-bold leading-relaxed text-gray-500" key={`${task.textbookKey}-${task.startNumber}`}>{task.title}</p>
+                        ))}
+                      </div>
+                    </article>
+                  ))}
                 </div>
               ) : (
-                <>
-                  <div>
-                    <label className="mb-2 block text-sm font-bold text-gray-700">난이도</label>
-                    <select
-                      className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-3 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
-                      onChange={(event) => updateCreateForm({ difficulty: event.target.value })}
-                      value={createForm.difficulty}
-                    >
-                      <option>쉬움</option>
-                      <option>보통</option>
-                      <option>어려움</option>
-                    </select>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="mb-2 block text-sm font-bold text-gray-700">시작 문항</label>
-                      <input
-                        className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
-                        min={selectedTextbook.minItemNumber ?? 1}
-                        onChange={(e) => setAutoItemStart(e.target.value)}
-                        placeholder={String(selectedTextbook.minItemNumber ?? 1)}
-                        type="number"
-                        value={autoItemStart}
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-2 block text-sm font-bold text-gray-700">끝 문항</label>
-                      <input
-                        className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
-                        min={selectedTextbook.minItemNumber ?? 1}
-                        max={selectedTextbook.maxItemNumber}
-                        onChange={(e) => setAutoItemEnd(e.target.value)}
-                        placeholder={String(selectedTextbook.maxItemNumber ?? 15)}
-                        type="number"
-                        value={autoItemEnd}
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm font-bold text-gray-700">날짜 추가</label>
-                    <div className="flex gap-2">
-                      <input
-                        className="flex-1 rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
-                        onChange={(e) => setAutoItemDateInput(e.target.value)}
-                        type="date"
-                        value={autoItemDateInput}
-                      />
-                      <button
-                        className="rounded-2xl bg-gray-100 px-4 py-3 text-sm font-bold text-gray-700"
-                        onClick={addAutoItemDate}
-                        type="button"
-                      >
-                        + 추가
-                      </button>
-                    </div>
-                    {autoItemDates.length > 0 ? (
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {autoItemDates.map((date) => (
-                          <span
-                            className="flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1 text-xs font-bold text-gray-700"
-                            key={date}
-                          >
-                            {date}
-                            <button
-                              className="ml-1 text-gray-400 hover:text-red-400"
-                              onClick={() => removeAutoItemDate(date)}
-                              type="button"
-                            >
-                              ×
-                            </button>
-                          </span>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-
-                  {autoItemPlan.length > 0 ? (
-                    <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
-                      <p className="text-xs font-black text-gray-700">자동 배정 미리보기</p>
-                      <div className="mt-2 space-y-1">
-                        {autoItemPlan.map((plan) => (
-                          <p className="text-xs font-bold text-gray-600" key={plan.date}>
-                            {plan.date}: {plan.title}
-                          </p>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-                </>
+                <p className="mt-4 rounded-2xl border border-dashed border-gray-200 p-6 text-center text-sm font-bold text-gray-400">
+                  교재 범위를 입력하면 계획이 표시됩니다.
+                </p>
               )}
-            </>
-          ) : createForm.rangeType === "free" ? (
-            <>
+            </section>
+
+            {/* CTA */}
+            <button
+              className="w-full rounded-3xl bg-[#0F172A] py-4 text-base font-black text-white shadow-lg transition hover:opacity-90 disabled:opacity-40"
+              disabled={autoSubmitting || autoPlan.length === 0 || autoValidationErrors.length > 0 || !selectedStudentId}
+              onClick={() => void handleAutoSubmit()}
+              type="button"
+            >
+              {autoSubmitting ? "배정 중..." : autoPlan.length > 0 ? `숙제 배정하기 (${autoPlan.length}일)` : "숙제 배정하기"}
+            </button>
+          </>
+        ) : (
+          /* 직접 등록 / 페이지 등록 폼 */
+          <section className="rounded-3xl bg-white p-5 shadow-card">
+            <p className="text-xs font-semibold uppercase tracking-widest text-indigo-400">
+              {createForm.rangeType === "free" ? "페이지 등록" : "직접 등록"}
+            </p>
+            <h2 className="mt-1 text-lg font-black text-gray-900">숙제 단건 등록</h2>
+            <form className="mt-4 space-y-4" onSubmit={handleSubmit}>
               <div>
-                <label className="mb-2 block text-sm font-bold text-gray-700">난이도</label>
-                <select
-                  className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-3 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
-                  onChange={(event) => updateCreateForm({ difficulty: event.target.value })}
-                  value={createForm.difficulty}
-                >
-                  <option>쉬움</option>
-                  <option>보통</option>
-                  <option>어려움</option>
-                </select>
+                <label className="mb-2 block text-xs font-bold text-gray-500">교재 선택</label>
+                {loadingTextbooks ? (
+                  <p className="rounded-2xl bg-gray-50 px-4 py-3 text-sm font-bold text-gray-400">불러오는 중...</p>
+                ) : (
+                  <select
+                    className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
+                    disabled={loadingTextbooks}
+                    onChange={(event) => handleTextbookChange(event.target.value)}
+                    value={createForm.selectedTextbookValue}
+                  >
+                    {textbookOptions.map((option) => (
+                      <option key={getTextbookValue(option.textbookKey)} value={getTextbookValue(option.textbookKey)}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {!isCustomTask && selectedTextbook.totalItems ? (
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs font-bold text-gray-400">
+                    <span>총 {selectedTextbook.totalItems}문항 / {selectedTextbook.minItemNumber}~{selectedTextbook.maxItemNumber}번</span>
+                    <button
+                      className="rounded-full bg-indigo-50 px-3 py-1 text-indigo-500"
+                      onClick={() => { updateCreateForm({ endNumber: String(selectedTextbook.maxItemNumber), startNumber: String(selectedTextbook.minItemNumber) }); setTitleEdited(false); }}
+                      type="button"
+                    >
+                      전체 배정
+                    </button>
+                  </div>
+                ) : null}
               </div>
 
               <div>
-                <label className="mb-2 block text-sm font-bold text-gray-700">입력 방식</label>
+                <label className="mb-2 block text-xs font-bold text-gray-500">범위 방식</label>
                 <div className="flex gap-2">
-                  {(["direct", "auto_page"] as const).map((mode) => (
+                  {(["item", "free", "none"] as const).map((type) => (
                     <button
-                      className={`flex-1 rounded-xl py-2.5 text-xs font-bold transition ${
-                        freeInputMode === mode
-                          ? "bg-[#3730A3] text-white"
-                          : "bg-[#EEF2FF] text-[#3730A3] hover:bg-[#E0E7FF]"
-                      }`}
-                      key={mode}
-                      onClick={() => setFreeInputMode(mode)}
+                      className={`flex-1 rounded-xl py-2.5 text-xs font-bold transition ${createForm.rangeType === type ? "bg-[#0F172A] text-white" : "bg-gray-100 text-gray-500 hover:bg-gray-200"}`}
+                      key={type}
+                      onClick={() => { updateCreateForm({ rangeType: type, startNumber: "", endNumber: "" }); setFreeInputMode("direct"); setItemInputMode("manual"); }}
                       type="button"
                     >
-                      {mode === "direct" ? "직접 입력" : "페이지 자동 분배"}
+                      {type === "item" ? "문항 번호" : type === "free" ? "페이지/자유" : "범위 없음"}
                     </button>
                   ))}
                 </div>
               </div>
 
-              {freeInputMode === "auto_page" ? (
+              {createForm.rangeType === "item" ? (
                 <>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="mb-2 block text-sm font-bold text-gray-700">시작 페이지</label>
-                      <input
-                        className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
-                        min="1"
-                        onChange={(e) => setAutoPageStart(e.target.value)}
-                        placeholder="32"
-                        type="number"
-                        value={autoPageStart}
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-2 block text-sm font-bold text-gray-700">끝 페이지</label>
-                      <input
-                        className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
-                        min="1"
-                        onChange={(e) => setAutoPageEnd(e.target.value)}
-                        placeholder="45"
-                        type="number"
-                        value={autoPageEnd}
-                      />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="mb-2 block text-sm font-bold text-gray-700">라벨</label>
-                      <input
-                        className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
-                        onChange={(e) => setAutoPageLabel(e.target.value)}
-                        placeholder="p."
-                        value={autoPageLabel}
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-2 block text-sm font-bold text-gray-700">메모 (선택)</label>
-                      <input
-                        className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
-                        onChange={(e) => setAutoPageNote(e.target.value)}
-                        placeholder="쎈 수1 풀기"
-                        value={autoPageNote}
-                      />
-                    </div>
-                  </div>
-
                   <div>
-                    <label className="mb-2 block text-sm font-bold text-gray-700">날짜 추가</label>
+                    <label className="mb-2 block text-xs font-bold text-gray-500">입력 방식</label>
                     <div className="flex gap-2">
-                      <input
-                        className="flex-1 rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
-                        onChange={(e) => setAutoPageDateInput(e.target.value)}
-                        type="date"
-                        value={autoPageDateInput}
-                      />
-                      <button
-                        className="rounded-2xl bg-[#EEF2FF] px-4 py-3 text-sm font-bold text-[#3730A3]"
-                        onClick={addAutoPageDate}
-                        type="button"
-                      >
-                        + 추가
-                      </button>
+                      {(["manual", "auto"] as const).map((mode) => (
+                        <button
+                          className={`flex-1 rounded-xl py-2.5 text-xs font-bold transition ${itemInputMode === mode ? "bg-[#0F172A] text-white" : "bg-gray-100 text-gray-500 hover:bg-gray-200"}`}
+                          key={mode}
+                          onClick={() => setItemInputMode(mode)}
+                          type="button"
+                        >
+                          {mode === "manual" ? "직접 입력" : "문항 자동 분배"}
+                        </button>
+                      ))}
                     </div>
-                    {autoPageDates.length > 0 ? (
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {autoPageDates.map((date) => (
-                          <span
-                            className="flex items-center gap-1 rounded-full bg-[#EEF2FF] px-3 py-1 text-xs font-bold text-[#3730A3]"
-                            key={date}
-                          >
-                            {date}
-                            <button
-                              className="ml-1 text-[#6366F1] hover:text-red-400"
-                              onClick={() => removeAutoPageDate(date)}
-                              type="button"
-                            >
-                              ×
-                            </button>
-                          </span>
-                        ))}
-                      </div>
-                    ) : null}
                   </div>
-
-                  {autoPagePlan.length > 0 ? (
-                    <div className="rounded-2xl border border-[#C7D2FE] bg-[#F5F3FF] p-4">
-                      <p className="text-xs font-black text-[#3730A3]">자동 배정 미리보기</p>
-                      <div className="mt-2 space-y-1">
-                        {autoPagePlan.map((plan) => (
-                          <p className="text-xs font-bold text-gray-600" key={plan.date}>
-                            {plan.date}: {plan.detail}
-                          </p>
-                        ))}
+                  {itemInputMode === "manual" ? (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="mb-2 block text-xs font-bold text-gray-500">시작 번호</label>
+                        <input className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]" min={selectedTextbook.minItemNumber ?? 1} max={selectedTextbook.maxItemNumber} onChange={(event) => updateCreateForm({ startNumber: event.target.value })} type="number" value={createForm.startNumber} />
                       </div>
-                    </div>
-                  ) : null}
-                </>
-              ) : null}
-            </>
-          ) : (
-            <div>
-              <label className="mb-2 block text-sm font-bold text-gray-700">난이도</label>
-              <select
-                className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-3 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
-                onChange={(event) => updateCreateForm({ difficulty: event.target.value })}
-                value={createForm.difficulty}
-              >
-                <option>쉬움</option>
-                <option>보통</option>
-                <option>어려움</option>
-              </select>
-            </div>
-          )}
-
-          <div>
-            <label className="mb-2 block text-sm font-bold text-gray-700">제목</label>
-            <input
-              className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
-              onChange={(event) => {
-                updateCreateForm({ title: event.target.value });
-                setTitleEdited(true);
-              }}
-              placeholder={isCustomTask ? "오답노트 2개 복습" : "문제 범위를 입력하면 자동으로 채워져요"}
-              value={createForm.title}
-            />
-          </div>
-
-          {!(createForm.rangeType === "free" && freeInputMode === "auto_page") ? (
-            <div>
-              <label className="mb-2 block text-sm font-bold text-gray-700">
-                {createForm.rangeType === "free" ? "범위 (detail에 저장)" : "상세"}
-              </label>
-              <input
-                className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
-                onChange={(event) => updateCreateForm({ detail: event.target.value })}
-                placeholder={
-                  createForm.rangeType === "free"
-                    ? "예: p.32~p.36 / 프린트 1장 / 오답 5문제"
-                    : "1번 ~ 10번 / △ 문제는 질문 표시하기"
-                }
-                value={createForm.detail}
-              />
-            </div>
-          ) : null}
-
-          <div>
-            <label className="mb-2 block text-sm font-bold text-gray-700">순서</label>
-            <input
-              className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
-              min="1"
-              onChange={(event) => updateCreateForm({ orderIndex: event.target.value })}
-              type="number"
-              value={createForm.orderIndex}
-            />
-          </div>
-
-          <button
-            className="w-full rounded-2xl bg-[#0F172A] py-4 text-base font-black text-white transition hover:opacity-90 disabled:opacity-50"
-            disabled={submitting || loadingStudents}
-            type="submit"
-          >
-            {submitting ? "배정 중..." : "숙제 배정하기"}
-          </button>
-        </form>
-
-        <section className="rounded-3xl bg-white p-5 shadow-card lg:p-6">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-black text-gray-900">배정된 숙제</h2>
-              <p className="mt-1 text-xs font-bold text-gray-400">{selectedDate}</p>
-            </div>
-            {loadingTasks ? <span className="text-xs font-bold text-gray-400">불러오는 중...</span> : null}
-          </div>
-
-          {tasks.length > 0 ? (
-            <div className="grid gap-3 lg:grid-cols-2">
-              {tasks.map((task) => (
-                <article className="rounded-2xl bg-[#F8FAFC] p-4" key={task.id}>
-                  {editTaskId === task.id ? (
-                    <div className="space-y-3">
-                      <div className="grid grid-cols-2 gap-2">
-                        <input
-                          className="rounded-xl border border-gray-100 bg-white px-3 py-2 text-sm font-bold outline-none"
-                          onChange={(event) => updateEditForm({ taskDate: event.target.value })}
-                          type="date"
-                          value={editForm.taskDate}
-                        />
-                        <input
-                          className="rounded-xl border border-gray-100 bg-white px-3 py-2 text-sm font-bold outline-none"
-                          onChange={(event) => updateEditForm({ orderIndex: event.target.value })}
-                          type="number"
-                          value={editForm.orderIndex}
-                        />
-                      </div>
-                      <input
-                        className="w-full rounded-xl border border-gray-100 bg-white px-3 py-2 text-sm font-bold outline-none"
-                        onChange={(event) => updateEditForm({ title: event.target.value })}
-                        value={editForm.title}
-                      />
-                      <input
-                        className="w-full rounded-xl border border-gray-100 bg-white px-3 py-2 text-sm font-bold outline-none"
-                        onChange={(event) => updateEditForm({ detail: event.target.value })}
-                        placeholder={editForm.rangeType === "free" ? "예: p.32~p.36 / 프린트 1장" : "상세 설명"}
-                        value={editForm.detail}
-                      />
-                      <div className="flex gap-1">
-                        {(["item", "free", "none"] as const).map((type) => (
-                          <button
-                            className={`flex-1 rounded-lg py-1.5 text-xs font-bold transition ${
-                              editForm.rangeType === type
-                                ? "bg-[#0F172A] text-white"
-                                : "bg-gray-100 text-gray-500"
-                            }`}
-                            key={type}
-                            onClick={() => updateEditForm({ rangeType: type, startNumber: "", endNumber: "" })}
-                            type="button"
-                          >
-                            {type === "item" ? "문항" : type === "free" ? "페이지" : "없음"}
-                          </button>
-                        ))}
-                      </div>
-                      {editForm.rangeType === "item" ? (
-                        <div className="grid grid-cols-2 gap-2">
-                          <input
-                            className="rounded-xl border border-gray-100 bg-white px-3 py-2 text-sm font-bold outline-none"
-                            onChange={(event) => updateEditForm({ startNumber: event.target.value })}
-                            placeholder="시작 번호"
-                            type="number"
-                            value={editForm.startNumber}
-                          />
-                          <input
-                            className="rounded-xl border border-gray-100 bg-white px-3 py-2 text-sm font-bold outline-none"
-                            onChange={(event) => updateEditForm({ endNumber: event.target.value })}
-                            placeholder="끝 번호"
-                            type="number"
-                            value={editForm.endNumber}
-                          />
-                        </div>
-                      ) : null}
-                      <div className="grid grid-cols-3 gap-2">
-                        <select
-                          className="rounded-xl border border-gray-100 bg-white px-2 py-2 text-sm font-bold outline-none"
-                          onChange={(event) => updateEditForm({ status: event.target.value as DailyTaskStatus })}
-                          value={editForm.status}
-                        >
-                          <option value="todo">예정</option>
-                          <option value="in_progress">진행중</option>
-                          <option value="done">완료</option>
-                        </select>
-                        <select
-                          className="rounded-xl border border-gray-100 bg-white px-2 py-2 text-sm font-bold outline-none"
-                          onChange={(event) => updateEditForm({ difficulty: event.target.value })}
-                          value={editForm.difficulty}
-                        >
-                          <option>쉬움</option>
-                          <option>보통</option>
-                          <option>어려움</option>
-                        </select>
-                        <input
-                          className="rounded-xl border border-gray-100 bg-white px-2 py-2 text-sm font-bold outline-none"
-                          onChange={(event) => updateEditForm({ category: event.target.value })}
-                          value={editForm.category}
-                        />
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          className="flex-1 rounded-xl bg-[#0F172A] px-3 py-2 text-sm font-bold text-white"
-                          disabled={savingEdit}
-                          onClick={() => void handleSaveEdit(task.id)}
-                          type="button"
-                        >
-                          저장
-                        </button>
-                        <button
-                          className="flex-1 rounded-xl bg-white px-3 py-2 text-sm font-bold text-gray-500"
-                          onClick={() => setEditTaskId(null)}
-                          type="button"
-                        >
-                          취소
-                        </button>
+                      <div>
+                        <label className="mb-2 block text-xs font-bold text-gray-500">끝 번호</label>
+                        <input className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]" min={selectedTextbook.minItemNumber ?? 1} max={selectedTextbook.maxItemNumber} onChange={(event) => updateCreateForm({ endNumber: event.target.value })} type="number" value={createForm.endNumber} />
                       </div>
                     </div>
                   ) : (
                     <>
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <h3 className="text-sm font-black leading-snug text-gray-900">{task.title}</h3>
-                          {task.detail ? (
-                            <p className="mt-1 text-sm font-medium text-gray-500">{task.detail}</p>
-                          ) : null}
-                          <p className="mt-2 text-xs font-bold text-gray-400">
-                            {task.textbook_key ?? "직접 입력"} · {getRangeText(task)} · 순서 {task.order_index}
-                          </p>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="mb-2 block text-xs font-bold text-gray-500">시작 문항</label>
+                          <input className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]" min={selectedTextbook.minItemNumber ?? 1} onChange={(e) => setAutoItemStart(e.target.value)} placeholder={String(selectedTextbook.minItemNumber ?? 1)} type="number" value={autoItemStart} />
                         </div>
-                        <div className="flex shrink-0 gap-1">
-                          <button
-                            className="rounded-full bg-white px-3 py-1 text-xs font-bold text-[#3730A3]"
-                            onClick={() => startEdit(task)}
-                            type="button"
-                          >
-                            수정
-                          </button>
-                          <button
-                            className="rounded-full bg-white px-3 py-1 text-xs font-bold text-red-400"
-                            onClick={() => void handleDelete(task.id)}
-                            type="button"
-                          >
-                            삭제
-                          </button>
+                        <div>
+                          <label className="mb-2 block text-xs font-bold text-gray-500">끝 문항</label>
+                          <input className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]" min={selectedTextbook.minItemNumber ?? 1} max={selectedTextbook.maxItemNumber} onChange={(e) => setAutoItemEnd(e.target.value)} placeholder={String(selectedTextbook.maxItemNumber ?? 15)} type="number" value={autoItemEnd} />
                         </div>
                       </div>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <span className="rounded-full bg-[#EEF2FF] px-3 py-1 text-xs font-bold text-[#3730A3]">
-                          {task.category ?? "기타"}
-                        </span>
-                        <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-bold text-sky-600">
-                          {task.difficulty ?? "보통"}
-                        </span>
-                        <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-bold text-gray-500">
-                          {getStatusLabel(task.status)}
-                        </span>
+                      <div>
+                        <label className="mb-2 block text-xs font-bold text-gray-500">날짜 추가</label>
+                        <div className="flex gap-2">
+                          <input className="flex-1 rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]" onChange={(e) => setAutoItemDateInput(e.target.value)} type="date" value={autoItemDateInput} />
+                          <button className="rounded-2xl bg-gray-100 px-4 py-3 text-sm font-bold text-gray-700" onClick={addAutoItemDate} type="button">+ 추가</button>
+                        </div>
+                        {autoItemDates.length > 0 ? (
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {autoItemDates.map((date) => (
+                              <span className="flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1 text-xs font-bold text-gray-700" key={date}>
+                                {date}
+                                <button className="ml-1 text-gray-400 hover:text-red-400" onClick={() => removeAutoItemDate(date)} type="button">×</button>
+                              </span>
+                            ))}
+                          </div>
+                        ) : null}
                       </div>
+                      {autoItemPlan.length > 0 ? (
+                        <div className="rounded-2xl bg-indigo-50 p-4">
+                          <p className="text-xs font-black text-indigo-700">자동 배정 미리보기</p>
+                          <div className="mt-2 space-y-1">
+                            {autoItemPlan.map((plan) => (
+                              <p className="text-xs font-bold text-gray-600" key={plan.date}>{plan.date}: {plan.title}</p>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
                     </>
                   )}
-                </article>
+                </>
+              ) : createForm.rangeType === "free" ? (
+                <>
+                  <div>
+                    <label className="mb-2 block text-xs font-bold text-gray-500">입력 방식</label>
+                    <div className="flex gap-2">
+                      {(["direct", "auto_page"] as const).map((mode) => (
+                        <button
+                          className={`flex-1 rounded-xl py-2.5 text-xs font-bold transition ${freeInputMode === mode ? "bg-[#3730A3] text-white" : "bg-[#EEF2FF] text-[#3730A3] hover:bg-[#E0E7FF]"}`}
+                          key={mode}
+                          onClick={() => setFreeInputMode(mode)}
+                          type="button"
+                        >
+                          {mode === "direct" ? "직접 입력" : "페이지 자동 분배"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {freeInputMode === "auto_page" ? (
+                    <>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="mb-2 block text-xs font-bold text-gray-500">시작 페이지</label>
+                          <input className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]" min="1" onChange={(e) => setAutoPageStart(e.target.value)} placeholder="32" type="number" value={autoPageStart} />
+                        </div>
+                        <div>
+                          <label className="mb-2 block text-xs font-bold text-gray-500">끝 페이지</label>
+                          <input className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]" min="1" onChange={(e) => setAutoPageEnd(e.target.value)} placeholder="45" type="number" value={autoPageEnd} />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="mb-2 block text-xs font-bold text-gray-500">라벨</label>
+                          <input className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]" onChange={(e) => setAutoPageLabel(e.target.value)} placeholder="p." value={autoPageLabel} />
+                        </div>
+                        <div>
+                          <label className="mb-2 block text-xs font-bold text-gray-500">메모 (선택)</label>
+                          <input className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]" onChange={(e) => setAutoPageNote(e.target.value)} placeholder="쎈 수1 풀기" value={autoPageNote} />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="mb-2 block text-xs font-bold text-gray-500">날짜 추가</label>
+                        <div className="flex gap-2">
+                          <input className="flex-1 rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]" onChange={(e) => setAutoPageDateInput(e.target.value)} type="date" value={autoPageDateInput} />
+                          <button className="rounded-2xl bg-[#EEF2FF] px-4 py-3 text-sm font-bold text-[#3730A3]" onClick={addAutoPageDate} type="button">+ 추가</button>
+                        </div>
+                        {autoPageDates.length > 0 ? (
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {autoPageDates.map((date) => (
+                              <span className="flex items-center gap-1 rounded-full bg-[#EEF2FF] px-3 py-1 text-xs font-bold text-[#3730A3]" key={date}>
+                                {date}
+                                <button className="ml-1 text-[#6366F1] hover:text-red-400" onClick={() => removeAutoPageDate(date)} type="button">×</button>
+                              </span>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                      {autoPagePlan.length > 0 ? (
+                        <div className="rounded-2xl border border-[#C7D2FE] bg-[#F5F3FF] p-4">
+                          <p className="text-xs font-black text-[#3730A3]">자동 배정 미리보기</p>
+                          <div className="mt-2 space-y-1">
+                            {autoPagePlan.map((plan) => (
+                              <p className="text-xs font-bold text-gray-600" key={plan.date}>{plan.date}: {plan.detail}</p>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+                    </>
+                  ) : null}
+                </>
+              ) : null}
+
+              <div>
+                <label className="mb-2 block text-xs font-bold text-gray-500">날짜</label>
+                <input className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]" onChange={(event) => setSelectedDate(event.target.value)} type="date" value={selectedDate} />
+              </div>
+              <div>
+                <label className="mb-2 block text-xs font-bold text-gray-500">제목</label>
+                <input
+                  className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
+                  onChange={(event) => { updateCreateForm({ title: event.target.value }); setTitleEdited(true); }}
+                  placeholder={isCustomTask ? "오답노트 2개 복습" : "문제 범위를 입력하면 자동으로 채워져요"}
+                  value={createForm.title}
+                />
+              </div>
+              {!(createForm.rangeType === "free" && freeInputMode === "auto_page") ? (
+                <div>
+                  <label className="mb-2 block text-xs font-bold text-gray-500">
+                    {createForm.rangeType === "free" ? "범위 메모" : "상세"}
+                  </label>
+                  <input
+                    className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
+                    onChange={(event) => updateCreateForm({ detail: event.target.value })}
+                    placeholder={createForm.rangeType === "free" ? "예: p.32~p.36 / 프린트 1장 / 오답 5문제" : "1번 ~ 10번 / △ 문제는 질문 표시하기"}
+                    value={createForm.detail}
+                  />
+                </div>
+              ) : null}
+              <div>
+                <label className="mb-2 block text-xs font-bold text-gray-500">순서</label>
+                <input className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]" min="1" onChange={(event) => updateCreateForm({ orderIndex: event.target.value })} type="number" value={createForm.orderIndex} />
+              </div>
+              <button className="w-full rounded-2xl bg-[#0F172A] py-3.5 text-sm font-black text-white transition hover:opacity-90 disabled:opacity-50" disabled={submitting || loadingStudents} type="submit">
+                {submitting ? "배정 중..." : "등록하기"}
+              </button>
+            </form>
+          </section>
+        )}
+
+        {/* 메시지 */}
+        {(message || error) ? (
+          <div className="space-y-2">
+            {message ? <p className="rounded-2xl bg-emerald-50 px-4 py-3.5 text-sm font-bold text-emerald-600">{message}</p> : null}
+            {error ? <p className="rounded-2xl bg-red-50 px-4 py-3.5 text-sm font-bold text-red-500">{error}</p> : null}
+          </div>
+        ) : null}
+
+        {/* 할 일 추가 */}
+        <section className="rounded-3xl bg-white shadow-card">
+          <button
+            className="flex w-full items-center justify-between p-5"
+            onClick={() => setShowTodoForm((v) => !v)}
+            type="button"
+          >
+            <div className="text-left">
+              <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">기타</p>
+              <h2 className="mt-1 text-lg font-black text-gray-900">할 일 추가</h2>
+              <p className="mt-0.5 text-xs text-gray-400">오답노트, 프린트, 개념복습 등 자유롭게 추가해요.</p>
+            </div>
+            <span className="ml-4 shrink-0 text-sm font-bold text-gray-300">{showTodoForm ? "▲" : "▼"}</span>
+          </button>
+          {showTodoForm ? (
+            <form
+              className="space-y-4 border-t border-gray-50 px-5 pb-5 pt-4"
+              onSubmit={(e) => { e.preventDefault(); void handleTodoSubmit(); }}
+            >
+              <div>
+                <label className="mb-2 block text-xs font-bold text-gray-500">날짜</label>
+                <input
+                  className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
+                  onChange={(e) => setTodoDate(e.target.value)}
+                  type="date"
+                  value={todoDate}
+                />
+              </div>
+              <div>
+                <label className="mb-2 block text-xs font-bold text-gray-500">제목</label>
+                <input
+                  className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
+                  onChange={(e) => setTodoTitle(e.target.value)}
+                  placeholder="오답노트 2개 복습"
+                  value={todoTitle}
+                />
+              </div>
+              <div>
+                <label className="mb-2 block text-xs font-bold text-gray-500">메모 (선택)</label>
+                <input
+                  className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-[#0F172A]"
+                  onChange={(e) => setTodoMemo(e.target.value)}
+                  placeholder="추가 메모"
+                  value={todoMemo}
+                />
+              </div>
+              <button
+                className="w-full rounded-2xl bg-[#0F172A] py-3.5 text-sm font-black text-white disabled:opacity-50"
+                disabled={todoSubmitting || !todoTitle.trim() || !selectedStudentId}
+                type="submit"
+              >
+                {todoSubmitting ? "추가 중..." : "할 일 추가하기"}
+              </button>
+            </form>
+          ) : null}
+        </section>
+
+        {/* 주간 계획표 */}
+        <section className="rounded-3xl bg-white p-5 shadow-card">
+          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">배정 현황</p>
+              <h2 className="mt-1 text-lg font-black text-gray-900">주간 계획표</h2>
+              <p className="mt-0.5 text-xs text-gray-400">{weekStart} 주 (월~일)</p>
+            </div>
+            <div className="flex items-center gap-2">
+              {loadingWeekly ? <span className="text-xs font-bold text-gray-400">불러오는 중...</span> : null}
+              <input
+                className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2 text-sm font-bold text-gray-900 outline-none"
+                onChange={(event) => setSelectedDate(event.target.value)}
+                type="date"
+                value={selectedDate}
+              />
+            </div>
+          </div>
+
+          {weeklyTasks.length > 0 ? (
+            <div className="space-y-4">
+              {weeklyTasks.map((day) => (
+                <div key={day.date}>
+                  <div className="mb-2 flex items-center gap-2">
+                    <span className="text-xs font-black text-gray-700">{day.date} ({getDayLabel(day.date)})</span>
+                    {day.summary.total > 0 ? (
+                      <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-bold text-gray-500">
+                        {day.summary.done}/{day.summary.total} 완료
+                      </span>
+                    ) : null}
+                  </div>
+                  {day.tasks.length > 0 ? (
+                    <div className="space-y-2">
+                      {day.tasks.map((task) => (
+                        <article className="rounded-2xl bg-[#F8FAFC] p-3" key={task.id}>
+                          {editTaskId === task.id ? (
+                            <div className="space-y-2">
+                              <div className="grid grid-cols-2 gap-2">
+                                <input className="rounded-xl border border-gray-100 bg-white px-3 py-2 text-sm font-bold outline-none" onChange={(event) => updateEditForm({ taskDate: event.target.value })} type="date" value={editForm.taskDate} />
+                                <input className="rounded-xl border border-gray-100 bg-white px-3 py-2 text-sm font-bold outline-none" onChange={(event) => updateEditForm({ orderIndex: event.target.value })} type="number" value={editForm.orderIndex} />
+                              </div>
+                              <input className="w-full rounded-xl border border-gray-100 bg-white px-3 py-2 text-sm font-bold outline-none" onChange={(event) => updateEditForm({ title: event.target.value })} value={editForm.title} />
+                              <input className="w-full rounded-xl border border-gray-100 bg-white px-3 py-2 text-sm font-bold outline-none" onChange={(event) => updateEditForm({ detail: event.target.value })} placeholder={editForm.rangeType === "free" ? "예: p.32~p.36 / 프린트 1장" : "상세 설명"} value={editForm.detail} />
+                              <div className="flex gap-1">
+                                {(["item", "free", "none"] as const).map((type) => (
+                                  <button className={`flex-1 rounded-lg py-1.5 text-xs font-bold transition ${editForm.rangeType === type ? "bg-[#0F172A] text-white" : "bg-gray-100 text-gray-500"}`} key={type} onClick={() => updateEditForm({ rangeType: type, startNumber: "", endNumber: "" })} type="button">
+                                    {type === "item" ? "문항" : type === "free" ? "페이지" : "없음"}
+                                  </button>
+                                ))}
+                              </div>
+                              {editForm.rangeType === "item" ? (
+                                <div className="grid grid-cols-2 gap-2">
+                                  <input className="rounded-xl border border-gray-100 bg-white px-3 py-2 text-sm font-bold outline-none" onChange={(event) => updateEditForm({ startNumber: event.target.value })} placeholder="시작 번호" type="number" value={editForm.startNumber} />
+                                  <input className="rounded-xl border border-gray-100 bg-white px-3 py-2 text-sm font-bold outline-none" onChange={(event) => updateEditForm({ endNumber: event.target.value })} placeholder="끝 번호" type="number" value={editForm.endNumber} />
+                                </div>
+                              ) : null}
+                              <div className="grid grid-cols-2 gap-2">
+                                <select className="rounded-xl border border-gray-100 bg-white px-2 py-2 text-sm font-bold outline-none" onChange={(event) => updateEditForm({ status: event.target.value as DailyTaskStatus })} value={editForm.status}>
+                                  <option value="todo">예정</option>
+                                  <option value="in_progress">진행중</option>
+                                  <option value="done">완료</option>
+                                </select>
+                                <input className="rounded-xl border border-gray-100 bg-white px-2 py-2 text-sm font-bold outline-none" onChange={(event) => updateEditForm({ category: event.target.value })} placeholder="카테고리" value={editForm.category} />
+                              </div>
+                              <div className="flex gap-2">
+                                <button className="flex-1 rounded-xl bg-[#0F172A] px-3 py-2 text-sm font-bold text-white" disabled={savingEdit} onClick={() => void handleSaveEdit(task.id)} type="button">저장</button>
+                                <button className="flex-1 rounded-xl bg-white px-3 py-2 text-sm font-bold text-gray-500" onClick={() => setEditTaskId(null)} type="button">취소</button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <h3 className="text-sm font-black leading-snug text-gray-900">{task.title}</h3>
+                                {task.detail ? <p className="mt-0.5 text-xs font-medium text-gray-500">{task.detail}</p> : null}
+                                <p className="mt-1 text-xs font-bold text-gray-400">
+                                  {task.textbook_key
+                                    ? (catalogTextbooks.find((t) => t.textbookKey === task.textbook_key)?.shortTitle ?? task.textbook_key)
+                                    : "직접 입력"}{" "}
+                                  · {getRangeText(task)}
+                                </p>
+                              </div>
+                              <div className="flex shrink-0 items-center gap-1">
+                                <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${task.status === "done" ? "bg-emerald-100 text-emerald-600" : task.status === "in_progress" ? "bg-amber-100 text-amber-600" : "bg-gray-100 text-gray-500"}`}>
+                                  {getStatusLabel(task.status)}
+                                </span>
+                                <button className="rounded-full bg-white px-2.5 py-1 text-xs font-bold text-[#3730A3]" onClick={() => startEdit(task)} type="button">수정</button>
+                                <button className="rounded-full bg-white px-2.5 py-1 text-xs font-bold text-red-400" onClick={() => void handleDelete(task.id)} type="button">삭제</button>
+                              </div>
+                            </div>
+                          )}
+                        </article>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="rounded-xl bg-gray-50 py-2 text-center text-xs font-bold text-gray-300">숙제 없음</p>
+                  )}
+                </div>
               ))}
             </div>
           ) : (
             <div className="rounded-2xl border border-dashed border-gray-200 p-6 text-center text-sm font-bold text-gray-400">
-              아직 배정된 숙제가 없습니다.
+              {loadingWeekly ? "불러오는 중..." : selectedStudentId ? "이번 주 배정된 숙제가 없습니다." : "학생을 선택해주세요."}
             </div>
           )}
         </section>
-      </div>
       </div>
 
       <AdminBottomNav />

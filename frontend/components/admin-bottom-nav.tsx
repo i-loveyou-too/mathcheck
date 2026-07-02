@@ -29,6 +29,14 @@ function TaskIcon() {
   );
 }
 
+function BookIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M18 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zM6 4h5v8l-2.5-1.5L6 12V4z" />
+    </svg>
+  );
+}
+
 function LogoutIcon() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
@@ -49,11 +57,12 @@ export function AdminBottomNav() {
   const isDashboard = pathname === "/admin";
   const isStudents = pathname.startsWith("/admin/students");
   const isDailyTasks = pathname.startsWith("/admin/daily-tasks");
+  const isTextbooks = pathname.startsWith("/admin/textbooks-management");
 
   return (
     <nav className="fixed bottom-4 left-1/2 z-20 w-[calc(100%-2.5rem)] max-w-[720px] -translate-x-1/2">
       <div className="rounded-[1.8rem] bg-[#0F172A] px-3 py-3 shadow-nav">
-        <div className="grid grid-cols-4 gap-1">
+        <div className="grid grid-cols-5 gap-1">
           <Link
             href="/admin"
             className={cn(
@@ -66,7 +75,7 @@ export function AdminBottomNav() {
           </Link>
 
           <Link
-            href="/admin"
+            href="/admin/students"
             className={cn(
               "flex flex-col items-center gap-1.5 rounded-[1.2rem] px-1.5 py-2.5 text-[10px] font-semibold transition-all",
               isStudents ? "bg-white text-[#0F172A]" : "text-white/50 hover:text-white/75"
@@ -85,6 +94,17 @@ export function AdminBottomNav() {
           >
             <TaskIcon />
             <span>숙제</span>
+          </Link>
+
+          <Link
+            href="/admin/textbooks-management"
+            className={cn(
+              "flex flex-col items-center gap-1.5 rounded-[1.2rem] px-1.5 py-2.5 text-[10px] font-semibold transition-all",
+              isTextbooks ? "bg-white text-[#0F172A]" : "text-white/50 hover:text-white/75"
+            )}
+          >
+            <BookIcon />
+            <span>교재</span>
           </Link>
 
           <button

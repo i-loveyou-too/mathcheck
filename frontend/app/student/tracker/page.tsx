@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { ScreenShell } from "@/components/screen-shell";
 import { StudentBottomNav } from "@/components/student-bottom-nav";
@@ -36,11 +37,6 @@ function toLocalDateKey(date: Date) {
   const month = `${date.getMonth() + 1}`.padStart(2, "0");
   const day = `${date.getDate()}`.padStart(2, "0");
   return `${year}-${month}-${day}`;
-}
-
-function parseLocalDateKey(dateKey: string) {
-  const [year, month, day] = dateKey.split("-").map(Number);
-  return new Date(year, month - 1, day);
 }
 
 function getMonthGridDays(year: number, month: number, trackerDays: TrackerDay[]) {
@@ -114,46 +110,116 @@ export default function StudentTrackerPage() {
     setMonth(next.getMonth() + 1);
   };
 
+  const streak = tracker?.current_streak ?? 0;
+  const completionRate = tracker?.monthly_completion_rate ?? 0;
+
   return (
     <ScreenShell withBottomNav>
-      <div className="pt-1">
-        <h1 className="text-2xl font-black tracking-tight text-[#17213B]">
-          {STUDENT_PAGE_TITLES.tracker}
-        </h1>
-        <p className="mt-1 text-sm leading-relaxed text-[#98A1B3]">
-          매일 해낸 기록이 나의 루틴이 돼요.
-        </p>
+
+      {/* 헤더 */}
+      <div className="flex items-start justify-between gap-4 pt-1">
+        <div>
+          <h1 className="text-2xl font-black tracking-tight text-[#17213B]">
+            {STUDENT_PAGE_TITLES.tracker}
+          </h1>
+          <p className="mt-1 text-sm leading-relaxed text-gray-500">
+            매일 해낸 기록이 나의 루틴이 돼요.
+          </p>
+        </div>
+        <button
+          className="flex shrink-0 items-center gap-1.5 rounded-2xl bg-white px-3 py-2 text-xs font-bold text-gray-500 shadow-sm"
+          type="button"
+        >
+          <span>📅</span>
+          <span>챌린지 관리</span>
+        </button>
       </div>
 
-      <section className="overflow-hidden rounded-[2rem] bg-gradient-to-br from-[#FFF1F7] via-[#F5F3FF] to-[#ECF7FF] p-6 text-center shadow-card">
-        <p className="text-lg font-black text-[#5B5CE2]">갓생 챌린지</p>
-        <p className="mx-auto mt-2 max-w-[17rem] text-sm font-bold leading-relaxed text-[#8A94A8]">
-          포기하지 마세요! 오늘도 해내면 갓생에 한 걸음 가까워져요.
-        </p>
+      {/* Hero 카드 */}
+      <section
+        className="relative overflow-hidden rounded-[28px] shadow-[0_8px_40px_rgba(130,110,200,0.15)]"
+        style={{
+          background: "linear-gradient(120deg, #FFE5D5 0%, #EDE8FF 55%, #D9D0FF 100%)",
+        }}
+      >
+        {/* 별 장식 */}
+        <span className="pointer-events-none absolute left-[43%] top-[14%] select-none text-[11px] text-purple-300">✦</span>
+        <span className="pointer-events-none absolute right-[10%] top-[9%] select-none text-[16px] text-yellow-300/80">✦</span>
+        <span className="pointer-events-none absolute bottom-[8%] right-[28%] select-none text-[10px] text-purple-200">✦</span>
 
-        <div className="mx-auto mt-7 flex h-32 w-32 items-center justify-center rounded-full bg-gradient-to-br from-[#7C7BFF] to-[#6EC6FF] p-2 shadow-[0_18px_40px_rgba(91,92,226,0.22)]">
-          <div className="flex h-full w-full flex-col items-center justify-center rounded-full bg-white">
-            <p className="text-5xl font-black text-[#5B5CE2]">{tracker?.current_streak ?? 0}</p>
-            <p className="text-xs font-black tracking-wide text-[#8A94A8]">DAYS</p>
+        <div className="flex min-h-[160px] items-center">
+
+          {/* 왼쪽 텍스트 영역 */}
+          <div className="flex min-w-0 flex-1 flex-col py-5 pl-5 pr-2">
+
+            {/* 오늘의 챌린지 pill */}
+            <span className="inline-flex w-fit items-center gap-1 rounded-full bg-white/60 px-2.5 py-0.5 text-[10px] font-bold text-purple-500 backdrop-blur-sm">
+              ✦ 오늘의 챌린지
+            </span>
+
+            {/* 메인 타이틀 */}
+            <p className="mt-1.5 text-[1.6rem] font-black leading-[1.1] tracking-tight">
+              <span className="text-purple-500">갓생</span>
+              <span className="text-[#1A1F4E]"> 챌린지</span>
+            </p>
+
+            {/* 서브텍스트 */}
+            <p className="mt-1 text-[11px] font-medium leading-relaxed text-gray-500">
+              오늘도 해내면 갓생에 한 걸음 더 가까워져요
+            </p>
+
+            {/* 연속 학습 pill */}
+            <div className="mt-2.5">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-white/80 px-3 py-1.5 text-[12px] font-bold text-gray-700 shadow-sm backdrop-blur-sm">
+                🔥
+                <span>
+                  연속 학습{" "}
+                  <span className="font-black text-purple-500">{streak}</span>
+                  일째
+                </span>
+              </span>
+            </div>
+
+            {/* 하단 소문구 */}
+            <p className="mt-2 text-[10px] font-medium text-gray-400">
+              <span className="mr-1 text-purple-300">✦</span>꾸준함이 실력을 만들어요
+            </p>
           </div>
+
+          {/* 오른쪽 — 고양이 + DAY 배지 */}
+          <div className="relative w-[42%] shrink-0 self-stretch">
+            <Image
+              src="/hero-cat.png"
+              alt=""
+              fill
+              className="object-contain object-center"
+              priority
+            />
+            {/* DAY 배지 */}
+            <div className="absolute bottom-[8%] right-[5%] z-10 flex h-[54px] w-[54px] flex-col items-center justify-center rounded-full bg-white shadow-[0_4px_16px_rgba(130,110,200,0.25)]">
+              <span className="text-[22px] font-black leading-none text-purple-500">{streak}</span>
+              <span className="mt-0.5 text-[9px] font-black tracking-widest text-gray-400">DAY</span>
+            </div>
+          </div>
+
         </div>
-        <p className="mt-4 text-sm font-black text-[#5B5CE2]">
-          연속 학습 {tracker?.current_streak ?? 0}일째
-        </p>
       </section>
 
-      <section className="rounded-[2rem] bg-white p-5 shadow-card">
+      {/* 월간 챌린지 기록 */}
+      <section className="rounded-3xl bg-white p-5 shadow-card">
         <div className="flex items-center justify-between gap-3">
           <div>
             <h2 className="text-xl font-black text-[#17213B]">{month}월 챌린지 기록</h2>
-            <p className="mt-1 text-sm font-bold text-[#98A1B3]">
-              {tracker ? `${tracker.monthly_done_days} / ${tracker.monthly_total_task_days}일 완료` : "불러오는 중..."}
+            <p className="mt-0.5 text-sm font-bold text-gray-400">
+              {tracker
+                ? `${tracker.monthly_done_days} / ${tracker.monthly_total_task_days}일 완료`
+                : "불러오는 중..."}
             </p>
           </div>
           <div className="flex gap-2">
             <button
               aria-label="이전 달"
-              className="flex h-10 w-10 items-center justify-center rounded-full bg-[#F1F3FF] text-xl font-black text-[#8A94A8]"
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 text-lg font-black text-gray-500 transition hover:bg-gray-200"
               onClick={() => moveMonth(-1)}
               type="button"
             >
@@ -161,7 +227,7 @@ export default function StudentTrackerPage() {
             </button>
             <button
               aria-label="다음 달"
-              className="flex h-10 w-10 items-center justify-center rounded-full bg-[#F1F3FF] text-xl font-black text-[#8A94A8]"
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 text-lg font-black text-gray-500 transition hover:bg-gray-200"
               onClick={() => moveMonth(1)}
               type="button"
             >
@@ -170,27 +236,33 @@ export default function StudentTrackerPage() {
           </div>
         </div>
 
-        <div className="mt-5 rounded-2xl bg-[#F8FAFF] px-4 py-3">
-          <div className="flex items-center justify-between text-sm font-bold text-[#8A94A8]">
-            <span>월간 완료율</span>
-            <span className="text-[#5B5CE2]">{tracker?.monthly_completion_rate ?? 0}%</span>
+        {/* 완료율 바 */}
+        <div className="mt-4 rounded-2xl bg-gray-50 px-4 py-3">
+          <div className="flex items-center justify-between text-sm">
+            <span className="font-bold text-gray-500">월간 완료율</span>
+            <span className="font-black text-purple-500">{completionRate}%</span>
           </div>
-          <div className="mt-2 h-2 overflow-hidden rounded-full bg-white">
+          <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-gray-200">
             <div
-              className="h-full rounded-full bg-gradient-to-r from-[#FF7FA3] to-[#7C7BFF]"
-              style={{ width: `${tracker?.monthly_completion_rate ?? 0}%` }}
+              className="h-full rounded-full bg-gradient-to-r from-orange-400 via-pink-400 to-purple-500 transition-all duration-500"
+              style={{ width: `${completionRate}%` }}
             />
           </div>
         </div>
 
-        {loading ? <p className="mt-6 text-center text-sm font-bold text-[#98A1B3]">불러오는 중...</p> : null}
-        {error ? <p className="mt-6 text-center text-sm font-bold text-red-500">{error}</p> : null}
+        {loading ? (
+          <p className="mt-6 text-center text-sm font-bold text-gray-400">불러오는 중...</p>
+        ) : null}
+        {error ? (
+          <p className="mt-6 text-center text-sm font-bold text-red-500">{error}</p>
+        ) : null}
 
         {!loading && !error ? (
           <>
-            <div className="mt-6 grid grid-cols-7 gap-2 text-center">
+            {/* 캘린더 */}
+            <div className="mt-5 grid grid-cols-7 gap-1 text-center">
               {weekdayLabels.map((label) => (
-                <div className="text-xs font-black text-[#A8AFBF]" key={label}>
+                <div className="pb-2 text-xs font-black text-gray-400" key={label}>
                   {label}
                 </div>
               ))}
@@ -204,18 +276,22 @@ export default function StudentTrackerPage() {
                   <div
                     className={cn(
                       "relative flex aspect-square min-h-[40px] items-center justify-center rounded-full text-xs font-black transition",
-                      !inMonth && "text-gray-300",
-                      inMonth && !hasTasks && "text-[#C3C8D5]",
-                      inMonth && hasTasks && !isCompleted && "bg-[#EEF2FF] text-[#8A94A8]",
-                      isCompleted && "bg-gradient-to-br from-[#FF6F91] to-[#FF9DB7] text-white shadow-[0_8px_18px_rgba(255,111,145,0.28)]",
-                      isToday && "ring-2 ring-[#5B5CE2] ring-offset-2 ring-offset-white",
+                      !inMonth && "text-gray-200",
+                      inMonth && !hasTasks && "text-gray-300",
+                      inMonth && hasTasks && !isCompleted && "bg-gray-100 text-gray-500",
+                      isCompleted &&
+                        "bg-gradient-to-br from-red-400 to-orange-400 text-white shadow-[0_4px_12px_rgba(255,80,60,0.25)]",
+                      isToday &&
+                        !isCompleted &&
+                        "ring-2 ring-purple-400 ring-offset-1 ring-offset-white",
+                      isToday && isCompleted && "ring-2 ring-purple-400 ring-offset-1",
                     )}
                     key={dateKey}
                   >
                     {isCompleted ? (
                       <div className="flex flex-col items-center leading-none">
-                        <span className="text-base">★</span>
-                        <span className="mt-0.5 text-[9px]">해냄 완료</span>
+                        <span className="text-sm leading-none">🔥</span>
+                        <span className="mt-0.5 text-[8px] font-black">해냄 완료</span>
                       </div>
                     ) : (
                       dayNumber
@@ -226,13 +302,29 @@ export default function StudentTrackerPage() {
             </div>
 
             {!hasTaskDays ? (
-              <div className="mt-6 rounded-2xl border border-dashed border-[#E3E7F2] bg-[#FAFBFF] p-5 text-center text-sm font-bold text-[#98A1B3]">
+              <div className="mt-5 rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-5 text-center text-sm font-bold text-gray-400">
                 이번 달에는 아직 배정된 할 일이 없습니다.
               </div>
             ) : null}
           </>
         ) : null}
       </section>
+
+      {/* 격려 카드 */}
+      <div className="flex items-center gap-4 rounded-3xl bg-gradient-to-r from-orange-50 to-pink-50 p-4">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-orange-100 text-lg">
+          🔥
+        </div>
+        <div className="flex-1">
+          <p className="text-sm font-bold text-gray-700">
+            작은 실천이 쌓여 큰 변화를 만들어요.
+          </p>
+          <p className="mt-0.5 text-xs leading-relaxed text-gray-500">
+            오늘도 한 걸음, 갓생을 향해 나아가요! ✨
+          </p>
+        </div>
+        <span className="shrink-0 text-xl font-bold text-gray-300">›</span>
+      </div>
 
       <StudentBottomNav />
     </ScreenShell>
