@@ -463,15 +463,22 @@ export default function AdminDailyTasksPage() {
           apiFetch<AdminStudentSummary[]>("/admin/students"),
           apiFetch<AdminTextbookCatalogResponse>("/admin/textbooks"),
         ]);
-        const loadedTextbooks = textbookData.textbooks.map((textbook) => ({
-          category: textbook.category ?? textbook.subject,
-          label: textbook.title,
-          maxItemNumber: textbook.max_item_number,
-          minItemNumber: textbook.min_item_number,
-          shortTitle: textbook.short_title,
-          textbookKey: textbook.textbook_key,
-          totalItems: textbook.total_items,
-        }));
+        const loadedTextbooks = textbookData.textbooks
+          .filter(
+            (textbook) =>
+              Boolean(textbook.textbook_key) &&
+              textbook.is_active &&
+              textbook.is_checkable
+          )
+          .map((textbook) => ({
+            category: textbook.category ?? textbook.subject ?? "기타",
+            label: textbook.title,
+            maxItemNumber: textbook.max_item_number ?? textbook.total_items,
+            minItemNumber: textbook.min_item_number ?? (textbook.total_items > 0 ? 1 : undefined),
+            shortTitle: textbook.short_title,
+            textbookKey: textbook.textbook_key,
+            totalItems: textbook.total_items,
+          }));
 
         setStudents(studentData);
         setCatalogTextbooks(loadedTextbooks);
