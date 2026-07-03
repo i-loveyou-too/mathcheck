@@ -150,6 +150,7 @@ class MathTextbook(Base):
     title = Column(String(200), nullable=False)
     full_title = Column(String(300), nullable=False)
     type = Column(String(50), nullable=False)
+    structure_type = Column(String(50), nullable=False, server_default="none")
     is_checkable = Column(Boolean, nullable=False, default=True)
     is_published = Column(Boolean, nullable=False, default=True)
     is_student_only = Column(Boolean, nullable=False, default=False)
@@ -163,6 +164,12 @@ class MathTextbook(Base):
         back_populates="textbook",
         cascade="all, delete-orphan",
         order_by="MathTextbookItem.order_index, MathTextbookItem.id",
+    )
+    sections = relationship(
+        "MathTextbookSection",
+        back_populates="textbook",
+        cascade="all, delete-orphan",
+        order_by="MathTextbookSection.order_index, MathTextbookSection.id",
     )
     daily_tasks = relationship("MathDailyTask", back_populates="textbook")
     student_assignments = relationship(
@@ -208,6 +215,24 @@ class MathStudentItemProgress(Base):
 
     student = relationship("Student", back_populates="item_progress")
     item = relationship("MathTextbookItem", back_populates="progress_entries")
+
+
+class MathTextbookSection(Base):
+    __tablename__ = "math_textbook_sections"
+
+    id = Column(Integer, primary_key=True, index=True)
+    textbook_id = Column(Integer, ForeignKey("math_textbooks.id"), nullable=False, index=True)
+    unit_title = Column(String(200), nullable=True)
+    section_title = Column(String(200), nullable=False)
+    start_problem = Column(Integer, nullable=True)
+    end_problem = Column(Integer, nullable=True)
+    start_page = Column(Integer, nullable=True)
+    end_page = Column(Integer, nullable=True)
+    order_index = Column(Integer, nullable=False, default=0)
+    show_to_student = Column(Boolean, nullable=False, default=True)
+    use_for_homework = Column(Boolean, nullable=False, default=True)
+
+    textbook = relationship("MathTextbook", back_populates="sections")
 
 
 class MathDailyTask(Base):

@@ -66,6 +66,23 @@ def ensure_textbook_is_student_only_column():
             )
 
 
+def ensure_textbook_structure_type_column():
+    inspector = inspect(engine)
+    if not inspector.has_table("math_textbooks"):
+        return
+
+    column_names = {column["name"] for column in inspector.get_columns("math_textbooks")}
+
+    with engine.begin() as connection:
+        if "structure_type" not in column_names:
+            connection.execute(
+                text(
+                    "ALTER TABLE math_textbooks "
+                    "ADD COLUMN structure_type VARCHAR(50) NOT NULL DEFAULT 'none'"
+                )
+            )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Create tables automatically on startup so the app is easy to run locally.
@@ -73,6 +90,7 @@ async def lifespan(app: FastAPI):
     ensure_textbook_key_column()
     ensure_daily_task_completed_at_column()
     ensure_textbook_is_student_only_column()
+    ensure_textbook_structure_type_column()
     db = SessionLocal()
     try:
         crud.sync_textbook_keys(db)
@@ -253,6 +271,25 @@ def student_textbook_by_key(textbook_key: str, db: Session = Depends(get_db)):
     if textbook is None:
         raise HTTPException(status_code=404, detail="Textbook not found")
     return textbook
+
+
+@app.get(
+    "/student/textbooks/{textbook_key}/sections",
+    response_model=schemas.TextbookSectionsResponse,
+    tags=["Student"],
+)
+def student_textbook_sections(textbook_key: str, db: Session = Depends(get_db)):
+    textbook = crud.get_textbook_by_key(db, textbook_key)
+    if textbook is None:
+        raise HTTPException(status_code=404, detail="Textbook not found")
+    sections = crud.get_textbook_sections(db, textbook.id)
+    visible = [s for s in sections if s.show_to_student]
+    return {
+        "textbook_id": textbook.id,
+        "textbook_key": textbook_key,
+        "structure_type": getattr(textbook, "structure_type", "none") or "none",
+        "sections": visible,
+    }
 
 
 @app.get(
@@ -475,6 +512,42 @@ def admin_textbook_detail(textbook_id: int, db: Session = Depends(get_db)):
     return result
 
 
+@app.patch(
+    "/admin/textbooks/{textbook_id}",
+    response_model=schemas.TextbookDetailResponse,
+    tags=["Admin"],
+)
+def admin_update_textbook(
+    textbook_id: int,
+    payload: schemas.TextbookUpdateRequest,
+    db: Session = Depends(get_db),
+):
+    try:
+        textbook = crud.update_textbook(db, textbook_id, payload)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+    if textbook is None:
+        raise HTTPException(status_code=404, detail="Textbook not found")
+
+    result = crud.get_textbook_detail_admin(db, textbook_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Textbook not found")
+    return result
+
+
+@app.delete(
+    "/admin/textbooks/{textbook_id}",
+    response_model=schemas.DeleteResponse,
+    tags=["Admin"],
+)
+def admin_delete_textbook(textbook_id: int, db: Session = Depends(get_db)):
+    deleted = crud.delete_textbook_soft(db, textbook_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Textbook not found")
+    return {"ok": True}
+
+
 @app.get(
     "/admin/textbooks/{textbook_id}/assignments",
     response_model=schemas.TextbookAssignmentsResponse,
@@ -489,6 +562,49 @@ def get_textbook_assignments(textbook_id: int, db: Session = Depends(get_db)):
         "textbook_id": textbook_id,
         "is_student_only": result["is_student_only"],
         "assignments": assignments,
+    }
+
+
+@app.get(
+    "/admin/textbooks/{textbook_id}/sections",
+    response_model=schemas.TextbookSectionsResponse,
+    tags=["Admin"],
+)
+def admin_get_textbook_sections(textbook_id: int, db: Session = Depends(get_db)):
+    textbook = db.query(models.MathTextbook).filter(models.MathTextbook.id == textbook_id).first()
+    if textbook is None:
+        raise HTTPException(status_code=404, detail="Textbook not found")
+    sections = crud.get_textbook_sections(db, textbook_id)
+    return {
+        "textbook_id": textbook_id,
+        "textbook_key": textbook.textbook_key or "",
+        "structure_type": getattr(textbook, "structure_type", "none") or "none",
+        "sections": sections,
+    }
+
+
+@app.put(
+    "/admin/textbooks/{textbook_id}/sections",
+    response_model=schemas.TextbookSectionsResponse,
+    tags=["Admin"],
+)
+def admin_replace_textbook_sections(
+    textbook_id: int,
+    payload: schemas.TextbookSectionsReplaceRequest,
+    db: Session = Depends(get_db),
+):
+    textbook = db.query(models.MathTextbook).filter(models.MathTextbook.id == textbook_id).first()
+    if textbook is None:
+        raise HTTPException(status_code=404, detail="Textbook not found")
+    if payload.structure_type is not None:
+        textbook.structure_type = payload.structure_type
+        db.commit()
+    sections = crud.replace_textbook_sections(db, textbook_id, payload.sections)
+    return {
+        "textbook_id": textbook_id,
+        "textbook_key": textbook.textbook_key or "",
+        "structure_type": getattr(textbook, "structure_type", "none") or "none",
+        "sections": sections,
     }
 
 

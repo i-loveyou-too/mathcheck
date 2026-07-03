@@ -12,6 +12,7 @@ from models import (
     MathStudentTextbook,
     MathTextbook,
     MathTextbookItem,
+    MathTextbookSection,
     MathTextbookSeries,
     Progress,
     Student,
@@ -931,6 +932,34 @@ def create_or_get_textbook_series(db: Session, data: dict) -> tuple[MathTextbook
     return series, True
 
 
+def get_textbook_sections(db: Session, textbook_id: int) -> list[MathTextbookSection]:
+    return (
+        db.query(MathTextbookSection)
+        .filter(MathTextbookSection.textbook_id == textbook_id)
+        .order_by(MathTextbookSection.order_index, MathTextbookSection.id)
+        .all()
+    )
+
+
+def replace_textbook_sections(db: Session, textbook_id: int, sections: list) -> list[MathTextbookSection]:
+    db.query(MathTextbookSection).filter(MathTextbookSection.textbook_id == textbook_id).delete()
+    for i, s in enumerate(sections):
+        db.add(MathTextbookSection(
+            textbook_id=textbook_id,
+            unit_title=getattr(s, "unit_title", None),
+            section_title=s.section_title,
+            start_problem=getattr(s, "start_problem", None),
+            end_problem=getattr(s, "end_problem", None),
+            start_page=getattr(s, "start_page", None),
+            end_page=getattr(s, "end_page", None),
+            order_index=s.order_index if s.order_index != 0 else i,
+            show_to_student=getattr(s, "show_to_student", True),
+            use_for_homework=getattr(s, "use_for_homework", True),
+        ))
+    db.commit()
+    return get_textbook_sections(db, textbook_id)
+
+
 def create_textbook_with_items(db: Session, payload) -> MathTextbook:
     existing = db.query(MathTextbook).filter(MathTextbook.full_title == payload.full_title).first()
     if existing:
@@ -943,6 +972,7 @@ def create_textbook_with_items(db: Session, payload) -> MathTextbook:
         title=payload.title,
         full_title=payload.full_title,
         type=payload.type,
+        structure_type=getattr(payload, "structure_type", "none"),
         is_checkable=payload.is_checkable,
         is_published=payload.is_published,
         is_active=payload.is_active,
@@ -962,9 +992,85 @@ def create_textbook_with_items(db: Session, payload) -> MathTextbook:
         )
         db.add(item)
 
+    for i, s in enumerate(getattr(payload, "sections", [])):
+        db.add(MathTextbookSection(
+            textbook_id=textbook.id,
+            unit_title=getattr(s, "unit_title", None),
+            section_title=s.section_title,
+            start_problem=getattr(s, "start_problem", None),
+            end_problem=getattr(s, "end_problem", None),
+            start_page=getattr(s, "start_page", None),
+            end_page=getattr(s, "end_page", None),
+            order_index=s.order_index if s.order_index != 0 else i,
+            show_to_student=getattr(s, "show_to_student", True),
+            use_for_homework=getattr(s, "use_for_homework", True),
+        ))
+
     db.commit()
     db.refresh(textbook)
     return textbook
+
+
+def update_textbook(db: Session, textbook_id: int, payload) -> Optional[MathTextbook]:
+    textbook = db.query(MathTextbook).filter(MathTextbook.id == textbook_id).first()
+    if textbook is None:
+        return None
+
+    update_data = payload.model_dump(exclude_unset=True)
+
+    full_title = update_data.get("full_title")
+    if full_title is not None:
+        existing = (
+            db.query(MathTextbook)
+            .filter(
+                MathTextbook.full_title == full_title,
+                MathTextbook.id != textbook_id,
+            )
+            .first()
+        )
+        if existing:
+            raise ValueError(f"이미 존재하는 교재입니다: {full_title}")
+
+    if "textbook_key" in update_data:
+        textbook_key = update_data["textbook_key"]
+        if textbook_key:
+            existing = (
+                db.query(MathTextbook)
+                .filter(
+                    MathTextbook.textbook_key == textbook_key,
+                    MathTextbook.id != textbook_id,
+                )
+                .first()
+            )
+            if existing:
+                raise ValueError(f"이미 존재하는 교재 키입니다: {textbook_key}")
+
+    for field in [
+        "subject",
+        "title",
+        "full_title",
+        "textbook_key",
+        "is_checkable",
+        "is_published",
+        "is_active",
+        "order_index",
+    ]:
+        if field in update_data:
+            setattr(textbook, field, update_data[field])
+
+    db.commit()
+    db.refresh(textbook)
+    return textbook
+
+
+def delete_textbook_soft(db: Session, textbook_id: int) -> bool:
+    textbook = db.query(MathTextbook).filter(MathTextbook.id == textbook_id).first()
+    if textbook is None:
+        return False
+
+    textbook.is_active = False
+    db.commit()
+    return True
 
 
 def get_admin_textbook_list(db: Session) -> list[dict]:
@@ -1021,15 +1127,18 @@ def get_textbook_detail_admin(db: Session, textbook_id: int) -> Optional[dict]:
         .order_by(MathTextbookItem.order_index, MathTextbookItem.id)
         .all()
     )
+    sections = get_textbook_sections(db, textbook_id)
 
     return {
         "id": textbook.id,
         "series_id": textbook.series_id,
         "series_name": series_name,
+        "textbook_key": textbook.textbook_key,
         "subject": textbook.subject,
         "title": textbook.title,
         "full_title": textbook.full_title,
         "type": textbook.type,
+        "structure_type": getattr(textbook, "structure_type", "none") or "none",
         "is_checkable": textbook.is_checkable,
         "is_published": textbook.is_published,
         "is_active": textbook.is_active,
@@ -1045,6 +1154,22 @@ def get_textbook_detail_admin(db: Session, textbook_id: int) -> Optional[dict]:
                 "is_active": item.is_active,
             }
             for item in items
+        ],
+        "sections": [
+            {
+                "id": s.id,
+                "textbook_id": s.textbook_id,
+                "unit_title": s.unit_title,
+                "section_title": s.section_title,
+                "start_problem": s.start_problem,
+                "end_problem": s.end_problem,
+                "start_page": s.start_page,
+                "end_page": s.end_page,
+                "order_index": s.order_index,
+                "show_to_student": s.show_to_student,
+                "use_for_homework": s.use_for_homework,
+            }
+            for s in sections
         ],
     }
 
@@ -1135,7 +1260,6 @@ def get_textbooks_for_student_catalog(db: Session, student_id: int) -> dict:
     checkable_textbooks = (
         db.query(MathTextbook)
         .filter(
-            MathTextbook.is_checkable.is_(True),
             MathTextbook.is_active.is_(True),
             visibility,
         )

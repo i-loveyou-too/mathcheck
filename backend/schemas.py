@@ -351,6 +351,46 @@ class TextbookSeriesCreateRequest(BaseModel):
     order_index: int = 0
 
 
+class TextbookSectionIn(BaseModel):
+    unit_title: Optional[str] = None
+    section_title: str
+    start_problem: Optional[int] = None
+    end_problem: Optional[int] = None
+    start_page: Optional[int] = None
+    end_page: Optional[int] = None
+    order_index: int = 0
+    show_to_student: bool = True
+    use_for_homework: bool = True
+
+
+class TextbookSectionOut(BaseModel):
+    id: int
+    textbook_id: int
+    unit_title: Optional[str] = None
+    section_title: str
+    start_problem: Optional[int] = None
+    end_problem: Optional[int] = None
+    start_page: Optional[int] = None
+    end_page: Optional[int] = None
+    order_index: int
+    show_to_student: bool
+    use_for_homework: bool
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TextbookSectionsResponse(BaseModel):
+    textbook_id: int
+    textbook_key: str
+    structure_type: str
+    sections: list[TextbookSectionOut]
+
+
+class TextbookSectionsReplaceRequest(BaseModel):
+    structure_type: Optional[str] = None
+    sections: list[TextbookSectionIn] = []
+
+
 class TextbookCreateRequest(BaseModel):
     series_id: int
     textbook_key: Optional[str] = None
@@ -358,11 +398,24 @@ class TextbookCreateRequest(BaseModel):
     title: str
     full_title: str
     type: str = "problem"
+    structure_type: str = "none"
     is_checkable: bool = True
     is_published: bool = True
     is_active: bool = True
     order_index: int = 0
     item_count: int
+    sections: list[TextbookSectionIn] = []
+
+
+class TextbookUpdateRequest(BaseModel):
+    subject: Optional[str] = None
+    title: Optional[str] = None
+    full_title: Optional[str] = None
+    textbook_key: Optional[str] = None
+    is_checkable: Optional[bool] = None
+    is_published: Optional[bool] = None
+    is_active: Optional[bool] = None
+    order_index: Optional[int] = None
 
 
 class TextbookListItem(BaseModel):
@@ -398,10 +451,12 @@ class TextbookDetailResponse(BaseModel):
     id: int
     series_id: int
     series_name: str
+    textbook_key: Optional[str] = None
     subject: Optional[str] = None
     title: str
     full_title: str
     type: str
+    structure_type: str = "none"
     is_checkable: bool
     is_published: bool
     is_active: bool
@@ -409,6 +464,7 @@ class TextbookDetailResponse(BaseModel):
     order_index: int
     item_count: int
     items: list[TextbookDetailItem]
+    sections: list[TextbookSectionOut] = []
 
 
 class StudentTextbookAssignment(BaseModel):

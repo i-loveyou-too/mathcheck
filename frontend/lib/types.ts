@@ -173,14 +173,30 @@ export type TextbookMgmtDetailItem = {
   is_active: boolean;
 };
 
+export type TextbookSection = {
+  id: number;
+  textbook_id: number;
+  unit_title: string | null;
+  section_title: string;
+  start_problem: number | null;
+  end_problem: number | null;
+  start_page: number | null;
+  end_page: number | null;
+  order_index: number;
+  show_to_student: boolean;
+  use_for_homework: boolean;
+};
+
 export type TextbookMgmtDetail = {
   id: number;
   series_id: number;
   series_name: string;
+  textbook_key: string | null;
   subject: string | null;
   title: string;
   full_title: string;
   type: string;
+  structure_type: string;
   is_checkable: boolean;
   is_published: boolean;
   is_active: boolean;
@@ -188,6 +204,7 @@ export type TextbookMgmtDetail = {
   order_index: number;
   item_count: number;
   items: TextbookMgmtDetailItem[];
+  sections: TextbookSection[];
 };
 
 export type StudentTextbookAssignment = {
