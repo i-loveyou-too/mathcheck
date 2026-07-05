@@ -1131,13 +1131,35 @@ export default function TextbooksManagementPage() {
                       <p className="text-xs font-bold text-[#98A2B3]">선택된 교재</p>
                       <h2 className="mt-1 text-2xl font-black tracking-tight text-[#17213B]">교재 상세</h2>
                     </div>
-                    <button
-                      className="rounded-full bg-[#F4F6FA] px-3 py-1.5 text-xs font-black text-[#667085] hover:bg-[#EDEFF5]"
-                      onClick={() => { setSelectedId(null); setDetail(null); setDetailError(""); setEditingSections(false); }}
-                      type="button"
-                    >
-                      닫기
-                    </button>
+                    <div className="flex items-center gap-2">
+                      {detail && (
+                        <>
+                          <button
+                            className="rounded-full bg-[#EEF2FF] px-3 py-1.5 text-xs font-black text-[#4F46E5] hover:bg-[#E0E7FF]"
+                            disabled={submitting}
+                            onClick={handleEditTextbook}
+                            type="button"
+                          >
+                            수정
+                          </button>
+                          <button
+                            className="rounded-full bg-red-50 px-3 py-1.5 text-xs font-black text-red-500 hover:bg-red-100"
+                            disabled={submitting}
+                            onClick={() => void handleDeleteTextbook()}
+                            type="button"
+                          >
+                            삭제
+                          </button>
+                        </>
+                      )}
+                      <button
+                        className="rounded-full bg-[#F4F6FA] px-3 py-1.5 text-xs font-black text-[#667085] hover:bg-[#EDEFF5]"
+                        onClick={() => { setSelectedId(null); setDetail(null); setDetailError(""); setEditingSections(false); }}
+                        type="button"
+                      >
+                        닫기
+                      </button>
+                    </div>
                   </div>
 
                   {detailError ? (
