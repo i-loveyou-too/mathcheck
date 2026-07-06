@@ -395,6 +395,7 @@ class TextbookCreateRequest(BaseModel):
     series_id: int
     textbook_key: Optional[str] = None
     subject: Optional[str] = None
+    subjects: list[str] = []
     title: str
     full_title: str
     type: str = "problem"
@@ -409,9 +410,11 @@ class TextbookCreateRequest(BaseModel):
 
 class TextbookUpdateRequest(BaseModel):
     subject: Optional[str] = None
+    subjects: Optional[list[str]] = None
     title: Optional[str] = None
     full_title: Optional[str] = None
     textbook_key: Optional[str] = None
+    type: Optional[str] = None
     is_checkable: Optional[bool] = None
     is_published: Optional[bool] = None
     is_active: Optional[bool] = None
@@ -423,6 +426,7 @@ class TextbookListItem(BaseModel):
     series_id: int
     series_name: str
     subject: Optional[str] = None
+    subjects: list[str] = []
     title: str
     full_title: str
     type: str
@@ -453,6 +457,7 @@ class TextbookDetailResponse(BaseModel):
     series_name: str
     textbook_key: Optional[str] = None
     subject: Optional[str] = None
+    subjects: list[str] = []
     title: str
     full_title: str
     type: str

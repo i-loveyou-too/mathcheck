@@ -177,6 +177,24 @@ class MathTextbook(Base):
         back_populates="textbook",
         cascade="all, delete-orphan",
     )
+    subject_tags = relationship(
+        "MathTextbookSubject",
+        back_populates="textbook",
+        cascade="all, delete-orphan",
+    )
+
+
+class MathTextbookSubject(Base):
+    __tablename__ = "math_textbook_subjects"
+    __table_args__ = (
+        UniqueConstraint("textbook_id", "subject", name="uq_math_textbook_subjects_textbook_subject"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    textbook_id = Column(Integer, ForeignKey("math_textbooks.id"), nullable=False, index=True)
+    subject = Column(String(50), nullable=False)
+
+    textbook = relationship("MathTextbook", back_populates="subject_tags")
 
 
 class MathTextbookItem(Base):

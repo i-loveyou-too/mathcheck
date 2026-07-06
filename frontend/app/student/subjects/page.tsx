@@ -83,7 +83,7 @@ const subjectConfigs = [
     title: "확률과 통계",
     description: "경우의 수 교재 진도를 확인해요.",
     href: "/student/subjects/probability",
-    subjectKeys: ["확통", "확률과 통계"],
+    subjectKeys: ["확률과 통계"],
     iconBg: "bg-emerald-50",
     iconContent: <BarChartIcon className="h-5 w-5 text-emerald-500" />,
     ringColor: "#10B981",

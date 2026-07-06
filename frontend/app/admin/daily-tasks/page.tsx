@@ -855,7 +855,7 @@ export default function AdminDailyTasksPage() {
     if (!quickRegSeriesId) { setQuickRegError("시리즈를 선택해주세요."); return; }
     const series = seriesList.find((s) => String(s.id) === quickRegSeriesId);
     if (!series) { setQuickRegError("시리즈를 선택해주세요."); return; }
-    const subjectMap: Record<string, string> = { "수1": "math1", "수2": "math2", "확통": "statistics" };
+    const subjectMap: Record<string, string> = { "수1": "math1", "수2": "math2", "확률과 통계": "statistics" };
     const fullTitle = `${series.display_name} ${quickRegSubject} - ${quickRegTitle.trim()}`;
     const textbookKey = `${series.english_name.toLowerCase().replace(/\s+/g, "-")}-${subjectMap[quickRegSubject] ?? quickRegSubject}-${quickRegTitle.trim().toLowerCase().replace(/\s+/g, "-").slice(0, 20)}`;
     setQuickRegSubmitting(true);
@@ -1066,7 +1066,7 @@ export default function AdminDailyTasksPage() {
                           <div>
                             <label className="mb-1.5 block text-xs font-bold text-[#667085]">과목</label>
                             <div className="flex gap-1.5">
-                              {(["수1", "수2", "확통"] as const).map((subj) => (
+                              {(["수1", "수2", "확률과 통계"] as const).map((subj) => (
                                 <button key={subj} type="button" onClick={() => setQuickRegSubject(subj)} className={`flex-1 rounded-xl py-2 text-xs font-bold transition ${quickRegSubject === subj ? "bg-[#0F172A] text-white" : "border border-[#E5E7EB] bg-white text-[#667085] hover:bg-[#F4F6FA]"}`}>{subj}</button>
                               ))}
                             </div>

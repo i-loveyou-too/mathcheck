@@ -59,7 +59,6 @@ function getProgressTone(value: number): "green" | "orange" | "blue" {
 function normalizeSubjectName(name: string) {
   if (name === "수학1") return "수1";
   if (name === "수학2") return "수2";
-  if (name === "확률과 통계") return "확통";
   return name;
 }
 

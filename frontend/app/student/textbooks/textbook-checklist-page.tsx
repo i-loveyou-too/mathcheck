@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Header } from "@/components/header";
 import { ScreenShell } from "@/components/screen-shell";
 import { StudentBottomNav } from "@/components/student-bottom-nav";
-import { apiFetch } from "@/lib/api";
+import { ApiError, apiFetch } from "@/lib/api";
 import { getStudent } from "@/lib/storage";
 import { cn } from "@/lib/utils";
 
@@ -150,7 +150,16 @@ export function TextbookChecklistPage({
             status: toUiStatus(item.status),
           }))
         );
-      } catch {
+      } catch (err) {
+        if (err instanceof ApiError) {
+          console.error("[textbook-progress] failed", {
+            status: err.status,
+            body: err.body,
+            progressKey,
+          });
+        } else {
+          console.error("[textbook-progress] failed", err);
+        }
         setLoadError("진도 정보를 불러오지 못했습니다.");
       } finally {
         setLoading(false);
@@ -231,7 +240,12 @@ export function TextbookChecklistPage({
           status: toApiStatus(status),
         },
       });
-    } catch {
+    } catch (err) {
+      if (err instanceof ApiError) {
+        console.error("[item-progress] save failed", { status: err.status, body: err.body });
+      } else {
+        console.error("[item-progress] save failed", err);
+      }
       setSaveError("저장하지 못했습니다. 다시 시도해주세요.");
       setItems(previousItems);
       await fetchProgress(studentId);

@@ -194,7 +194,7 @@ getAdmin()    // → { username, isLoggedIn } | null
 ```
 /login                          학생 로그인 (전화번호 입력)
 /student/today                  🎯 오늘의 미션 — 이번 주 숙제 목록
-/student/subjects               📚 교재진도 — 수1 / 수2 / 확통 선택
+/student/subjects               📚 교재진도 — 수1 / 수2 / 확률과 통계 선택
   /student/subjects/su1         수1 교재 목록
   /student/subjects/su2         수2 교재 목록
   /student/subjects/probability 확률과 통계 교재 목록
@@ -203,7 +203,7 @@ getAdmin()    // → { username, isLoggedIn } | null
   deep-su1-trig-graph           딥러닝 수1 삼각함수 그래프
   deep-su1-sequence-basic       딥러닝 수1 수열 등차·등비
   deep-su1-sequence-sum         딥러닝 수1 수열의 합
-  deep-prob-counting            딥러닝 확통 경우의 수
+  deep-prob-counting            딥러닝 확률과 통계 경우의 수
 /student/tracker                🔥 갓생 챌린지 — 월간 달성 캘린더
 /student/my-progress            단원 진도 요약
 /student/units/:unitId          단원별 세부 체크리스트
@@ -274,7 +274,7 @@ getAdmin()    // → { username, isLoggedIn } | null
 |---|---|
 | `math_students` | 학생 계정 (phone 로그인 키) |
 | `math_admins` | 관리자 계정 (password 평문) |
-| `math_subjects` | 과목 (수1 / 수2 / 확통) |
+| `math_subjects` | 과목 (수1 / 수2 / 확률과 통계) |
 | `math_units` | 단원 |
 | `math_tasks` | 단원별 학습 항목 |
 | `math_progress` | 학생별 단원 항목 완료 여부 |

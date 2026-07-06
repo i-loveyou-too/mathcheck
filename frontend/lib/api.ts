@@ -4,6 +4,18 @@ type RequestOptions = Omit<RequestInit, "body"> & {
   body?: unknown;
 };
 
+export class ApiError extends Error {
+  status: number;
+  body: unknown;
+
+  constructor(status: number, body: unknown, message: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.body = body;
+  }
+}
+
 export async function apiFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {
   if (!API_BASE_URL) {
     throw new Error("NEXT_PUBLIC_API_URL is not configured.");
@@ -24,18 +36,20 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
   });
 
   if (!response.ok) {
+    let body: unknown = null;
     let message = "Request failed.";
 
     try {
-      const data = (await response.json()) as { detail?: string };
-      if (data.detail) {
-        message = data.detail;
+      body = await response.json();
+      const detail = (body as { detail?: string } | null)?.detail;
+      if (detail) {
+        message = detail;
       }
     } catch {
       message = response.statusText || message;
     }
 
-    throw new Error(message);
+    throw new ApiError(response.status, body, message);
   }
 
   return response.json() as Promise<T>;

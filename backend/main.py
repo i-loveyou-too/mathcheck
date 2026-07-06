@@ -94,6 +94,7 @@ async def lifespan(app: FastAPI):
     db = SessionLocal()
     try:
         crud.sync_textbook_keys(db)
+        crud.backfill_textbook_subjects(db)
     finally:
         db.close()
     yield
@@ -301,6 +302,15 @@ def textbook_progress(textbook_key: str, student_id: int, db: Session = Depends(
     student = crud.get_student_by_id(db, student_id)
     if student is None:
         raise HTTPException(status_code=404, detail="Student not found")
+
+    textbook = crud.get_textbook_by_key(db, textbook_key)
+    if textbook is None:
+        raise HTTPException(status_code=404, detail="Textbook not found")
+
+    if textbook.is_student_only and not crud.is_textbook_assigned_to_student(
+        db, textbook.id, student_id
+    ):
+        raise HTTPException(status_code=403, detail="Textbook not assigned to student")
 
     progress = crud.get_textbook_progress(db, student_id, textbook_key)
     if progress is None:

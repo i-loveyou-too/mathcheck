@@ -16,11 +16,6 @@ type StudentCardProps = {
   variant?: "mobile" | "list";
 };
 
-function normalizeSubject(name: string) {
-  if (name === "확률과 통계") return "확통";
-  return name;
-}
-
 function getStatus(progressPercentage: number) {
   if (progressPercentage <= 10) {
     return { label: "진도 낮음", className: "bg-red-50 text-red-500" };
@@ -83,7 +78,7 @@ export function StudentCard({
                   className="rounded-full bg-[#F4F6FA] px-3 py-1 text-xs font-bold text-[#667085]"
                   key={subject.id}
                 >
-                  {normalizeSubject(subject.name)} {Math.round(subject.progressPercentage)}%
+                  {subject.name} {Math.round(subject.progressPercentage)}%
                 </span>
               ))}
               <span className={`rounded-full px-3 py-1 text-xs font-black ${status.className}`}>
@@ -130,7 +125,7 @@ export function StudentCard({
             className="rounded-full bg-[#F4F6FA] px-3 py-1 text-xs font-bold text-[#667085]"
             key={subject.id}
           >
-            {normalizeSubject(subject.name)} {Math.round(subject.progressPercentage)}%
+            {subject.name} {Math.round(subject.progressPercentage)}%
           </span>
         ))}
       </div>

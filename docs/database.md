@@ -10,7 +10,7 @@
 |---|---|
 | `math_students` | 학생 계정 |
 | `math_admins` | 관리자 계정 |
-| `math_subjects` | 과목 (수1, 수2, 확통) |
+| `math_subjects` | 과목 (수1, 수2, 확률과 통계) |
 | `math_units` | 단원 |
 | `math_tasks` | 단원별 학습 항목 |
 | `math_progress` | 학생별 단원 학습 진도 |

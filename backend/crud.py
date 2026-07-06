@@ -14,6 +14,7 @@ from models import (
     MathTextbookItem,
     MathTextbookSection,
     MathTextbookSeries,
+    MathTextbookSubject,
     Progress,
     Student,
     Subject,
@@ -34,6 +35,48 @@ ITEM_PROGRESS_STATUSES = {"not_started", "partial", "done"}
 DAILY_TASK_STATUSES = {"todo", "in_progress", "done"}
 STUDENT_PROGRESS_SUMMARY_SUBJECTS = ["수1", "수2", "확률과 통계"]
 KST = timezone(timedelta(hours=9))
+
+# Canonical multi-select subject tags for the newer `subjects` (plural) system.
+# Kept distinct from the legacy single-value `수1`/`수2` used by student routing/pages.
+TEXTBOOK_SUBJECT_OPTIONS = ["수학 I", "수학 II", "확률과 통계"]
+
+_LEGACY_SUBJECT_TO_CANONICAL = {
+    "수1": "수학 I",
+    "수학1": "수학 I",
+    "수학I": "수학 I",
+    "수학 I": "수학 I",
+    "수2": "수학 II",
+    "수학2": "수학 II",
+    "수학II": "수학 II",
+    "수학 II": "수학 II",
+    "확통": "확률과 통계",
+    "확률과통계": "확률과 통계",
+    "확률과 통계": "확률과 통계",
+}
+
+_CANONICAL_SUBJECT_TO_LEGACY = {
+    "수학 I": "수1",
+    "수학 II": "수2",
+    "확률과 통계": "확률과 통계",
+}
+
+# `MathTextbook.type` doubles as the textbook category: a plain problem set vs. a mock exam.
+TEXTBOOK_TYPE_OPTIONS = ["problem", "mock_exam"]
+
+
+def normalize_textbook_subject(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    key = value.strip()
+    if not key:
+        return None
+    return _LEGACY_SUBJECT_TO_CANONICAL.get(key, key)
+
+
+def canonical_subject_to_legacy(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    return _CANONICAL_SUBJECT_TO_LEGACY.get(value, value)
 
 
 def percentage(completed_tasks: int, total_tasks: int) -> float:
@@ -178,9 +221,58 @@ def get_checkable_textbooks(db: Session) -> list[MathTextbook]:
     )
 
 
+def get_textbook_subjects(db: Session, textbook_id: int) -> list[str]:
+    rows = (
+        db.query(MathTextbookSubject.subject)
+        .filter(MathTextbookSubject.textbook_id == textbook_id)
+        .order_by(MathTextbookSubject.id)
+        .all()
+    )
+    return [row.subject for row in rows]
+
+
+def set_textbook_subjects(db: Session, textbook_id: int, subjects: list[str]) -> list[str]:
+    db.query(MathTextbookSubject).filter(MathTextbookSubject.textbook_id == textbook_id).delete()
+
+    canonical_list: list[str] = []
+    seen: set[str] = set()
+    for value in subjects:
+        canonical = normalize_textbook_subject(value)
+        if not canonical or canonical in seen:
+            continue
+        seen.add(canonical)
+        canonical_list.append(canonical)
+        db.add(MathTextbookSubject(textbook_id=textbook_id, subject=canonical))
+
+    db.flush()
+    return canonical_list
+
+
+def backfill_textbook_subjects(db: Session) -> None:
+    tagged_textbook_ids = {
+        row.textbook_id for row in db.query(MathTextbookSubject.textbook_id).distinct().all()
+    }
+    changed = False
+    for textbook in db.query(MathTextbook).all():
+        if textbook.id in tagged_textbook_ids:
+            continue
+        canonical = normalize_textbook_subject(textbook.subject)
+        if canonical:
+            db.add(MathTextbookSubject(textbook_id=textbook.id, subject=canonical))
+            changed = True
+
+    if changed:
+        db.commit()
+
+
 def get_active_textbooks_by_subject(db: Session, subject: str, student_id: Optional[int] = None) -> list[dict]:
+    canonical_subject = normalize_textbook_subject(subject)
+    tagged_textbook_ids = db.query(MathTextbookSubject.textbook_id).filter(
+        MathTextbookSubject.subject == canonical_subject
+    )
+
     base_filter = [
-        MathTextbook.subject == subject,
+        MathTextbook.id.in_(tagged_textbook_ids),
         MathTextbook.is_active.is_(True),
     ]
 
@@ -607,12 +699,21 @@ def upsert_progress(db: Session, student_id: int, task_id: int, is_done: bool) -
     return progress
 
 
-def get_textbook_progress(db: Session, student_id: int, textbook_key: str) -> Optional[dict]:
-    full_title = TEXTBOOK_PROGRESS_CONFIG.get(textbook_key)
-    if full_title is None:
-        return None
+def is_textbook_assigned_to_student(db: Session, textbook_id: int, student_id: int) -> bool:
+    return (
+        db.query(MathStudentTextbook)
+        .filter(
+            MathStudentTextbook.student_id == student_id,
+            MathStudentTextbook.textbook_id == textbook_id,
+            MathStudentTextbook.is_active.is_(True),
+        )
+        .first()
+        is not None
+    )
 
-    textbook = get_textbook_by_full_title(db, full_title)
+
+def get_textbook_progress(db: Session, student_id: int, textbook_key: str) -> Optional[dict]:
+    textbook = get_textbook_by_key(db, textbook_key)
     if textbook is None:
         return None
 
@@ -965,10 +1066,27 @@ def create_textbook_with_items(db: Session, payload) -> MathTextbook:
     if existing:
         raise ValueError(f"이미 존재하는 교재입니다: {payload.full_title}")
 
+    legacy_subject = getattr(payload, "subject", None)
+    canonical_subjects = []
+    seen = set()
+    for value in getattr(payload, "subjects", None) or []:
+        canonical = normalize_textbook_subject(value)
+        if canonical and canonical not in seen:
+            seen.add(canonical)
+            canonical_subjects.append(canonical)
+    if not canonical_subjects:
+        fallback = normalize_textbook_subject(legacy_subject)
+        if fallback:
+            canonical_subjects = [fallback]
+
+    primary_subject = legacy_subject or (
+        canonical_subject_to_legacy(canonical_subjects[0]) if canonical_subjects else None
+    )
+
     textbook = MathTextbook(
         series_id=payload.series_id,
         textbook_key=getattr(payload, "textbook_key", None),
-        subject=payload.subject,
+        subject=primary_subject,
         title=payload.title,
         full_title=payload.full_title,
         type=payload.type,
@@ -980,6 +1098,9 @@ def create_textbook_with_items(db: Session, payload) -> MathTextbook:
     )
     db.add(textbook)
     db.flush()
+
+    for subject in canonical_subjects:
+        db.add(MathTextbookSubject(textbook_id=textbook.id, subject=subject))
 
     for i in range(1, payload.item_count + 1):
         item = MathTextbookItem(
@@ -1045,11 +1166,14 @@ def update_textbook(db: Session, textbook_id: int, payload) -> Optional[MathText
             if existing:
                 raise ValueError(f"이미 존재하는 교재 키입니다: {textbook_key}")
 
+    subjects_input = update_data.pop("subjects", None)
+
     for field in [
         "subject",
         "title",
         "full_title",
         "textbook_key",
+        "type",
         "is_checkable",
         "is_published",
         "is_active",
@@ -1057,6 +1181,11 @@ def update_textbook(db: Session, textbook_id: int, payload) -> Optional[MathText
     ]:
         if field in update_data:
             setattr(textbook, field, update_data[field])
+
+    if subjects_input is not None:
+        canonical_subjects = set_textbook_subjects(db, textbook.id, subjects_input)
+        if "subject" not in update_data and canonical_subjects:
+            textbook.subject = canonical_subject_to_legacy(canonical_subjects[0])
 
     db.commit()
     db.refresh(textbook)
@@ -1089,12 +1218,26 @@ def get_admin_textbook_list(db: Session) -> list[dict]:
     )
     count_map = {row.textbook_id: row.cnt for row in item_counts}
 
+    textbook_ids = [textbook.id for textbook, _ in textbooks]
+    subject_rows = (
+        db.query(MathTextbookSubject.textbook_id, MathTextbookSubject.subject)
+        .filter(MathTextbookSubject.textbook_id.in_(textbook_ids))
+        .order_by(MathTextbookSubject.id)
+        .all()
+        if textbook_ids
+        else []
+    )
+    subjects_map: dict[int, list[str]] = {}
+    for row in subject_rows:
+        subjects_map.setdefault(row.textbook_id, []).append(row.subject)
+
     return [
         {
             "id": textbook.id,
             "series_id": textbook.series_id,
             "series_name": series_name,
             "subject": textbook.subject,
+            "subjects": subjects_map.get(textbook.id, []),
             "title": textbook.title,
             "full_title": textbook.full_title,
             "type": textbook.type,
@@ -1135,6 +1278,7 @@ def get_textbook_detail_admin(db: Session, textbook_id: int) -> Optional[dict]:
         "series_name": series_name,
         "textbook_key": textbook.textbook_key,
         "subject": textbook.subject,
+        "subjects": get_textbook_subjects(db, textbook_id),
         "title": textbook.title,
         "full_title": textbook.full_title,
         "type": textbook.type,

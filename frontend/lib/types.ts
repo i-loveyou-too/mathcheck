@@ -153,6 +153,7 @@ export type TextbookMgmtListItem = {
   series_id: number;
   series_name: string;
   subject: string | null;
+  subjects: string[];
   title: string;
   full_title: string;
   type: string;
@@ -193,6 +194,7 @@ export type TextbookMgmtDetail = {
   series_name: string;
   textbook_key: string | null;
   subject: string | null;
+  subjects: string[];
   title: string;
   full_title: string;
   type: string;

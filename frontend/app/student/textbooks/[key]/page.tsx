@@ -14,7 +14,7 @@ type TextbookRoutePageProps = {
 function getBackHref(subject: string | null) {
   if (subject === "수1") return "/student/subjects/su1";
   if (subject === "수2") return "/student/subjects/su2";
-  if (subject === "확통" || subject === "확률과 통계") return "/student/subjects/probability";
+  if (subject === "확률과 통계") return "/student/subjects/probability";
   return "/student/subjects";
 }
 

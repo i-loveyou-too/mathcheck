@@ -22,9 +22,18 @@ type TextbookSectionsResponse = {
   sections: TextbookSection[];
 };
 
-type SubjectFilter = "전체" | "수1" | "수2" | "확통";
-const SUBJECT_FILTERS: SubjectFilter[] = ["전체", "수1", "수2", "확통"];
-const SUBJECTS = ["수1", "수2", "확통"] as const;
+type SubjectFilter = "전체" | "수학 I" | "수학 II" | "확률과 통계" | "모의고사";
+const SUBJECT_FILTERS: SubjectFilter[] = ["전체", "수학 I", "수학 II", "확률과 통계", "모의고사"];
+const SUBJECT_TAGS = ["수학 I", "수학 II", "확률과 통계"] as const;
+
+const TEXTBOOK_TYPE_OPTIONS: { value: string; label: string }[] = [
+  { value: "problem", label: "일반" },
+  { value: "mock_exam", label: "모의고사" },
+];
+
+function textbookTypeLabel(type: string): string {
+  return TEXTBOOK_TYPE_OPTIONS.find((t) => t.value === type)?.label ?? type;
+}
 
 type StructureType = "none" | "problems" | "pages" | "both";
 const STRUCTURE_TYPES: { value: StructureType; label: string; hint: string }[] = [
@@ -89,7 +98,8 @@ function sectionToPayload(s: SectionForm, index: number, structureType: string) 
 
 type FormState = {
   seriesId: string;
-  subject: string;
+  subjects: string[];
+  textbookType: string;
   title: string;
   fullTitle: string;
   textbookKey: string;
@@ -103,7 +113,8 @@ type FormState = {
 function makeEmptyForm(): FormState {
   return {
     seriesId: "",
-    subject: "",
+    subjects: [],
+    textbookType: "problem",
     title: "",
     fullTitle: "",
     textbookKey: "",
@@ -115,26 +126,26 @@ function makeEmptyForm(): FormState {
   };
 }
 
-function generateFullTitle(displayName: string, subject: string, title: string): string {
+function generateFullTitle(displayName: string, subjects: string[], title: string): string {
   if (!displayName || !title) return "";
-  return subject ? `${displayName} ${subject} - ${title}` : `${displayName} - ${title}`;
+  const subjectLabel = subjects.join("+");
+  return subjectLabel ? `${displayName} ${subjectLabel} - ${title}` : `${displayName} - ${title}`;
 }
 
-function generateTextbookKey(series: TextbookSeriesItem | undefined, subject: string): string {
+const TEXTBOOK_KEY_SUBJECT_SLUGS: Record<string, string> = {
+  "수학 I": "su1",
+  "수학 II": "su2",
+  "확률과 통계": "hwaktong",
+};
+
+function generateTextbookKey(series: TextbookSeriesItem | undefined, subjects: string[]): string {
   if (!series) return "";
   const slug = series.english_name.toLowerCase().replace(/\s+/g, "-");
-  const subjectMap: Record<string, string> = { "수1": "su1", "수2": "su2", "확통": "hwaktong" };
-  const s = subjectMap[subject] ?? "";
-  return [slug, s].filter(Boolean).join("-");
-}
-
-function normalizeSubject(subject: string | null | undefined): SubjectFilter | "" {
-  if (!subject) return "";
-  if (subject === "확률과통계") return "확통";
-  if (subject === "수학1") return "수1";
-  if (subject === "수학2") return "수2";
-  if (subject === "수1" || subject === "수2" || subject === "확통") return subject;
-  return "";
+  const subjectSlug = subjects
+    .map((s) => TEXTBOOK_KEY_SUBJECT_SLUGS[s] ?? "")
+    .filter(Boolean)
+    .join("-");
+  return [slug, subjectSlug].filter(Boolean).join("-");
 }
 
 function badgeClass(active: boolean, onClass: string, offClass: string) {
@@ -398,20 +409,22 @@ export default function TextbooksManagementPage() {
     if (fullTitleEdited) return;
     setForm((f) => ({
       ...f,
-      fullTitle: generateFullTitle(selectedSeries?.display_name ?? "", f.subject, f.title),
+      fullTitle: generateFullTitle(selectedSeries?.display_name ?? "", f.subjects, f.title),
     }));
-  }, [selectedSeries, form.subject, form.title, fullTitleEdited]);
+  }, [selectedSeries, form.subjects, form.title, fullTitleEdited]);
 
   useEffect(() => {
     if (keyEdited) return;
-    setForm((f) => ({ ...f, textbookKey: generateTextbookKey(selectedSeries, f.subject) }));
-  }, [selectedSeries, form.subject, keyEdited]);
+    setForm((f) => ({ ...f, textbookKey: generateTextbookKey(selectedSeries, f.subjects) }));
+  }, [selectedSeries, form.subjects, keyEdited]);
 
   const filteredTextbooks = useMemo(
     () =>
       subjectFilter === "전체"
         ? textbooks
-        : textbooks.filter((t) => normalizeSubject(t.subject) === subjectFilter),
+        : subjectFilter === "모의고사"
+        ? textbooks.filter((t) => t.type === "mock_exam")
+        : textbooks.filter((t) => t.subjects.includes(subjectFilter)),
     [textbooks, subjectFilter],
   );
 
@@ -439,7 +452,6 @@ export default function TextbooksManagementPage() {
     setForm((f) => ({
       ...makeEmptyForm(),
       seriesId: f.seriesId || (series[0] ? String(series[0].id) : ""),
-      subject: f.subject || "",
     }));
     setSections([]);
     setFullTitleEdited(false);
@@ -534,7 +546,8 @@ export default function TextbooksManagementPage() {
 
     setForm({
       seriesId: String(detail.series_id),
-      subject: normalizeSubject(detail.subject) || detail.subject || "",
+      subjects: detail.subjects ?? [],
+      textbookType: detail.type || "problem",
       title: detail.title,
       fullTitle: detail.full_title,
       textbookKey: detail.textbook_key ?? "",
@@ -685,10 +698,11 @@ export default function TextbooksManagementPage() {
         await apiFetch<TextbookMgmtDetail>(`/admin/textbooks/${editingTextbookId}`, {
           method: "PATCH",
           body: {
-            subject: form.subject || null,
+            subjects: form.subjects,
             title: form.title.trim(),
             full_title: form.fullTitle.trim(),
             textbook_key: form.textbookKey.trim() || null,
+            type: form.textbookType,
             is_checkable: form.isCheckable,
             is_published: form.isPublished,
             is_active: form.isActive,
@@ -705,11 +719,11 @@ export default function TextbooksManagementPage() {
           method: "POST",
           body: {
             series_id: Number(form.seriesId),
-            subject: form.subject || null,
+            subjects: form.subjects,
             title: form.title.trim(),
             full_title: form.fullTitle.trim(),
             textbook_key: form.textbookKey.trim() || null,
-            type: "problem",
+            type: form.textbookType,
             structure_type: form.structureType,
             is_checkable: form.isCheckable,
             is_published: form.isPublished,
@@ -860,9 +874,17 @@ export default function TextbooksManagementPage() {
                                 {tb.series_name}
                               </p>
                               <div className="mt-3 flex flex-wrap gap-2">
-                                {tb.subject ? (
-                                  <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ${isSelected ? "bg-white/15 text-white" : "bg-[#EEF2FF] text-[#4F46E5]"}`}>
-                                    {normalizeSubject(tb.subject) || tb.subject}
+                                {tb.subjects.map((s) => (
+                                  <span
+                                    className={`rounded-full px-2.5 py-1 text-[11px] font-black ${isSelected ? "bg-white/15 text-white" : "bg-[#EEF2FF] text-[#4F46E5]"}`}
+                                    key={s}
+                                  >
+                                    {s}
+                                  </span>
+                                ))}
+                                {tb.type === "mock_exam" ? (
+                                  <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ${isSelected ? "bg-white/15 text-white" : "bg-[#FFF7ED] text-[#F97316]"}`}>
+                                    모의고사
                                   </span>
                                 ) : null}
                                 <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ${isSelected ? "bg-white/10 text-white/80" : "bg-white text-[#667085]"}`}>
@@ -902,7 +924,11 @@ export default function TextbooksManagementPage() {
                     </button>
                   </div>
 
-                  <form className="mt-5 space-y-5" onSubmit={(e) => void handleSubmit(e)}>`r`n                    <div className="rounded-2xl bg-[#F8FAFC] px-4 py-3">`r`n                      <p className="text-xs font-black text-[#98A2B3]">현재 모드</p>`r`n                      <p className="mt-1 text-sm font-black text-[#17213B]">{formMode === "edit" ? "교재 수정" : "신규 교재 추가"}</p>`r`n                    </div>
+                  <form className="mt-5 space-y-5" onSubmit={(e) => void handleSubmit(e)}>
+                    <div className="rounded-2xl bg-[#F8FAFC] px-4 py-3">
+                      <p className="text-xs font-black text-[#98A2B3]">현재 모드</p>
+                      <p className="mt-1 text-sm font-black text-[#17213B]">{formMode === "edit" ? "교재 수정" : "신규 교재 추가"}</p>
+                    </div>
                     {/* Series */}
                     <div>
                       <div className="mb-2 flex items-center justify-between">
@@ -979,18 +1005,47 @@ export default function TextbooksManagementPage() {
                       })() : null}
                     </div>
 
-                    {/* Subject */}
+                    {/* Subject (multi-select) */}
                     <div>
-                      <label className="mb-2 block text-sm font-black text-[#344054]">과목</label>
+                      <label className="mb-2 block text-sm font-black text-[#344054]">
+                        과목 <span className="font-normal text-[#98A2B3]">(복수 선택 가능)</span>
+                      </label>
                       <div className="flex gap-2">
-                        {SUBJECTS.map((s) => (
+                        {SUBJECT_TAGS.map((s) => {
+                          const checked = form.subjects.includes(s);
+                          return (
+                            <button
+                              className={`flex-1 rounded-xl py-2.5 text-xs font-black transition ${checked ? "bg-[#0F172A] text-white" : "bg-[#F4F6FA] text-[#667085] hover:bg-[#EDEFF5]"}`}
+                              key={s}
+                              onClick={() =>
+                                setForm((f) => ({
+                                  ...f,
+                                  subjects: checked
+                                    ? f.subjects.filter((existing) => existing !== s)
+                                    : [...f.subjects, s],
+                                }))
+                              }
+                              type="button"
+                            >
+                              {s}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Type (category) */}
+                    <div>
+                      <label className="mb-2 block text-sm font-black text-[#344054]">유형</label>
+                      <div className="flex gap-2">
+                        {TEXTBOOK_TYPE_OPTIONS.map((opt) => (
                           <button
-                            className={`flex-1 rounded-xl py-2.5 text-xs font-black transition ${form.subject === s ? "bg-[#0F172A] text-white" : "bg-[#F4F6FA] text-[#667085] hover:bg-[#EDEFF5]"}`}
-                            key={s}
-                            onClick={() => setForm((f) => ({ ...f, subject: s }))}
+                            className={`flex-1 rounded-xl py-2.5 text-xs font-black transition ${form.textbookType === opt.value ? "bg-[#0F172A] text-white" : "bg-[#F4F6FA] text-[#667085] hover:bg-[#EDEFF5]"}`}
+                            key={opt.value}
+                            onClick={() => setForm((f) => ({ ...f, textbookType: opt.value }))}
                             type="button"
                           >
-                            {s}
+                            {opt.label}
                           </button>
                         ))}
                       </div>
@@ -1171,9 +1226,17 @@ export default function TextbooksManagementPage() {
                       {/* Info badges */}
                       <div className="rounded-[28px] bg-[#F8FAFC] p-4">
                         <div className="flex flex-wrap gap-2">
-                          {detail.subject ? (
-                            <span className="rounded-full bg-[#EEF2FF] px-3 py-1 text-xs font-black text-[#4F46E5]">
-                              {normalizeSubject(detail.subject) || detail.subject}
+                          {(detail.subjects ?? []).map((s) => (
+                            <span
+                              className="rounded-full bg-[#EEF2FF] px-3 py-1 text-xs font-black text-[#4F46E5]"
+                              key={s}
+                            >
+                              {s}
+                            </span>
+                          ))}
+                          {detail.type === "mock_exam" ? (
+                            <span className="rounded-full bg-[#FFF7ED] px-3 py-1 text-xs font-black text-[#F97316]">
+                              모의고사
                             </span>
                           ) : null}
                           <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-[#667085]">
@@ -1200,7 +1263,13 @@ export default function TextbooksManagementPage() {
                         </div>
                         <div className="rounded-2xl border border-[#EEF2F7] bg-white p-4">
                           <p className="text-xs font-bold text-[#98A2B3]">과목</p>
-                          <p className="mt-1 text-sm font-black text-[#17213B]">{detail.subject ?? "-"}</p>
+                          <p className="mt-1 text-sm font-black text-[#17213B]">
+                            {detail.subjects && detail.subjects.length > 0 ? detail.subjects.join(", ") : "-"}
+                          </p>
+                        </div>
+                        <div className="rounded-2xl border border-[#EEF2F7] bg-white p-4">
+                          <p className="text-xs font-bold text-[#98A2B3]">유형</p>
+                          <p className="mt-1 text-sm font-black text-[#17213B]">{textbookTypeLabel(detail.type)}</p>
                         </div>
                         <div className="rounded-2xl border border-[#EEF2F7] bg-white p-4">
                           <p className="text-xs font-bold text-[#98A2B3]">체크 여부</p>
