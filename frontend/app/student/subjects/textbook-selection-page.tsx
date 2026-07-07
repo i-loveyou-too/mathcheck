@@ -128,7 +128,7 @@ export function TextbookSelectionPage({
 
         for (const subjectValue of subjectQueryValues) {
           const data = await apiFetch<StudentTextbookListResponse>(
-            `/student/textbooks/by-subject/${encodeURIComponent(subjectValue)}`
+            `/student/textbooks/by-subject/${encodeURIComponent(subjectValue)}?student_id=${studentId}`
           );
           textbooks = data.textbooks.filter(
             (textbook) => textbook.is_active && textbook.is_published

@@ -3,6 +3,7 @@
 import { MouseEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ScreenShell } from "@/components/screen-shell";
+import { StudentLogoutButton } from "@/components/student-logout-button";
 import { StudentBottomNav } from "@/components/student-bottom-nav";
 import { apiFetch } from "@/lib/api";
 import { clearStudent, getStudent } from "@/lib/storage";
@@ -14,15 +15,27 @@ type DailyTaskStatus = "todo" | "in_progress" | "done";
 type DailyTask = {
   id: number;
   category: string | null;
+  completion_mode?: "item_progress" | "manual";
+  completed_at?: string | null;
   detail: string | null;
   difficulty: string | null;
+  due_date?: string | null;
   end_item_number: number | null;
   order_index: number;
+  progress_rate?: number;
+  range_type?: "item" | "page" | "section" | "custom" | null;
   start_item_number: number | null;
   status: DailyTaskStatus;
+  textbook?: {
+    id: number;
+    subject: string | null;
+    title: string;
+    full_title: string;
+  } | null;
   textbook_id: number | null;
   textbook_key: string | null;
   title: string;
+  source_type?: "manual" | "homework";
 };
 
 type DailyTaskSummary = {
@@ -42,6 +55,21 @@ type WeeklyTasksResponse = {
   student_id: number;
   week_start: string;
   days: WeeklyTaskDay[];
+};
+
+type ItemRangeTaskCard = {
+  id: number;
+  title: string;
+  detail: string | null;
+  task_date: string;
+  due_date: string | null;
+  textbook_id: number | null;
+  textbook_key: string | null;
+  textbook_title: string | null;
+  range_label: string | null;
+  status: DailyTaskStatus;
+  progress_rate: number;
+  is_overdue: boolean;
 };
 
 const dayLabels = ["월", "화", "수", "목", "금", "토", "일"];
@@ -127,9 +155,183 @@ function formatSelectedDate(date: Date) {
 }
 
 function getSummaryIcon(label: "rate" | "goal" | "done") {
-  if (label === "rate") return "📈";
-  if (label === "goal") return "📝";
-  return "🔥";
+  if (label === "rate") return "◎";
+  if (label === "goal") return "◇";
+  return "●";
+}
+
+function formatCardDate(dateKey: string) {
+  const date = parseLocalDateKey(dateKey);
+  return `${date.getMonth() + 1}/${date.getDate()}`;
+}
+
+function isProblemRangeTask(task: DailyTask) {
+  return (
+    task.range_type === "item" ||
+    task.completion_mode === "item_progress" ||
+    (task.start_item_number !== null && task.end_item_number !== null)
+  );
+}
+
+function buildItemRangeLabel(task: DailyTask) {
+  if (task.start_item_number !== null && task.end_item_number !== null) {
+    return `${task.start_item_number}~${task.end_item_number}번`;
+  }
+  return task.title;
+}
+
+function toItemRangeTaskCard(task: DailyTask, taskDate: string, todayKey: string): ItemRangeTaskCard {
+  return {
+    id: task.id,
+    title: task.title,
+    detail: task.detail,
+    task_date: taskDate,
+    due_date: task.due_date ?? null,
+    textbook_id: task.textbook_id,
+    textbook_key: task.textbook_key,
+    textbook_title: task.textbook?.full_title ?? null,
+    range_label: buildItemRangeLabel(task),
+    status: task.status,
+    progress_rate: task.progress_rate ?? (task.status === "done" ? 100 : 0),
+    is_overdue: taskDate < todayKey && task.status !== "done",
+  };
+}
+
+function HomeworkTaskCardItem({
+  card,
+  onOpenTextbook,
+}: {
+  card: ItemRangeTaskCard;
+  onOpenTextbook: (card: ItemRangeTaskCard) => void;
+}) {
+  const isDone = card.status === "done";
+
+  return (
+    <article
+      className={cn(
+        "rounded-[24px] px-4 py-4 shadow-card transition",
+        isDone ? "border border-[#EEF2FF] bg-[#F8FAFF]" : "border border-gray-100 bg-white",
+      )}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          {card.textbook_title ? (
+            <p className="truncate text-xs font-bold text-[#6D73FF]">{card.textbook_title}</p>
+          ) : null}
+          <h3
+            className={cn(
+              "mt-0.5 truncate text-[1rem] font-black leading-snug text-[#17213B]",
+              isDone ? "text-[#9AA3B6] line-through" : "",
+            )}
+          >
+            {card.range_label ?? card.title}
+          </h3>
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs font-semibold text-[#98A1B3]">
+            <span>{formatCardDate(card.task_date)}</span>
+            {card.due_date ? <span>· 마감 {formatCardDate(card.due_date)}</span> : null}
+            {card.is_overdue ? (
+              <span className="rounded-full bg-red-50 px-2 py-0.5 font-bold text-red-500">밀림</span>
+            ) : null}
+          </div>
+          {card.detail ? (
+            <p className="mt-1.5 truncate text-xs font-medium text-[#98A1B3]">메모 {card.detail}</p>
+          ) : null}
+
+          <div className="mt-3">
+            <div className="h-1.5 overflow-hidden rounded-full bg-indigo-50">
+              <div
+                className="h-full rounded-full bg-[linear-gradient(90deg,#6676FF_0%,#8E84FF_100%)] transition-all duration-500"
+                style={{ width: `${card.progress_rate}%` }}
+              />
+            </div>
+            <p className="mt-1 text-right text-xs font-bold text-indigo-400">{card.progress_rate}%</p>
+          </div>
+        </div>
+
+        <div className="flex shrink-0 flex-col items-end gap-2">
+          <button
+            className="rounded-full bg-[#0F172A] px-3.5 py-2 text-xs font-black text-white transition hover:bg-[#1E293B] disabled:cursor-not-allowed disabled:opacity-40"
+            disabled={!card.textbook_key}
+            onClick={() => onOpenTextbook(card)}
+            type="button"
+          >
+            교재로 이동
+          </button>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function StandardTaskItem({
+  task,
+  onOpenTask,
+  onToggleTaskStatus,
+}: {
+  task: DailyTask;
+  onOpenTask: (task: DailyTask) => void;
+  onToggleTaskStatus: (task: DailyTask, event: MouseEvent<HTMLButtonElement>) => Promise<void>;
+}) {
+  return (
+    <article
+      className={cn(
+        "flex min-h-[96px] w-full items-center gap-3 rounded-[28px] px-4 py-4 text-left shadow-card transition",
+        task.textbook_key ? "cursor-pointer" : "",
+        getTaskCardClass(task.status),
+      )}
+      onClick={() => onOpenTask(task)}
+    >
+      <button
+        aria-label={`${task.title} 완료 상태 변경`}
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 border-[#B8C1FF] bg-white text-sm font-black text-transparent transition"
+        onClick={(event) => void onToggleTaskStatus(task, event)}
+        type="button"
+      >
+        ✓
+      </button>
+      <div className="min-w-0 flex-1">
+        <h3 className="truncate text-[1.05rem] font-black leading-snug text-[#17213B]">{task.title}</h3>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <span className="rounded-full bg-[#F1F0FF] px-3 py-1 text-xs font-bold text-[#6D73FF]">
+            {task.category ?? "기타"}
+          </span>
+          {task.detail ? (
+            <span className="rounded-full bg-[#F1F0FF] px-3 py-1 text-xs font-bold text-[#6D73FF]">
+              {task.detail}
+            </span>
+          ) : null}
+          <span className={cn("rounded-full px-3 py-1 text-xs font-bold", getStatusClass(task.status))}>
+            {getStatusLabel(task.status)}
+          </span>
+        </div>
+      </div>
+      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#F7F8FC] text-2xl font-black text-[#8A94A8]">
+        ·
+      </div>
+    </article>
+  );
+}
+
+function CompletedStandardTaskItem({
+  task,
+  onToggleTaskStatus,
+}: {
+  task: DailyTask;
+  onToggleTaskStatus: (task: DailyTask, event: MouseEvent<HTMLButtonElement>) => Promise<void>;
+}) {
+  return (
+    <article className="flex items-center gap-3 rounded-[22px] border border-[#EEF2FF] bg-[#F8FAFF] px-4 py-3 opacity-55">
+      <button
+        aria-label={`${task.title} 완료 상태 변경`}
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-[#6D73FF] bg-[#6D73FF] text-sm font-black text-white shadow-[0_4px_10px_rgba(109,115,255,0.22)] transition"
+        onClick={(event) => void onToggleTaskStatus(task, event)}
+        type="button"
+      >
+        ✓
+      </button>
+      <p className="min-w-0 flex-1 truncate text-sm font-semibold text-[#9AA3B6] line-through">{task.title}</p>
+    </article>
+  );
 }
 
 export default function StudentTodayPage() {
@@ -173,7 +375,7 @@ export default function StudentTodayPage() {
       try {
         await fetchWeeklyTasks(student.id);
       } catch {
-        setLoadError("오늘미션을 불러오지 못했습니다.");
+        setLoadError("오늘의 미션을 불러오지 못했습니다.");
       } finally {
         setLoading(false);
       }
@@ -193,7 +395,25 @@ export default function StudentTodayPage() {
   const weekLabel = formatWeekLabel(weekDays);
   const selectedDate = weekDays.find((date) => toLocalDateKey(date) === selectedDateKey) ?? today;
   const selectedDay = weeklyData?.days.find((day) => day.date === selectedDateKey);
-  const tasks = selectedDay?.tasks ?? [];
+  const selectedTasks = selectedDay?.tasks ?? [];
+
+  const itemRangeCards = useMemo(
+    () =>
+      selectedTasks
+        .filter(isProblemRangeTask)
+        .map((task) => toItemRangeTaskCard(task, selectedDateKey, todayKey)),
+    [selectedDateKey, selectedTasks, todayKey],
+  );
+  const regularTasks = useMemo(
+    () => selectedTasks.filter((task) => !isProblemRangeTask(task)),
+    [selectedTasks],
+  );
+
+  const pendingItemRangeCards = itemRangeCards.filter((card) => card.status !== "done");
+  const completedItemRangeCards = itemRangeCards.filter((card) => card.status === "done");
+  const pendingRegularTasks = regularTasks.filter((task) => task.status !== "done");
+  const completedRegularTasks = regularTasks.filter((task) => task.status === "done");
+
   const weeklySummary = useMemo(() => {
     const days = weeklyData?.days ?? [];
     const total = days.reduce((sum, day) => sum + day.summary.total, 0);
@@ -215,7 +435,19 @@ export default function StudentTodayPage() {
       if (!current) return current;
 
       const days = current.days.map((day) => {
-        const nextTasks = day.tasks.map((task) => (task.id === taskId ? { ...task, status } : task));
+        const nextTasks = day.tasks.map((task) => {
+          if (task.id !== taskId) return task;
+          return {
+            ...task,
+            status,
+            progress_rate:
+              task.completion_mode === "item_progress"
+                ? task.progress_rate
+                : status === "done"
+                  ? 100
+                  : 0,
+          };
+        });
         const done = nextTasks.filter((task) => task.status === "done").length;
         const total = nextTasks.length;
 
@@ -238,7 +470,7 @@ export default function StudentTodayPage() {
   const toggleTaskStatus = async (task: DailyTask, event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
 
-    if (studentId === null) {
+    if (studentId === null || isProblemRangeTask(task)) {
       return;
     }
 
@@ -258,12 +490,12 @@ export default function StudentTodayPage() {
       });
     } catch {
       updateTaskInWeek(task.id, previousStatus);
-      setSaveError("저장하지 못했습니다. 다시 시도해주세요.");
+      setSaveError("저장하지 못했습니다. 다시 시도해 주세요.");
 
       try {
         await fetchWeeklyTasks(studentId);
       } catch {
-        setLoadError("오늘미션을 불러오지 못했습니다.");
+        setLoadError("오늘의 미션을 불러오지 못했습니다.");
       }
     }
   };
@@ -271,6 +503,12 @@ export default function StudentTodayPage() {
   const openTask = (task: DailyTask) => {
     if (task.textbook_key) {
       router.push(`/student/textbooks/${task.textbook_key}`);
+    }
+  };
+
+  const openHomeworkTextbook = (card: ItemRangeTaskCard) => {
+    if (card.textbook_key) {
+      router.push(`/student/textbooks/${card.textbook_key}`);
     }
   };
 
@@ -298,40 +536,26 @@ export default function StudentTodayPage() {
 
   return (
     <ScreenShell withBottomNav>
-
-      {/* 헤더 */}
       <div className="flex items-start justify-between gap-4 pt-1">
         <div>
           <h1 className="text-[1.5rem] font-black tracking-tight text-[#17213B]">
             {STUDENT_PAGE_TITLES.today}
           </h1>
-          <p className="mt-1 text-sm font-medium text-[#8A94A8]">
-            오늘 해야 할 일을 하나씩 해내요.
-          </p>
+          <p className="mt-1 text-sm font-medium text-[#8A94A8]">오늘 해야 할 일을 하나씩 해내요</p>
         </div>
-        <button
-          className="inline-flex h-10 items-center justify-center gap-1.5 rounded-full bg-white px-4 text-sm font-bold text-[#17213B] shadow-card transition hover:bg-gray-50"
-          onClick={handleLogout}
-          type="button"
-        >
-          <span className="text-base">↪</span>
-          <span>로그아웃</span>
-        </button>
+        <StudentLogoutButton onClick={handleLogout} />
       </div>
 
-      {/* 오늘 진행률 컴팩트 카드 */}
       <div className="rounded-[20px] border border-[#EEF2FF] bg-white px-5 py-3.5 shadow-card">
         <div className="flex items-center justify-between gap-3">
           <p className="text-sm font-bold text-[#17213B]">
             {loading
               ? "불러오는 중..."
               : todayRemaining === 0 && (todayTaskDay?.tasks.length ?? 0) > 0
-              ? "오늘 미션 모두 완료 🎉"
-              : `${todayRemaining}개 남았어요`}
+                ? "오늘 미션 모두 완료"
+                : `${todayRemaining}개 남아있어요`}
           </p>
-          <span className="shrink-0 text-sm font-black text-[#6D73FF]">
-            {todayCompletionRate}%
-          </span>
+          <span className="shrink-0 text-sm font-black text-[#6D73FF]">{todayCompletionRate}%</span>
         </div>
         <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#E9EDF7]">
           <div
@@ -341,7 +565,6 @@ export default function StudentTodayPage() {
         </div>
       </div>
 
-      {/* 오늘 미션 목록 */}
       <section>
         <div className="mb-3 flex items-center justify-between gap-4">
           <h2 className="text-[1.2rem] font-black tracking-tight text-[#17213B]">
@@ -356,103 +579,62 @@ export default function StudentTodayPage() {
           </button>
         </div>
 
-        {loading ? (
-          <p className="text-sm font-bold text-gray-400">불러오는 중...</p>
-        ) : null}
-        {loadError ? (
-          <p className="text-sm font-bold text-red-500">{loadError}</p>
-        ) : null}
+        {loading ? <p className="text-sm font-bold text-gray-400">불러오는 중...</p> : null}
+        {loadError ? <p className="text-sm font-bold text-red-500">{loadError}</p> : null}
         {saveError ? (
           <p className="mb-3 rounded-2xl bg-red-50 px-4 py-3 text-sm font-bold text-red-500">{saveError}</p>
         ) : null}
 
         {!loading && !loadError ? (
           <>
-            {/* 미완료 미션 */}
-            {tasks.filter((t) => t.status !== "done").length > 0 ? (
+            {pendingRegularTasks.length > 0 || pendingItemRangeCards.length > 0 ? (
               <div className="space-y-3">
-                {tasks
-                  .filter((t) => t.status !== "done")
-                  .map((task) => (
-                    <article
-                      className={cn(
-                        "flex min-h-[96px] w-full items-center gap-3 rounded-[28px] px-4 py-4 text-left shadow-card transition",
-                        task.textbook_key ? "cursor-pointer" : "",
-                        getTaskCardClass(task.status),
-                      )}
-                      key={task.id}
-                      onClick={() => openTask(task)}
-                    >
-                      <button
-                        aria-label={`${task.title} 완료 상태 변경`}
-                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 border-[#B8C1FF] bg-white text-sm font-black text-transparent transition"
-                        onClick={(event) => void toggleTaskStatus(task, event)}
-                        type="button"
-                      >
-                        ✓
-                      </button>
-                      <div className="min-w-0 flex-1">
-                        <h3 className="truncate text-[1.05rem] font-black leading-snug text-[#17213B]">
-                          {task.title}
-                        </h3>
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          <span className="rounded-full bg-[#F1F0FF] px-3 py-1 text-xs font-bold text-[#6D73FF]">
-                            {task.category ?? "기타"}
-                          </span>
-                          {task.detail ? (
-                            <span className="rounded-full bg-[#F1F0FF] px-3 py-1 text-xs font-bold text-[#6D73FF]">
-                              {task.detail}
-                            </span>
-                          ) : null}
-                          <span className={cn("rounded-full px-3 py-1 text-xs font-bold", getStatusClass(task.status))}>
-                            {getStatusLabel(task.status)}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#F7F8FC] text-2xl font-black text-[#8A94A8]">
-                        …
-                      </div>
-                    </article>
-                  ))}
+                {pendingRegularTasks.map((task) => (
+                  <StandardTaskItem
+                    key={task.id}
+                    onOpenTask={openTask}
+                    onToggleTaskStatus={toggleTaskStatus}
+                    task={task}
+                  />
+                ))}
+                {pendingItemRangeCards.map((card) => (
+                  <HomeworkTaskCardItem
+                    card={card}
+                    key={`item-range-${card.id}`}
+                    onOpenTextbook={openHomeworkTextbook}
+                  />
+                ))}
               </div>
             ) : null}
 
-            {/* 완료한 미션 */}
-            {tasks.filter((t) => t.status === "done").length > 0 ? (
+            {completedRegularTasks.length > 0 || completedItemRangeCards.length > 0 ? (
               <>
-                <p className="mb-2 mt-5 text-xs font-bold text-[#98A1B3]">✓ 완료한 미션</p>
+                <p className="mb-2 mt-5 text-xs font-bold text-[#98A1B3]">이미 완료한 미션</p>
                 <div className="space-y-2">
-                  {tasks
-                    .filter((t) => t.status === "done")
-                    .map((task) => (
-                      <article
-                        className="flex items-center gap-3 rounded-[22px] border border-[#EEF2FF] bg-[#F8FAFF] px-4 py-3 opacity-55"
-                        key={task.id}
-                      >
-                        <button
-                          aria-label={`${task.title} 완료 상태 변경`}
-                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-[#6D73FF] bg-[#6D73FF] text-sm font-black text-white shadow-[0_4px_10px_rgba(109,115,255,0.22)] transition"
-                          onClick={(event) => void toggleTaskStatus(task, event)}
-                          type="button"
-                        >
-                          ✓
-                        </button>
-                        <p className="min-w-0 flex-1 truncate text-sm font-semibold text-[#9AA3B6] line-through">
-                          {task.title}
-                        </p>
-                      </article>
-                    ))}
+                  {completedRegularTasks.map((task) => (
+                    <CompletedStandardTaskItem
+                      key={task.id}
+                      onToggleTaskStatus={toggleTaskStatus}
+                      task={task}
+                    />
+                  ))}
+                  {completedItemRangeCards.map((card) => (
+                    <HomeworkTaskCardItem
+                      card={card}
+                      key={`item-range-done-${card.id}`}
+                      onOpenTextbook={openHomeworkTextbook}
+                    />
+                  ))}
                 </div>
               </>
             ) : null}
 
-            {/* 빈 상태 */}
-            {tasks.length === 0 ? (
+            {selectedTasks.length === 0 ? (
               <div className="flex min-h-[160px] flex-col items-center justify-center rounded-[28px] border border-dashed border-[#E4EAF6] bg-white px-4 py-6 text-center shadow-card">
                 <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-[#F5F7FB] text-2xl">
-                  ☁
+                  ·
                 </div>
-                <p className="text-sm font-black text-[#17213B]">오늘 배정된 미션이 없어요.</p>
+                <p className="text-sm font-black text-[#17213B]">오늘 배정된 미션이 없어요</p>
                 <p className="mt-1 text-xs font-semibold text-[#98A1B3]">잠깐 쉬어가도 괜찮아요.</p>
               </div>
             ) : null}
@@ -460,7 +642,6 @@ export default function StudentTodayPage() {
         ) : null}
       </section>
 
-      {/* 이번 주 미션 */}
       <section className="rounded-[30px] border border-[#EEF2FF] bg-white p-5 shadow-card">
         <div className="mb-4 flex items-center justify-between gap-3">
           <div>
@@ -474,7 +655,7 @@ export default function StudentTodayPage() {
               onClick={() => moveWeek(-7)}
               type="button"
             >
-              ←
+              ‹
             </button>
             <button
               className={cn(
@@ -494,7 +675,7 @@ export default function StudentTodayPage() {
               onClick={() => moveWeek(7)}
               type="button"
             >
-              →
+              ›
             </button>
           </div>
         </div>
@@ -527,7 +708,7 @@ export default function StudentTodayPage() {
                     isSelected ? "text-white/78" : isToday ? "text-[#6C73FF]" : "text-transparent",
                   )}
                 >
-                  {isToday ? "오늘" : "오늘"}
+                  오늘
                 </span>
               </button>
             );
@@ -535,14 +716,13 @@ export default function StudentTodayPage() {
         </div>
       </section>
 
-      {/* 주간 분석 */}
       <section className="rounded-[30px] border border-[#EEF2FF] bg-white p-5 shadow-card">
         <p className="mb-4 text-sm font-black text-[#17213B]">주간 분석</p>
         <div className="grid grid-cols-3 divide-x divide-[#EEF1F7]">
           {[
             { key: "rate" as const, label: "진도율", value: `${weeklySummary.rate}%` },
             { key: "goal" as const, label: "목표", value: `${weeklySummary.total}개` },
-            { key: "done" as const, label: "갓생", value: `${weeklySummary.done}일` },
+            { key: "done" as const, label: "달성", value: `${weeklySummary.done}개` },
           ].map((item) => (
             <div className="flex items-center justify-center gap-3 px-2 text-center first:pl-0 last:pr-0" key={item.label}>
               <div

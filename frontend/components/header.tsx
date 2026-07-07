@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { StudentLogoutButton } from "@/components/student-logout-button";
 import { clearAdmin, clearStudent } from "@/lib/storage";
 
 type HeaderProps = {
@@ -49,7 +50,8 @@ export function Header({ title, subtitle, backHref, logoutType }: HeaderProps) {
           ) : null}
         </div>
 
-        {logoutType ? (
+        {logoutType === "student" ? <StudentLogoutButton onClick={handleLogout} /> : null}
+        {logoutType === "admin" ? (
           <button
             className="shrink-0 rounded-full bg-gray-100 px-4 py-2 text-sm font-medium text-gray-500 transition hover:bg-gray-200"
             onClick={handleLogout}

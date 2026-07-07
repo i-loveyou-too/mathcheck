@@ -4,7 +4,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AdminBottomNav } from "@/components/admin-bottom-nav";
-import { apiFetch } from "@/lib/api";
+import { ApiError, apiFetch } from "@/lib/api";
 import { getAdmin } from "@/lib/storage";
 import { AdminStudentSummary, TextbookSeriesItem } from "@/lib/types";
 
@@ -149,6 +149,8 @@ type WeeklyTasksApiResponse = {
   days: WeeklyDay[];
 };
 
+type HomeworkRangeType = "item" | "page" | "section" | "custom";
+
 const customTextbookValue = "__custom__";
 
 const customTextbookOption: TextbookOption = {
@@ -251,13 +253,47 @@ function formatWeekLabel(weekStartDate: string) {
   return `${format(start)} ~ ${format(end)}`;
 }
 
+function getInclusiveCount(startValue: string, endValue: string) {
+  const start = Number(startValue);
+  const end = Number(endValue);
+  if (!startValue || !endValue || Number.isNaN(start) || Number.isNaN(end) || end < start) return null;
+  return end - start + 1;
+}
+
+function getInclusiveDayCount(startDate: string, endDate: string) {
+  if (!startDate || !endDate) return null;
+  const start = new Date(`${startDate}T00:00:00`);
+  const end = new Date(`${endDate}T00:00:00`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) return null;
+  return Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+}
+
+function formatAveragePerDay(total: number, days: number, unitLabel: string) {
+  if (days <= 0) return "";
+  const average = total / days;
+  const display = Number.isInteger(average) ? String(average) : average.toFixed(1);
+  return `${days}일 동안 하루 약 ${display}${unitLabel}`;
+}
+
+function getSectionRangeLabel(section: SectionOut) {
+  if (section.start_problem !== null && section.end_problem !== null) {
+    return `${section.start_problem}~${section.end_problem}번`;
+  }
+  if (section.start_page !== null && section.end_page !== null) {
+    return section.start_page === section.end_page
+      ? `p.${section.start_page}`
+      : `p.${section.start_page}~p.${section.end_page}`;
+  }
+  return "범위 정보 없음";
+}
+
 type SectionPickerProps = {
   sectionsData: SectionsData;
   mode: "problems" | "pages";
   currentStart: string;
   currentEnd: string;
   onSelectProblems: (start: string, end: string) => void;
-  onSelectPages: (detail: string) => void;
+  onSelectPages: (start: string, end: string, label: string) => void;
 };
 
 function SectionPicker({ sectionsData, mode, currentStart, currentEnd, onSelectProblems, onSelectPages }: SectionPickerProps) {
@@ -291,7 +327,7 @@ function SectionPicker({ sectionsData, mode, currentStart, currentEnd, onSelectP
       if (!starts.length || !ends.length) return;
       const st = Math.min(...starts); const en = Math.max(...ends);
       const unitLabel = unitSections[0].unit_title ? `${unitSections[0].unit_title} ` : "";
-      onSelectPages(`${unitLabel}p.${st}~p.${en}`);
+      onSelectPages(String(st), String(en), `${unitLabel}p.${st}~p.${en}`);
     }
   };
 
@@ -300,13 +336,17 @@ function SectionPicker({ sectionsData, mode, currentStart, currentEnd, onSelectP
       onSelectProblems(String(s.start_problem), String(s.end_problem));
     } else if (mode === "pages" && s.start_page !== null && s.end_page !== null) {
       const pageLabel = s.start_page === s.end_page ? `p.${s.start_page}` : `p.${s.start_page}~p.${s.end_page}`;
-      onSelectPages(`${s.section_title} ${pageLabel}`);
+      onSelectPages(String(s.start_page), String(s.end_page), `${s.section_title} ${pageLabel}`);
     }
   };
 
-  const isActive = (s: SectionOut) =>
-    mode === "problems" && currentStart !== "" && currentEnd !== "" &&
-    String(s.start_problem) === currentStart && String(s.end_problem) === currentEnd;
+  const isActive = (s: SectionOut) => {
+    if (currentStart === "" || currentEnd === "") return false;
+    if (mode === "problems") {
+      return String(s.start_problem) === currentStart && String(s.end_problem) === currentEnd;
+    }
+    return String(s.start_page) === currentStart && String(s.end_page) === currentEnd;
+  };
 
   return (
     <div className="mt-2 rounded-2xl border border-[#E5E7EB] bg-[#F8FAFC] p-3">
@@ -426,6 +466,21 @@ export default function AdminDailyTasksPage() {
 
   const [showWeeklyMobile, setShowWeeklyMobile] = useState(false);
   const [sectionCache, setSectionCache] = useState<Record<number, SectionsData>>({});
+  const [loadingSectionIds, setLoadingSectionIds] = useState<number[]>([]);
+  const [sectionLoadErrors, setSectionLoadErrors] = useState<Record<number, string>>({});
+
+  // 자동분배 숙제 (HomeworkAssignment 엔진) — 기존 수동/자동배정 흐름과 완전히 분리된 새 모드.
+  const [homeworkMode, setHomeworkMode] = useState(false);
+  const [homeworkTextbooks, setHomeworkTextbooks] = useState<AdminTextbookCatalogItem[]>([]);
+  const [loadingHomeworkTextbooks, setLoadingHomeworkTextbooks] = useState(false);
+  const [homeworkTextbookId, setHomeworkTextbookId] = useState("");
+  const [homeworkRangeType, setHomeworkRangeType] = useState<HomeworkRangeType>("item");
+  const [homeworkStartValue, setHomeworkStartValue] = useState("");
+  const [homeworkEndValue, setHomeworkEndValue] = useState("");
+  const [homeworkStartDate, setHomeworkStartDate] = useState(today);
+  const [homeworkDueDate, setHomeworkDueDate] = useState(today);
+  const [homeworkMemo, setHomeworkMemo] = useState("");
+  const [homeworkSubmitting, setHomeworkSubmitting] = useState(false);
 
   const visibleCatalogTextbooks = useMemo(
     () => catalogTextbooks.filter((t) => !t.isStudentOnly || studentTextbookIds.has(t.id ?? -1)),
@@ -439,12 +494,56 @@ export default function AdminDailyTasksPage() {
   const selectedTextbook = getTextbookByValue(createForm.selectedTextbookValue, textbookOptions);
   const isCustomTask = selectedTextbook.textbookKey === null;
 
+  const selectedHomeworkTextbook = homeworkTextbooks.find((t) => String(t.id) === homeworkTextbookId) ?? null;
+  const homeworkSectionsData = homeworkTextbookId ? (sectionCache[Number(homeworkTextbookId)] ?? null) : null;
+  const homeworkSections = homeworkSectionsData?.sections.filter((s) => s.use_for_homework) ?? null;
+  const selectedHomeworkSection = homeworkRangeType === "section" && homeworkStartValue
+    ? (homeworkSections?.find((section) => String(section.id) === homeworkStartValue) ?? null)
+    : null;
+
   const generatedTitle = useMemo(() => {
     if (createForm.rangeType !== "item" || isCustomTask || !selectedTextbook.shortTitle || !createForm.startNumber || !createForm.endNumber) {
       return "";
     }
     return `${selectedTextbook.shortTitle} ${createForm.startNumber}번 ~ ${createForm.endNumber}번`;
   }, [createForm.endNumber, createForm.rangeType, createForm.startNumber, isCustomTask, selectedTextbook.shortTitle]);
+
+  const isHomeworkSectionLoading = homeworkTextbookId ? loadingSectionIds.includes(Number(homeworkTextbookId)) : false;
+  const homeworkSectionError = homeworkTextbookId ? sectionLoadErrors[Number(homeworkTextbookId)] ?? "" : "";
+  const homeworkRangeCount = useMemo(
+    () => (homeworkRangeType === "item" || homeworkRangeType === "page" ? getInclusiveCount(homeworkStartValue, homeworkEndValue) : null),
+    [homeworkEndValue, homeworkRangeType, homeworkStartValue],
+  );
+  const homeworkDayCount = useMemo(
+    () => getInclusiveDayCount(homeworkStartDate, homeworkDueDate),
+    [homeworkDueDate, homeworkStartDate],
+  );
+  const homeworkRangePreview = useMemo(() => {
+    if (homeworkRangeType === "item" && homeworkRangeCount !== null) {
+      return `${homeworkStartValue}~${homeworkEndValue}번, 총 ${homeworkRangeCount}문항`;
+    }
+    if (homeworkRangeType === "page" && homeworkRangeCount !== null) {
+      return homeworkRangeCount === 1
+        ? `p.${homeworkStartValue}, 총 1페이지`
+        : `p.${homeworkStartValue}~p.${homeworkEndValue}, 총 ${homeworkRangeCount}페이지`;
+    }
+    if (homeworkRangeType === "section" && selectedHomeworkSection) {
+      return `${selectedHomeworkSection.unit_title ? `${selectedHomeworkSection.unit_title} · ` : ""}${selectedHomeworkSection.section_title} (${getSectionRangeLabel(selectedHomeworkSection)})`;
+    }
+    return "";
+  }, [homeworkEndValue, homeworkRangeCount, homeworkRangeType, homeworkStartValue, selectedHomeworkSection]);
+  const homeworkDailyEstimate = useMemo(() => {
+    if (homeworkRangeType === "item" && homeworkRangeCount !== null && homeworkDayCount !== null) {
+      return formatAveragePerDay(homeworkRangeCount, homeworkDayCount, "문항");
+    }
+    if (homeworkRangeType === "page" && homeworkRangeCount !== null && homeworkDayCount !== null) {
+      return formatAveragePerDay(homeworkRangeCount, homeworkDayCount, "페이지");
+    }
+    if (homeworkRangeType === "section" && homeworkDayCount !== null) {
+      return homeworkDayCount === 1 ? "선택한 시작일에 1건으로 배정됩니다." : "섹션형 숙제는 시작일에 1건으로 배정됩니다.";
+    }
+    return "";
+  }, [homeworkDayCount, homeworkRangeCount, homeworkRangeType]);
 
   const autoPlan = useMemo<AutoPlanDay[]>(() => {
     const minProblems = Math.max(1, Number(autoMinProblems) || 10);
@@ -670,6 +769,18 @@ export default function AdminDailyTasksPage() {
       .catch(() => setStudentTextbookIds(new Set()));
   }, [selectedStudentId]);
 
+  // 자동분배 숙제 모드: 학생이 바뀔 때마다 "이 학생에게 배정된 교재"만 다시 불러오고,
+  // 이전 학생 기준으로 골라둔 교재 선택은 초기화한다(다른 학생 교재가 남아있지 않도록).
+  useEffect(() => {
+    setHomeworkTextbookId("");
+    if (!selectedStudentId) { setHomeworkTextbooks([]); return; }
+    setLoadingHomeworkTextbooks(true);
+    apiFetch<AdminTextbookCatalogResponse>(`/admin/textbooks-for-student/${selectedStudentId}`)
+      .then((data) => setHomeworkTextbooks(data.textbooks ?? []))
+      .catch(() => setHomeworkTextbooks([]))
+      .finally(() => setLoadingHomeworkTextbooks(false));
+  }, [selectedStudentId]);
+
   useEffect(() => {
     if (!selectedStudentId || !weekStart) { setWeeklyTasks([]); return; }
     setLoadingWeekly(true);
@@ -716,6 +827,26 @@ export default function AdminDailyTasksPage() {
       // silent — fallback to direct input if sections unavailable
     }
   }, []);
+
+  const fetchSectionsForHomework = useCallback(async (textbookId: number, currentCache: Record<number, SectionsData>) => {
+    if (currentCache[textbookId] || loadingSectionIds.includes(textbookId)) return;
+    setLoadingSectionIds((current) => [...current, textbookId]);
+    setSectionLoadErrors((current) => {
+      const next = { ...current };
+      delete next[textbookId];
+      return next;
+    });
+    try {
+      const data = await apiFetch<{ structure_type: string; sections: SectionOut[]; textbook_id: number; textbook_key: string }>(
+        `/admin/textbooks/${textbookId}/sections`,
+      );
+      setSectionCache((prev) => ({ ...prev, [textbookId]: { structure_type: data.structure_type, sections: data.sections } }));
+    } catch {
+      setSectionLoadErrors((current) => ({ ...current, [textbookId]: "구간 정보를 불러오지 못했습니다. 직접 입력은 계속 가능합니다." }));
+    } finally {
+      setLoadingSectionIds((current) => current.filter((id) => id !== textbookId));
+    }
+  }, [loadingSectionIds]);
 
   const handleTextbookChange = (value: string) => {
     const option = getTextbookByValue(value, textbookOptions);
@@ -805,6 +936,62 @@ export default function AdminDailyTasksPage() {
       await fetchTasks(selectedStudentId, selectedDate);
       setTaskRefreshKey((k) => k + 1);
     } catch { setError("자동 배정에 실패했습니다. 다시 시도해주세요."); } finally { setAutoSubmitting(false); }
+  };
+
+  const handleHomeworkTextbookChange = (value: string) => {
+    setHomeworkTextbookId(value);
+    setHomeworkStartValue(""); setHomeworkEndValue("");
+    const id = Number(value);
+    if (id) void fetchSectionsForHomework(id, sectionCache);
+  };
+
+  const handleHomeworkRangeTypeChange = (type: HomeworkRangeType) => {
+    setHomeworkRangeType(type);
+    setHomeworkStartValue(""); setHomeworkEndValue("");
+    if (type === "section" && homeworkTextbookId) {
+      void fetchSectionsForHomework(Number(homeworkTextbookId), sectionCache);
+    }
+  };
+
+  const handleHomeworkSubmit = async () => {
+    setMessage(""); setError("");
+    if (!selectedStudentId) { setError("학생을 선택해주세요."); return; }
+    if (!homeworkTextbookId) { setError("교재를 선택해주세요."); return; }
+    if (!homeworkDueDate) { setError("마감일을 입력해주세요."); return; }
+    if (homeworkStartDate > homeworkDueDate) { setError("시작일은 마감일보다 늦을 수 없습니다."); return; }
+    if (homeworkRangeType === "custom") { setError("custom 범위는 아직 지원되지 않습니다."); return; }
+    if ((homeworkRangeType === "item" || homeworkRangeType === "page") && (!homeworkStartValue || !homeworkEndValue)) {
+      setError("시작 값과 끝 값을 입력해주세요."); return;
+    }
+    if ((homeworkRangeType === "item" || homeworkRangeType === "page") && Number(homeworkStartValue) > Number(homeworkEndValue)) {
+      setError("시작 값은 끝 값보다 클 수 없습니다."); return;
+    }
+    if (homeworkRangeType === "section" && !homeworkStartValue) { setError("구간을 선택해주세요."); return; }
+
+    setHomeworkSubmitting(true);
+    try {
+      await apiFetch("/admin/homework-assignments", {
+        method: "POST",
+        body: {
+          student_id: Number(selectedStudentId),
+          textbook_id: Number(homeworkTextbookId),
+          range_type: homeworkRangeType,
+          start_value: homeworkStartValue ? Number(homeworkStartValue) : null,
+          end_value: homeworkEndValue ? Number(homeworkEndValue) : null,
+          start_date: homeworkStartDate,
+          due_date: homeworkDueDate,
+          memo: homeworkMemo.trim() || null,
+        },
+      });
+      setMessage(`${homeworkStartDate} ~ ${homeworkDueDate}까지 자동 배정됐습니다.`);
+      setHomeworkStartValue(""); setHomeworkEndValue(""); setHomeworkMemo("");
+      await fetchTasks(selectedStudentId, selectedDate);
+      setTaskRefreshKey((k) => k + 1);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "자동 배정에 실패했습니다. 다시 시도해주세요.");
+    } finally {
+      setHomeworkSubmitting(false);
+    }
   };
 
   const startEdit = (task: DailyTask) => {
@@ -1023,11 +1210,12 @@ export default function AdminDailyTasksPage() {
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#0F172A] text-xs font-black text-white">2</span>
                 <h2 className="text-lg font-black text-[#17213B]">배정 방식</h2>
               </div>
-              <div className="mt-4 grid grid-cols-3 gap-3">
+              <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {[
-                  { icon: "📚", label: "문항수로 배정", sub: "문항 단위로 배정", active: !showCreateForm, onClick: () => setShowCreateForm(false) },
-                  { icon: "📄", label: "페이지로 배정", sub: "페이지 단위로 배정", active: showCreateForm && createForm.rangeType === "free", onClick: () => { setShowCreateForm(true); updateCreateForm({ rangeType: "free", startNumber: "", endNumber: "" }); setFreeInputMode("direct"); setItemInputMode("manual"); } },
-                  { icon: "✏️", label: "직접 등록", sub: "단건 숙제 직접 등록", active: showCreateForm && createForm.rangeType !== "free", onClick: () => { setShowCreateForm(true); updateCreateForm({ rangeType: "none", startNumber: "", endNumber: "" }); setFreeInputMode("direct"); setItemInputMode("manual"); } },
+                  { icon: "📚", label: "문항수로 배정", sub: "문항 단위로 배정", active: !homeworkMode && !showCreateForm, onClick: () => { setHomeworkMode(false); setShowCreateForm(false); } },
+                  { icon: "📄", label: "페이지로 배정", sub: "페이지 단위로 배정", active: !homeworkMode && showCreateForm && createForm.rangeType === "free", onClick: () => { setHomeworkMode(false); setShowCreateForm(true); updateCreateForm({ rangeType: "free", startNumber: "", endNumber: "" }); setFreeInputMode("direct"); setItemInputMode("manual"); } },
+                  { icon: "✏️", label: "직접 등록", sub: "단건 숙제 직접 등록", active: !homeworkMode && showCreateForm && createForm.rangeType !== "free", onClick: () => { setHomeworkMode(false); setShowCreateForm(true); updateCreateForm({ rangeType: "none", startNumber: "", endNumber: "" }); setFreeInputMode("direct"); setItemInputMode("manual"); } },
+                  { icon: "🎯", label: "자동분배 숙제", sub: "마감일까지 자동 배정", active: homeworkMode, onClick: () => setHomeworkMode(true) },
                 ].map(({ icon, label, sub, active, onClick }) => (
                   <button
                     className={`rounded-2xl p-4 text-left transition ${active ? "bg-[#0F172A] text-white shadow-md" : "border border-[#EEF2F7] bg-white text-[#344054] hover:border-[#D0D5DD] hover:bg-[#F8FAFC]"}`}
@@ -1094,8 +1282,219 @@ export default function AdminDailyTasksPage() {
               </div>
             </section>
 
-            {/* Auto assignment flow */}
-            {!showCreateForm ? (
+            {/* 자동분배 숙제 (HomeworkAssignment 엔진) */}
+            {homeworkMode ? (
+              <section className={`${cardCls} p-5 sm:p-6`}>
+                <div className="flex items-center gap-3">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#0F172A] text-xs font-black text-white">3</span>
+                  <div>
+                    <h2 className="text-lg font-black text-[#17213B]">자동분배 숙제</h2>
+                    <p className="text-xs text-[#98A2B3]">교재·범위·마감일만 정하면 오늘부터 마감일까지 자동으로 나눠 배정돼요.</p>
+                  </div>
+                </div>
+
+                <div className="mt-4 space-y-4">
+                  <div>
+                    <label className="mb-2 block text-xs font-bold text-[#667085]">교재 선택</label>
+                    {!selectedStudentId ? (
+                      <p className="rounded-2xl bg-[#F8FAFC] px-4 py-3 text-sm font-bold text-[#98A2B3]">학생을 먼저 선택해주세요.</p>
+                    ) : loadingHomeworkTextbooks ? (
+                      <p className="rounded-2xl bg-[#F8FAFC] px-4 py-3 text-sm font-bold text-[#98A2B3]">불러오는 중...</p>
+                    ) : homeworkTextbooks.length === 0 ? (
+                      <p className="rounded-2xl bg-yellow-50 px-4 py-3 text-xs font-bold text-yellow-700">
+                        이 학생에게 배정된 교재가 없습니다.{" "}
+                        <Link className="underline" href="/admin/textbooks-management">교재 관리에서 먼저 배정해주세요 →</Link>
+                      </p>
+                    ) : (
+                      <select className={inputCls} onChange={(event) => handleHomeworkTextbookChange(event.target.value)} value={homeworkTextbookId}>
+                        <option value="">교재를 선택하세요</option>
+                        {homeworkTextbooks.map((tb) => (
+                          <option key={tb.id} value={tb.id}>
+                            {tb.short_title || tb.title}{tb.subject ? ` · ${tb.subject}` : ""} ({tb.total_items}문항)
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-xs font-bold text-[#667085]">범위 방식</label>
+                    <div className="flex gap-2">
+                      {(["item", "page", "section", "custom"] as const).map((type) => (
+                        <button
+                          className={`flex-1 rounded-xl py-2.5 text-xs font-bold transition ${homeworkRangeType === type ? "bg-[#0F172A] text-white" : "border border-[#E5E7EB] bg-[#F8FAFC] text-[#667085] hover:bg-[#EDEFF5]"}`}
+                          key={type}
+                          onClick={() => handleHomeworkRangeTypeChange(type)}
+                          type="button"
+                        >
+                          {type === "item" ? "문항" : type === "page" ? "페이지" : type === "section" ? "구간" : "커스텀"}
+                        </button>
+                      ))}
+                    </div>
+                    {homeworkRangeType === "custom" ? (
+                      <p className="mt-2 text-xs font-bold text-yellow-600">custom 범위는 아직 지원되지 않습니다 (추후 지원 예정).</p>
+                    ) : null}
+                  </div>
+
+                  {homeworkRangeType === "item" || homeworkRangeType === "page" ? (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="mb-2 block text-xs font-bold text-[#667085]">
+                          시작 {homeworkRangeType === "item" ? "번호" : "페이지"}
+                        </label>
+                        <input className={inputCls} min="1" onChange={(event) => setHomeworkStartValue(event.target.value)} type="number" value={homeworkStartValue} />
+                      </div>
+                      <div>
+                        <label className="mb-2 block text-xs font-bold text-[#667085]">
+                          끝 {homeworkRangeType === "item" ? "번호" : "페이지"}
+                        </label>
+                        <input className={inputCls} min="1" onChange={(event) => setHomeworkEndValue(event.target.value)} type="number" value={homeworkEndValue} />
+                      </div>
+                      {selectedHomeworkTextbook && homeworkRangeType === "item" ? (
+                        <p className="col-span-2 text-xs font-bold text-[#98A2B3]">
+                          총 {selectedHomeworkTextbook.total_items}문항 · {selectedHomeworkTextbook.min_item_number}~{selectedHomeworkTextbook.max_item_number}번
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : homeworkRangeType === "section" ? (
+                    <div>
+                      <label className="mb-2 block text-xs font-bold text-[#667085]">구간 선택</label>
+                      {!homeworkTextbookId ? (
+                        <p className="rounded-2xl bg-[#F8FAFC] px-4 py-3 text-sm font-bold text-[#98A2B3]">교재를 먼저 선택해주세요.</p>
+                      ) : homeworkSections === null ? (
+                        <p className="rounded-2xl bg-[#F8FAFC] px-4 py-3 text-sm font-bold text-[#98A2B3]">구간 정보를 불러오는 중...</p>
+                      ) : homeworkSections.length === 0 ? (
+                        <p className="rounded-2xl bg-yellow-50 px-4 py-3 text-xs font-bold text-yellow-700">등록된 구간이 없습니다.</p>
+                      ) : (
+                        <select className={inputCls} onChange={(event) => setHomeworkStartValue(event.target.value)} value={homeworkStartValue}>
+                          <option value="">구간을 선택하세요</option>
+                          {homeworkSections.map((s) => (
+                            <option key={s.id} value={s.id}>{s.unit_title ? `${s.unit_title} · ` : ""}{s.section_title}</option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                  ) : null}
+
+                  {homeworkRangeType === "item" || homeworkRangeType === "page" ? (
+                    <>
+                      {selectedHomeworkTextbook && homeworkRangeType === "item" ? (
+                        <p className="text-xs font-bold text-[#98A2B3]">
+                          총 {selectedHomeworkTextbook.total_items}문항 · {selectedHomeworkTextbook.min_item_number}~{selectedHomeworkTextbook.max_item_number}번
+                        </p>
+                      ) : null}
+                      {!homeworkTextbookId ? (
+                        <p className="rounded-2xl bg-[#F8FAFC] px-4 py-3 text-sm font-bold text-[#98A2B3]">교재를 먼저 선택해주세요.</p>
+                      ) : isHomeworkSectionLoading && homeworkSectionsData === null ? (
+                        <p className="rounded-2xl bg-[#F8FAFC] px-4 py-3 text-sm font-bold text-[#98A2B3]">구간 정보를 불러오는 중입니다.</p>
+                      ) : homeworkSectionError ? (
+                        <p className="rounded-2xl bg-red-50 px-4 py-3 text-xs font-bold text-red-500">{homeworkSectionError}</p>
+                      ) : homeworkSections && homeworkSections.length > 0 ? (
+                        <div>
+                          <label className="mb-2 block text-xs font-bold text-[#667085]">
+                            {homeworkRangeType === "item" ? "섹션에서 문항 범위 선택" : "섹션에서 페이지 범위 선택"}
+                          </label>
+                          <SectionPicker
+                            currentEnd={homeworkEndValue}
+                            currentStart={homeworkStartValue}
+                            mode={homeworkRangeType === "item" ? "problems" : "pages"}
+                            onSelectPages={(start, end) => {
+                              setHomeworkStartValue(start);
+                              setHomeworkEndValue(end);
+                            }}
+                            onSelectProblems={(start, end) => {
+                              setHomeworkStartValue(start);
+                              setHomeworkEndValue(end);
+                            }}
+                            sectionsData={homeworkSectionsData!}
+                          />
+                        </div>
+                      ) : null}
+                    </>
+                  ) : null}
+
+                  {homeworkRangeType === "section" && homeworkSections && homeworkSections.length > 0 ? (
+                    <div className="space-y-2">
+                      <p className="text-xs font-bold text-[#667085]">아래 목록을 보고 섹션을 바로 고를 수 있습니다.</p>
+                      {homeworkSections.map((section) => {
+                        const active = homeworkStartValue === String(section.id);
+                        return (
+                          <button
+                            className={`flex w-full items-start justify-between rounded-2xl border px-4 py-3 text-left transition ${
+                              active
+                                ? "border-[#0F172A] bg-[#0F172A] text-white"
+                                : "border-[#E5E7EB] bg-white text-[#17213B] hover:border-[#0F172A]"
+                            }`}
+                            key={section.id}
+                            onClick={() => {
+                              setHomeworkStartValue(String(section.id));
+                              setHomeworkEndValue("");
+                            }}
+                            type="button"
+                          >
+                            <div>
+                              <p className="text-sm font-black">
+                                {section.unit_title ? `${section.unit_title} · ` : ""}{section.section_title}
+                              </p>
+                              <p className={`mt-1 text-xs font-bold ${active ? "text-white/70" : "text-[#98A2B3]"}`}>
+                                {getSectionRangeLabel(section)}
+                              </p>
+                            </div>
+                            <span className={`rounded-full px-2 py-1 text-[11px] font-black ${active ? "bg-white/15 text-white" : "bg-[#F8FAFC] text-[#667085]"}`}>
+                              선택
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="mb-2 block text-xs font-bold text-[#667085]">시작일</label>
+                      <input className={inputCls} onChange={(event) => setHomeworkStartDate(event.target.value)} type="date" value={homeworkStartDate} />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-xs font-bold text-[#667085]">마감일</label>
+                      <input className={inputCls} onChange={(event) => setHomeworkDueDate(event.target.value)} type="date" value={homeworkDueDate} />
+                    </div>
+                  </div>
+                  {homeworkStartDate > homeworkDueDate ? (
+                    <p className="text-xs font-bold text-red-500">시작일은 마감일보다 늦을 수 없습니다.</p>
+                  ) : null}
+                  {homeworkRangePreview ? (
+                    <div className="rounded-2xl border border-[#E5E7EB] bg-[#F8FAFC] px-4 py-3">
+                      <p className="text-[11px] font-black uppercase tracking-[0.08em] text-[#98A2B3]">Preview</p>
+                      <p className="mt-1 text-sm font-black text-[#17213B]">{homeworkRangePreview}</p>
+                      {homeworkDailyEstimate ? (
+                        <p className="mt-1 text-xs font-bold text-[#667085]">{homeworkDailyEstimate}</p>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  <div>
+                    <label className="mb-2 block text-xs font-bold text-[#667085]">메모 (선택)</label>
+                    <input className={inputCls} onChange={(event) => setHomeworkMemo(event.target.value)} placeholder="예: 오답 표시하면서 풀기" value={homeworkMemo} />
+                  </div>
+
+                  <button
+                    className="w-full rounded-2xl bg-[#0F172A] py-3.5 text-sm font-black text-white transition hover:bg-[#1E293B] disabled:opacity-50"
+                    disabled={
+                      homeworkSubmitting ||
+                      !selectedStudentId ||
+                      !homeworkTextbookId ||
+                      !homeworkDueDate ||
+                      homeworkRangeType === "custom" ||
+                      homeworkStartDate > homeworkDueDate
+                    }
+                    onClick={() => void handleHomeworkSubmit()}
+                    type="button"
+                  >
+                    {homeworkSubmitting ? "배정 중..." : "자동분배 숙제 등록"}
+                  </button>
+                </div>
+              </section>
+            ) : !showCreateForm ? (
               <>
                 {/* 3. 배정 기준 */}
                 <section className={`${cardCls} p-5 sm:p-6`}>
@@ -1297,14 +1696,14 @@ export default function AdminDailyTasksPage() {
                       </div>
                     ) : null}
                     {!isCustomTask && selectedTextbook.id && sectionCache[selectedTextbook.id] && createForm.rangeType !== "none" ? (
-                      <SectionPicker
-                        currentEnd={createForm.endNumber}
-                        currentStart={createForm.startNumber}
-                        mode={createForm.rangeType === "free" ? "pages" : "problems"}
-                        onSelectPages={(detail) => updateCreateForm({ detail })}
-                        onSelectProblems={(s, e) => { updateCreateForm({ startNumber: s, endNumber: e }); setTitleEdited(false); }}
-                        sectionsData={sectionCache[selectedTextbook.id]!}
-                      />
+                        <SectionPicker
+                          currentEnd={createForm.endNumber}
+                          currentStart={createForm.startNumber}
+                          mode={createForm.rangeType === "free" ? "pages" : "problems"}
+                          onSelectPages={(_, __, detail) => updateCreateForm({ detail })}
+                          onSelectProblems={(s, e) => { updateCreateForm({ startNumber: s, endNumber: e }); setTitleEdited(false); }}
+                          sectionsData={sectionCache[selectedTextbook.id]!}
+                        />
                     ) : null}
                   </div>
 

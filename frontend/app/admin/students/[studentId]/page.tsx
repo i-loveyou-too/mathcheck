@@ -69,6 +69,26 @@ type TextbookProgressData = {
   items: ChecklistItem[];
 };
 
+type HomeworkTaskDetail = {
+  id: number;
+  title: string;
+  textbook_title: string | null;
+  range_label: string | null;
+  task_date: string;
+  due_date: string | null;
+  progress_rate: number;
+  status: "todo" | "in_progress" | "done";
+  memo: string | null;
+};
+
+type StudentHomeworkResponse = {
+  student_id: number;
+  date: string;
+  overdue_tasks: HomeworkTaskDetail[];
+  today_tasks: HomeworkTaskDetail[];
+  week_tasks: HomeworkTaskDetail[];
+};
+
 function toLocalDateKey(date: Date) {
   const y = date.getFullYear();
   const m = `${date.getMonth() + 1}`.padStart(2, "0");
@@ -124,6 +144,12 @@ function getItemStatusClass(status: string) {
   return "bg-slate-100 text-slate-400";
 }
 
+function getHomeworkProgressTone(progressRate: number) {
+  if (progressRate >= 100) return "text-emerald-600";
+  if (progressRate > 0) return "text-amber-600";
+  return "text-[#98A2B3]";
+}
+
 function getRangeText(task: WeeklyTask) {
   if (task.start_item_number === null) return null;
   if (task.start_item_number === task.end_item_number) return `${task.start_item_number}번`;
@@ -147,6 +173,69 @@ function StatCard({
   );
 }
 
+function HomeworkBucket({
+  title,
+  tasks,
+}: {
+  title: string;
+  tasks: HomeworkTaskDetail[];
+}) {
+  return (
+    <div className="rounded-[24px] border border-[#EEF2F7] bg-[#FBFCFE] p-4">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-base font-black text-[#17213B]">{title}</h3>
+        <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-[#667085]">
+          {tasks.length}개
+        </span>
+      </div>
+
+      {tasks.length === 0 ? (
+        <p className="mt-4 text-sm font-semibold text-[#98A2B3]">표시할 숙제가 없습니다.</p>
+      ) : (
+        <div className="mt-4 space-y-3">
+          {tasks.map((task) => (
+            <div className="rounded-[20px] border border-[#EEF2F7] bg-white p-4" key={task.id}>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-black text-[#17213B]">{task.title}</p>
+                  <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-black">
+                    <span className={`rounded-full px-2.5 py-1 ${getTaskStatusClass(task.status)}`}>
+                      {getTaskStatusLabel(task.status)}
+                    </span>
+                    <span className="rounded-full bg-[#F4F6FA] px-2.5 py-1 text-[#667085]">
+                      숙제 완료율 {task.progress_rate}%
+                    </span>
+                    {task.textbook_title ? (
+                      <span className="rounded-full bg-[#EEF2FF] px-2.5 py-1 text-[#4F46E5]">
+                        {task.textbook_title}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+                <p className={`text-sm font-black ${getHomeworkProgressTone(task.progress_rate)}`}>
+                  {task.progress_rate}%
+                </p>
+              </div>
+
+              <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs font-semibold text-[#98A2B3]">
+                <span>날짜 {task.task_date}</span>
+                {task.due_date ? <span>마감 {task.due_date}</span> : null}
+                {task.range_label ? <span>범위 {task.range_label}</span> : null}
+              </div>
+
+              {task.memo ? (
+                <p className="mt-3 rounded-[16px] bg-[#F8FAFC] px-3 py-2 text-xs font-semibold text-[#667085]">
+                  메모 {task.memo}
+                </p>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AdminStudentDetailPage() {
   const params = useParams<{ studentId: string }>();
   const router = useRouter();
@@ -158,6 +247,9 @@ export default function AdminStudentDetailPage() {
   const [weekStart, setWeekStart] = useState(() => toLocalDateKey(getMondayOf(new Date())));
   const [weeklyData, setWeeklyData] = useState<WeeklyTasksResponse | null>(null);
   const [loadingWeekly, setLoadingWeekly] = useState(false);
+  const [homeworkData, setHomeworkData] = useState<StudentHomeworkResponse | null>(null);
+  const [loadingHomework, setLoadingHomework] = useState(false);
+  const [homeworkError, setHomeworkError] = useState("");
 
   const [studentTextbooks, setStudentTextbooks] = useState<StudentTextbookItem[]>([]);
   const [textbookProgressMap, setTextbookProgressMap] = useState<Record<string, TextbookProgressData>>({});
@@ -225,6 +317,24 @@ export default function AdminStudentDetailPage() {
       .catch(() => setWeeklyData(null))
       .finally(() => setLoadingWeekly(false));
   }, [params.studentId, weekStart]);
+
+  useEffect(() => {
+    if (!params.studentId) return;
+
+    const todayKey = toLocalDateKey(new Date());
+    setLoadingHomework(true);
+    setHomeworkError("");
+
+    apiFetch<StudentHomeworkResponse>(
+      `/admin/students/${params.studentId}/homework?date=${todayKey}`,
+    )
+      .then((data) => setHomeworkData(data))
+      .catch(() => {
+        setHomeworkData(null);
+        setHomeworkError("숙제 현황을 불러오지 못했어요.");
+      })
+      .finally(() => setLoadingHomework(false));
+  }, [params.studentId]);
 
   const moveWeek = (direction: -1 | 1) => {
     const date = new Date(`${weekStart}T00:00:00`);
@@ -452,7 +562,7 @@ export default function AdminStudentDetailPage() {
                     <div>
                       <h2 className="text-xl font-black text-[#17213B]">교재 현황</h2>
                       <p className="mt-1 text-sm font-semibold text-[#98A2B3]">
-                        체크리스트 교재와 개인 배정 교재를 함께 확인해요.
+                        학생에게 실제로 보이는 전체 공개 교재와 학생전용 교재를 함께 확인해요.
                       </p>
                     </div>
                     <span className="rounded-full bg-[#EEF2FF] px-3 py-1 text-xs font-black text-[#4F46E5]">
@@ -499,7 +609,11 @@ export default function AdminStudentDetailPage() {
                                           <span className="rounded-full bg-[#FFF7ED] px-2.5 py-1 text-[11px] font-black text-[#F97316]">
                                             개인 배정
                                           </span>
-                                        ) : null}
+                                        ) : (
+                                          <span className="rounded-full bg-[#EEF2FF] px-2.5 py-1 text-[11px] font-black text-[#4F46E5]">
+                                            전체 공개
+                                          </span>
+                                        )}
                                       </div>
                                       <p className="mt-2 text-sm font-black text-[#17213B]">
                                         {textbook.short_title || textbook.title}
@@ -606,6 +720,7 @@ export default function AdminStudentDetailPage() {
                               >
                                 {textbook.short_title || textbook.title}
                                 {textbook.subject ? ` · ${textbook.subject}` : ""}
+                                {!textbook.is_student_only ? " · 전체 공개" : " · 개인 배정"}
                               </span>
                             ))}
                           </div>
@@ -614,6 +729,43 @@ export default function AdminStudentDetailPage() {
                     </div>
                   )}
                 </article>
+              </section>
+
+              <section className="rounded-[32px] border border-white/80 bg-white p-5 shadow-[0_16px_40px_rgba(15,23,42,0.06)] sm:p-6">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <h2 className="text-xl font-black text-[#17213B]">숙제 현황</h2>
+                    <p className="mt-1 text-sm font-semibold text-[#98A2B3]">
+                      교재 진도율과 별도로, 학생에게 배정된 숙제 완료율과 밀린 숙제를 확인해요.
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-[#EEF2FF] px-3 py-1 text-xs font-black text-[#4F46E5]">
+                    숙제 완료율과 교재 진도율은 별도 기준
+                  </span>
+                </div>
+
+                {loadingHomework ? (
+                  <p className="py-12 text-center text-sm font-bold text-[#98A2B3]">불러오는 중...</p>
+                ) : homeworkError ? (
+                  <div className="mt-5 rounded-[24px] border border-[#FECACA] bg-[#FEF2F2] px-4 py-4 text-sm font-bold text-[#B42318]">
+                    {homeworkError}
+                  </div>
+                ) : (
+                  <div className="mt-5 grid gap-4 xl:grid-cols-3">
+                    <HomeworkBucket
+                      tasks={homeworkData?.overdue_tasks ?? []}
+                      title="밀린 할 일"
+                    />
+                    <HomeworkBucket
+                      tasks={homeworkData?.today_tasks ?? []}
+                      title="오늘 할 일"
+                    />
+                    <HomeworkBucket
+                      tasks={homeworkData?.week_tasks ?? []}
+                      title="이번 주 할 일"
+                    />
+                  </div>
+                )}
               </section>
             </>
           )}

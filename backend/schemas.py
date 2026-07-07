@@ -204,12 +204,19 @@ class DailyTaskResponse(BaseModel):
     textbook_key: Optional[str] = None
     start_item_number: Optional[int] = None
     end_item_number: Optional[int] = None
+    range_type: Optional[str] = None
+    completion_mode: str = "manual"
+    progress_rate: int = 0
+    due_date: Optional[date] = None
     status: str
     difficulty: Optional[str] = None
     category: Optional[str] = None
     order_index: int
     completed_at: Optional[datetime] = None
     textbook: Optional[DailyTaskTextbookInfo] = None
+    # Added for the homework assignment engine (phase 2): lets clients tell homework-generated
+    # tasks apart from manual ones without dropping/renaming any pre-existing field above.
+    source_type: str = "manual"
 
 
 class DailyTaskSummary(BaseModel):
@@ -272,6 +279,104 @@ class StudentDailyTaskStatusRequest(BaseModel):
 
 class DeleteResponse(BaseModel):
     ok: bool
+
+
+class HomeworkAssignmentCreateRequest(BaseModel):
+    student_id: int
+    textbook_id: int
+    title: Optional[str] = None
+    range_type: str
+    start_value: Optional[int] = None
+    end_value: Optional[int] = None
+    start_date: date
+    due_date: date
+    memo: Optional[str] = None
+
+
+class HomeworkAssignmentResponse(BaseModel):
+    id: int
+    student_id: int
+    textbook_id: int
+    title: Optional[str] = None
+    range_type: str
+    start_value: Optional[int] = None
+    end_value: Optional[int] = None
+    start_date: date
+    due_date: date
+    memo: Optional[str] = None
+    status: str
+    created_at: datetime
+    created_by: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class HomeworkAssignmentCreateResponse(BaseModel):
+    assignment: HomeworkAssignmentResponse
+    daily_tasks: list[DailyTaskResponse]
+
+
+class StudentHomeworkTaskCard(BaseModel):
+    id: int
+    title: str
+    detail: Optional[str] = None
+    task_date: date
+    due_date: Optional[date] = None
+    textbook_id: Optional[int] = None
+    textbook_key: Optional[str] = None
+    textbook_title: Optional[str] = None
+    range_type: Optional[str] = None
+    range_label: Optional[str] = None
+    source_type: str
+    completion_mode: str
+    status: str
+    progress_rate: int
+    is_overdue: bool
+
+
+class StudentTodayTasksResponse(BaseModel):
+    student_id: int
+    today: date
+    week_end: date
+    overdue_tasks: list[StudentHomeworkTaskCard]
+    today_tasks: list[StudentHomeworkTaskCard]
+    week_tasks: list[StudentHomeworkTaskCard]
+
+
+class AdminHomeworkDashboardStudent(BaseModel):
+    student_id: int
+    name: str
+    today_total: int
+    today_completed: int
+    today_completion_rate: int
+    overdue_count: int
+    week_total: int
+    week_completed: int
+
+
+class AdminHomeworkDashboardResponse(BaseModel):
+    date: date
+    students: list[AdminHomeworkDashboardStudent]
+
+
+class AdminHomeworkTaskDetail(BaseModel):
+    id: int
+    title: str
+    textbook_title: Optional[str] = None
+    range_label: Optional[str] = None
+    task_date: date
+    due_date: Optional[date] = None
+    progress_rate: int
+    status: str
+    memo: Optional[str] = None
+
+
+class AdminStudentHomeworkResponse(BaseModel):
+    student_id: int
+    date: date
+    overdue_tasks: list[AdminHomeworkTaskDetail]
+    today_tasks: list[AdminHomeworkTaskDetail]
+    week_tasks: list[AdminHomeworkTaskDetail]
 
 
 class AchievementTrackerDay(BaseModel):

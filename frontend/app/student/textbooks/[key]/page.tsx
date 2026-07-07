@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
+import { getStudent } from "@/lib/storage";
 import { StudentTextbook } from "@/lib/types";
 import { TextbookChecklistPage } from "../textbook-checklist-page";
 
@@ -19,12 +21,21 @@ function getBackHref(subject: string | null) {
 }
 
 export default function StudentTextbookDynamicPage({ params }: TextbookRoutePageProps) {
+  const router = useRouter();
   const [textbook, setTextbook] = useState<StudentTextbook | null>(null);
 
   useEffect(() => {
+    const student = getStudent();
+    if (!student) {
+      router.push("/login");
+      return;
+    }
+
     const loadTextbook = async () => {
       try {
-        const data = await apiFetch<StudentTextbook>(`/student/textbooks/${params.key}`);
+        const data = await apiFetch<StudentTextbook>(
+          `/student/textbooks/${params.key}?student_id=${student.id}`
+        );
         setTextbook(data);
       } catch {
         setTextbook(null);
@@ -32,7 +43,7 @@ export default function StudentTextbookDynamicPage({ params }: TextbookRoutePage
     };
 
     void loadTextbook();
-  }, [params.key]);
+  }, [params.key, router]);
 
   return (
     <TextbookChecklistPage

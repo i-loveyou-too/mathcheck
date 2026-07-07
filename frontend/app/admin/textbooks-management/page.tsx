@@ -96,6 +96,47 @@ function sectionToPayload(s: SectionForm, index: number, structureType: string) 
   };
 }
 
+// Sections are a label/classification, not the source of truth for the item checklist.
+// item_count is a count, not a max item number, so a section's end is never bounded by it —
+// only internal start/end consistency is enforced here.
+function validateSections(sections: SectionForm[]): string | null {
+  for (const s of sections) {
+    const label = s.sectionTitle.trim() || "구간";
+    const start = s.startProblem ? parseInt(s.startProblem, 10) : null;
+    const end = s.endProblem ? parseInt(s.endProblem, 10) : null;
+
+    if (start !== null && start < 1) {
+      return `'${label}' 구간의 시작 번호는 1 이상이어야 합니다.`;
+    }
+    if (start !== null && end !== null && start > end) {
+      return `'${label}' 구간의 시작 번호(${start})가 끝 번호(${end})보다 클 수 없습니다.`;
+    }
+
+    const startPage = s.startPage ? parseInt(s.startPage, 10) : null;
+    const endPage = s.endPage ? parseInt(s.endPage, 10) : null;
+    if (startPage !== null && startPage < 1) {
+      return `'${label}' 구간의 시작 페이지는 1 이상이어야 합니다.`;
+    }
+    if (startPage !== null && endPage !== null && startPage > endPage) {
+      return `'${label}' 구간의 시작 페이지(${startPage})가 끝 페이지(${endPage})보다 클 수 없습니다.`;
+    }
+  }
+  return null;
+}
+
+// Union of every section's [startProblem, endProblem] range, deduped — mirrors the backend's
+// compute_item_numbers_from_sections so the create form can preview the real item count.
+function computeUnionItemCount(sections: SectionForm[]): number {
+  const numbers = new Set<number>();
+  for (const s of sections) {
+    const start = s.startProblem ? parseInt(s.startProblem, 10) : null;
+    const end = s.endProblem ? parseInt(s.endProblem, 10) : null;
+    if (start === null || end === null || start > end) continue;
+    for (let n = start; n <= end; n += 1) numbers.add(n);
+  }
+  return numbers.size;
+}
+
 type FormState = {
   seriesId: string;
   subjects: string[];
@@ -418,6 +459,15 @@ export default function TextbooksManagementPage() {
     setForm((f) => ({ ...f, textbookKey: generateTextbookKey(selectedSeries, f.subjects) }));
   }, [selectedSeries, form.subjects, keyEdited]);
 
+  const sectionUnionCount = useMemo(() => computeUnionItemCount(sections), [sections]);
+
+  useEffect(() => {
+    if (formMode === "edit") return;
+    if (form.structureType === "none") return;
+    if (sectionUnionCount <= 0) return;
+    setForm((f) => ({ ...f, itemCount: String(sectionUnionCount) }));
+  }, [sectionUnionCount, form.structureType, formMode]);
+
   const filteredTextbooks = useMemo(
     () =>
       subjectFilter === "전체"
@@ -631,9 +681,17 @@ export default function TextbooksManagementPage() {
 
   const handleSaveSections = async () => {
     if (!selectedId) return;
-    setSavingSections(true);
     setSectionsError("");
     setSectionsMessage("");
+
+    const validDetailSections = detailSections.filter((s) => s.sectionTitle.trim());
+    const validationError = validateSections(validDetailSections);
+    if (validationError) {
+      setSectionsError(validationError);
+      return;
+    }
+
+    setSavingSections(true);
     try {
       const result = await apiFetch<TextbookSectionsResponse>(
         `/admin/textbooks/${selectedId}/sections`,
@@ -641,9 +699,7 @@ export default function TextbooksManagementPage() {
           method: "PUT",
           body: {
             structure_type: detailStructureType,
-            sections: detailSections
-              .filter((s) => s.sectionTitle.trim())
-              .map((s, i) => sectionToPayload(s, i, detailStructureType)),
+            sections: validDetailSections.map((s, i) => sectionToPayload(s, i, detailStructureType)),
           },
         },
       );
@@ -691,6 +747,13 @@ export default function TextbooksManagementPage() {
     }
 
     const validSections = sections.filter((s) => s.sectionTitle.trim());
+    if (formMode !== "edit") {
+      const validationError = validateSections(validSections);
+      if (validationError) {
+        setError(validationError);
+        return;
+      }
+    }
 
     setSubmitting(true);
     try {
@@ -1090,9 +1153,17 @@ export default function TextbooksManagementPage() {
 
                     {/* Item count */}
                     <div>
-                      <label className="mb-2 block text-sm font-black text-[#344054]">문항 수</label>
+                      <label className="mb-2 block text-sm font-black text-[#344054]">
+                        문항 수
+                        {form.structureType !== "none" && sectionUnionCount > 0 ? (
+                          <span className="font-normal text-[#98A2B3]">
+                            {" "}(구간 기준 자동 계산: {sectionUnionCount}개)
+                          </span>
+                        ) : null}
+                      </label>
                       <input
-                        className="w-full rounded-2xl border border-[#E5E7EB] bg-[#F8FAFC] px-4 py-3 text-sm font-black text-[#17213B] outline-none focus:border-[#0F172A]"
+                        className="w-full rounded-2xl border border-[#E5E7EB] bg-[#F8FAFC] px-4 py-3 text-sm font-black text-[#17213B] outline-none focus:border-[#0F172A] disabled:opacity-60"
+                        disabled={form.structureType !== "none" && sectionUnionCount > 0}
                         min="1"
                         onChange={(e) => setForm((f) => ({ ...f, itemCount: e.target.value }))}
                         placeholder="15"

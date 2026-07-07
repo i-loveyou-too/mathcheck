@@ -253,6 +253,27 @@ class MathTextbookSection(Base):
     textbook = relationship("MathTextbook", back_populates="sections")
 
 
+class HomeworkAssignment(Base):
+    __tablename__ = "math_homework_assignments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("math_students.id"), nullable=False, index=True)
+    textbook_id = Column(Integer, ForeignKey("math_textbooks.id"), nullable=False, index=True)
+    title = Column(String(200), nullable=True)
+    range_type = Column(String(20), nullable=False)
+    start_value = Column(Integer, nullable=True)
+    end_value = Column(Integer, nullable=True)
+    start_date = Column(Date, nullable=False)
+    due_date = Column(Date, nullable=False)
+    memo = Column(String(300), nullable=True)
+    status = Column(String(20), nullable=False, default="active")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    created_by = Column(String(100), nullable=True)
+
+    student = relationship("Student")
+    textbook = relationship("MathTextbook")
+
+
 class MathDailyTask(Base):
     __tablename__ = "math_daily_tasks"
 
@@ -273,5 +294,24 @@ class MathDailyTask(Base):
     completed_at = Column(DateTime(timezone=True), nullable=True)
     updated_at = Column(DateTime(timezone=True), nullable=True)
 
+    # Homework assignment engine (added alongside HomeworkAssignment): all nullable/defaulted
+    # so existing manual daily tasks (source_type="manual", completion_mode="manual") are
+    # untouched and every pre-existing row/API response stays valid.
+    source_type = Column(String(20), nullable=False, default="manual")
+    homework_assignment_id = Column(
+        Integer, ForeignKey("math_homework_assignments.id"), nullable=True, index=True
+    )
+    range_type = Column(String(20), nullable=True)
+    start_value = Column(Integer, nullable=True)
+    end_value = Column(Integer, nullable=True)
+    start_page = Column(Integer, nullable=True)
+    end_page = Column(Integer, nullable=True)
+    textbook_section_id = Column(
+        Integer, ForeignKey("math_textbook_sections.id"), nullable=True
+    )
+    completion_mode = Column(String(20), nullable=False, default="manual")
+
     student = relationship("Student", back_populates="daily_tasks")
     textbook = relationship("MathTextbook", back_populates="daily_tasks")
+    homework_assignment = relationship("HomeworkAssignment")
+    textbook_section = relationship("MathTextbookSection")

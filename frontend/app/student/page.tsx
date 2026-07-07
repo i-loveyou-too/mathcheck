@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ScreenShell } from "@/components/screen-shell";
+import { StudentLogoutButton } from "@/components/student-logout-button";
 import { StudentBottomNav } from "@/components/student-bottom-nav";
 import { apiFetch } from "@/lib/api";
 import { clearStudent, getStudent } from "@/lib/storage";
@@ -264,15 +265,7 @@ export default function StudentDashboardPage() {
           </p>
         </div>
 
-        <button
-          aria-label="로그아웃"
-          className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white text-[#17213B] shadow-card transition hover:bg-gray-50"
-          onClick={handleLogout}
-          type="button"
-        >
-          <span className="text-lg">⌂</span>
-          <span className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full bg-rose-500" />
-        </button>
+        <StudentLogoutButton onClick={handleLogout} />
       </div>
 
       <section className="relative overflow-hidden rounded-[30px] bg-[#121C3D] px-5 py-4 text-white shadow-[0_22px_52px_rgba(15,23,42,0.24)]">

@@ -83,6 +83,49 @@ def ensure_textbook_structure_type_column():
             )
 
 
+def ensure_daily_task_homework_columns():
+    inspector = inspect(engine)
+    if not inspector.has_table("math_daily_tasks"):
+        return
+
+    column_names = {column["name"] for column in inspector.get_columns("math_daily_tasks")}
+
+    statements = {
+        "source_type": "ALTER TABLE math_daily_tasks ADD COLUMN source_type VARCHAR(20) NOT NULL DEFAULT 'manual'",
+        "homework_assignment_id": "ALTER TABLE math_daily_tasks ADD COLUMN homework_assignment_id INTEGER NULL",
+        "range_type": "ALTER TABLE math_daily_tasks ADD COLUMN range_type VARCHAR(20) NULL",
+        "start_value": "ALTER TABLE math_daily_tasks ADD COLUMN start_value INTEGER NULL",
+        "end_value": "ALTER TABLE math_daily_tasks ADD COLUMN end_value INTEGER NULL",
+        "start_page": "ALTER TABLE math_daily_tasks ADD COLUMN start_page INTEGER NULL",
+        "end_page": "ALTER TABLE math_daily_tasks ADD COLUMN end_page INTEGER NULL",
+        "textbook_section_id": "ALTER TABLE math_daily_tasks ADD COLUMN textbook_section_id INTEGER NULL",
+        "completion_mode": "ALTER TABLE math_daily_tasks ADD COLUMN completion_mode VARCHAR(20) NOT NULL DEFAULT 'manual'",
+    }
+
+    with engine.begin() as connection:
+        for column_name, statement in statements.items():
+            if column_name not in column_names:
+                connection.execute(text(statement))
+
+        # FKs added separately so a rerun never fails if the referenced table/column pre-exists.
+        if "homework_assignment_id" not in column_names:
+            connection.execute(
+                text(
+                    "ALTER TABLE math_daily_tasks "
+                    "ADD CONSTRAINT fk_math_daily_tasks_homework_assignment "
+                    "FOREIGN KEY (homework_assignment_id) REFERENCES math_homework_assignments (id)"
+                )
+            )
+        if "textbook_section_id" not in column_names:
+            connection.execute(
+                text(
+                    "ALTER TABLE math_daily_tasks "
+                    "ADD CONSTRAINT fk_math_daily_tasks_textbook_section "
+                    "FOREIGN KEY (textbook_section_id) REFERENCES math_textbook_sections (id)"
+                )
+            )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Create tables automatically on startup so the app is easy to run locally.
@@ -91,10 +134,12 @@ async def lifespan(app: FastAPI):
     ensure_daily_task_completed_at_column()
     ensure_textbook_is_student_only_column()
     ensure_textbook_structure_type_column()
+    ensure_daily_task_homework_columns()
     db = SessionLocal()
     try:
         crud.sync_textbook_keys(db)
         crud.backfill_textbook_subjects(db)
+        crud.repair_textbook_subject_tags(db)
     finally:
         db.close()
     yield
@@ -229,6 +274,19 @@ def student_weekly_tasks(student_id: int, week_start: date, db: Session = Depend
 
 
 @app.get(
+    "/student/today-tasks",
+    response_model=schemas.StudentTodayTasksResponse,
+    tags=["Student"],
+)
+def student_today_tasks(student_id: int, today: date, db: Session = Depends(get_db)):
+    student = crud.get_student_by_id(db, student_id)
+    if student is None:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    return crud.get_student_today_tasks(db, student_id, today)
+
+
+@app.get(
     "/student/achievement-tracker",
     response_model=schemas.AchievementTrackerResponse,
     tags=["Student"],
@@ -256,7 +314,7 @@ def student_achievement_tracker(
 )
 def student_textbooks_by_subject(
     subject: str,
-    student_id: Optional[int] = None,
+    student_id: int,
     db: Session = Depends(get_db),
 ):
     return {"textbooks": crud.get_active_textbooks_by_subject(db, subject, student_id)}
@@ -267,8 +325,8 @@ def student_textbooks_by_subject(
     response_model=schemas.StudentTextbookResponse,
     tags=["Student"],
 )
-def student_textbook_by_key(textbook_key: str, db: Session = Depends(get_db)):
-    textbook = crud.get_student_textbook_by_key(db, textbook_key)
+def student_textbook_by_key(textbook_key: str, student_id: int, db: Session = Depends(get_db)):
+    textbook = crud.get_student_textbook_by_key(db, textbook_key, student_id)
     if textbook is None:
         raise HTTPException(status_code=404, detail="Textbook not found")
     return textbook
@@ -279,9 +337,11 @@ def student_textbook_by_key(textbook_key: str, db: Session = Depends(get_db)):
     response_model=schemas.TextbookSectionsResponse,
     tags=["Student"],
 )
-def student_textbook_sections(textbook_key: str, db: Session = Depends(get_db)):
+def student_textbook_sections(textbook_key: str, student_id: int, db: Session = Depends(get_db)):
     textbook = crud.get_textbook_by_key(db, textbook_key)
     if textbook is None:
+        raise HTTPException(status_code=404, detail="Textbook not found")
+    if not crud.is_textbook_visible_to_student(db, textbook, student_id):
         raise HTTPException(status_code=404, detail="Textbook not found")
     sections = crud.get_textbook_sections(db, textbook.id)
     visible = [s for s in sections if s.show_to_student]
@@ -307,10 +367,8 @@ def textbook_progress(textbook_key: str, student_id: int, db: Session = Depends(
     if textbook is None:
         raise HTTPException(status_code=404, detail="Textbook not found")
 
-    if textbook.is_student_only and not crud.is_textbook_assigned_to_student(
-        db, textbook.id, student_id
-    ):
-        raise HTTPException(status_code=403, detail="Textbook not assigned to student")
+    if not crud.is_textbook_visible_to_student(db, textbook, student_id):
+        raise HTTPException(status_code=404, detail="Textbook not found")
 
     progress = crud.get_textbook_progress(db, student_id, textbook_key)
     if progress is None:
@@ -365,12 +423,15 @@ def update_student_daily_task_status(
     if task.student_id != payload.student_id:
         raise HTTPException(status_code=403, detail="Not allowed")
 
-    updated_task = crud.update_daily_task(
-        db,
-        task,
-        schemas.AdminDailyTaskUpdateRequest(status=payload.status),
-    )
-    return crud.serialize_daily_task(updated_task)
+    try:
+        updated_task = crud.update_daily_task(
+            db,
+            task,
+            schemas.AdminDailyTaskUpdateRequest(status=payload.status),
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return crud.serialize_daily_task(db, updated_task)
 
 
 @app.post("/auth/admin-login", response_model=schemas.AdminLoginResponse, tags=["Admin"])
@@ -384,6 +445,15 @@ def admin_login(payload: schemas.AdminLoginRequest, db: Session = Depends(get_db
 @app.get("/admin/students", response_model=list[schemas.AdminStudentSummary], tags=["Admin"])
 def admin_students(db: Session = Depends(get_db)):
     return crud.get_admin_student_list(db)
+
+
+@app.get(
+    "/admin/homework-dashboard",
+    response_model=schemas.AdminHomeworkDashboardResponse,
+    tags=["Admin"],
+)
+def admin_homework_dashboard(date: date, db: Session = Depends(get_db)):
+    return crud.get_admin_homework_dashboard(db, date)
 
 
 @app.get(
@@ -412,7 +482,7 @@ def create_admin_daily_task(
         raise HTTPException(status_code=404, detail="Student not found")
 
     task = crud.create_daily_task(db, payload)
-    return crud.serialize_daily_task(task)
+    return crud.serialize_daily_task(db, task)
 
 
 @app.patch(
@@ -432,8 +502,11 @@ def update_admin_daily_task(
     if task is None:
         raise HTTPException(status_code=404, detail="Daily task not found")
 
-    updated_task = crud.update_daily_task(db, task, payload)
-    return crud.serialize_daily_task(updated_task)
+    try:
+        updated_task = crud.update_daily_task(db, task, payload)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return crud.serialize_daily_task(db, updated_task)
 
 
 @app.delete(
@@ -450,6 +523,22 @@ def delete_admin_daily_task(task_id: int, db: Session = Depends(get_db)):
     return {"ok": True}
 
 
+@app.post(
+    "/admin/homework-assignments",
+    response_model=schemas.HomeworkAssignmentCreateResponse,
+    tags=["Admin"],
+)
+def create_homework_assignment(
+    payload: schemas.HomeworkAssignmentCreateRequest,
+    db: Session = Depends(get_db),
+):
+    try:
+        result = crud.create_homework_assignment(db, payload)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return result
+
+
 @app.get(
     "/admin/students/{student_id}/progress",
     response_model=schemas.StudentProgressDetailResponse,
@@ -460,6 +549,23 @@ def admin_student_progress(student_id: int, db: Session = Depends(get_db)):
     if summary is None:
         raise HTTPException(status_code=404, detail="Student not found")
     return summary
+
+
+@app.get(
+    "/admin/students/{student_id}/homework",
+    response_model=schemas.AdminStudentHomeworkResponse,
+    tags=["Admin"],
+)
+def admin_student_homework(
+    student_id: int,
+    date: Optional[date] = None,
+    db: Session = Depends(get_db),
+):
+    student = crud.get_student_by_id(db, student_id)
+    if student is None:
+        raise HTTPException(status_code=404, detail="Student not found")
+    target_date = date or crud.date.today()
+    return crud.get_admin_student_homework(db, student_id, target_date)
 
 
 @app.get(
@@ -609,7 +715,10 @@ def admin_replace_textbook_sections(
     if payload.structure_type is not None:
         textbook.structure_type = payload.structure_type
         db.commit()
-    sections = crud.replace_textbook_sections(db, textbook_id, payload.sections)
+    try:
+        sections = crud.replace_textbook_sections(db, textbook_id, payload.sections)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     return {
         "textbook_id": textbook_id,
         "textbook_key": textbook.textbook_key or "",

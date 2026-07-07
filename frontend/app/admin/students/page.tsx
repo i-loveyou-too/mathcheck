@@ -14,9 +14,28 @@ import {
 import { getAdmin } from "@/lib/storage";
 import { AdminStudentSummary } from "@/lib/types";
 
+type HomeworkDashboardStudent = {
+  student_id: number;
+  name: string;
+  today_total: number;
+  today_completed: number;
+  today_completion_rate: number;
+  overdue_count: number;
+  week_total: number;
+  week_completed: number;
+};
+
 type StudentRow = AdminStudentSummary & {
   subjectProgress: AdminStudentCardProgress["subjects"];
+  homework: HomeworkDashboardStudent;
 };
+
+function toLocalDateKey(date: Date) {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
 
 function getStatus(progressPercentage: number) {
   if (progressPercentage <= 10) {
@@ -58,6 +77,7 @@ export default function AdminStudentsPage() {
   const router = useRouter();
   const [students, setStudents] = useState<StudentRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [homeworkError, setHomeworkError] = useState("");
 
   useEffect(() => {
     const admin = getAdmin();
@@ -68,18 +88,40 @@ export default function AdminStudentsPage() {
 
     void apiFetch<AdminStudentSummary[]>("/admin/students")
       .then(async (data) => {
-        const progressMap = await loadAdminStudentCardProgress(data.map((student) => student.id));
+        const todayKey = toLocalDateKey(new Date());
+        const [progressMap, homeworkData] = await Promise.all([
+          loadAdminStudentCardProgress(data.map((student) => student.id)),
+          apiFetch<{ date: string; students: HomeworkDashboardStudent[] }>(
+            `/admin/homework-dashboard?date=${todayKey}`,
+          ).catch(() => null),
+        ]);
+        const homeworkMap = new Map(
+          (homeworkData?.students ?? []).map((student) => [student.student_id, student]),
+        );
+        setHomeworkError(homeworkData ? "" : "숙제 현황을 불러오지 못했어요.");
 
         setStudents(
           data.map((student) => ({
             ...student,
             progress_percentage: progressMap[student.id]?.progressPercentage ?? 0,
             subjectProgress: progressMap[student.id]?.subjects ?? [],
+            homework:
+              homeworkMap.get(student.id) ?? {
+                student_id: student.id,
+                name: student.name,
+                today_total: 0,
+                today_completed: 0,
+                today_completion_rate: 0,
+                overdue_count: 0,
+                week_total: 0,
+                week_completed: 0,
+              },
           })),
         );
       })
       .catch(() => {
         setStudents([]);
+        setHomeworkError("");
       })
       .finally(() => setLoading(false));
   }, [router]);
@@ -205,6 +247,12 @@ export default function AdminStudentsPage() {
               </div>
             </div>
 
+            {homeworkError ? (
+              <div className="mt-4 rounded-[20px] border border-[#FECACA] bg-[#FEF2F2] px-4 py-3 text-sm font-bold text-[#B42318]">
+                {homeworkError}
+              </div>
+            ) : null}
+
             {loading ? (
               <div className="mt-5 space-y-3">
                 {[0, 1, 2].map((i) => (
@@ -219,15 +267,29 @@ export default function AdminStudentsPage() {
               <>
                 <div className="mt-5 space-y-3 lg:hidden">
                   {students.map((student) => (
-                    <StudentCard
-                      grade={student.grade}
-                      id={student.id}
-                      key={student.id}
-                      name={student.name}
-                      progressPercentage={student.progress_percentage}
-                      subjects={student.subjectProgress}
-                      variant="mobile"
-                    />
+                    <div className="space-y-2" key={student.id}>
+                      <StudentCard
+                        grade={student.grade}
+                        id={student.id}
+                        name={student.name}
+                        progressPercentage={student.progress_percentage}
+                        subjects={student.subjectProgress}
+                        variant="mobile"
+                      />
+                      <div className="rounded-[22px] border border-[#EEF2F7] bg-[#FBFCFE] px-4 py-3">
+                        <div className="flex flex-wrap gap-2 text-xs font-black">
+                          <span className="rounded-full bg-[#EEF2FF] px-3 py-1 text-[#4F46E5]">
+                            숙제 완료율 {student.homework.today_completion_rate}%
+                          </span>
+                          <span className="rounded-full bg-[#FFF7ED] px-3 py-1 text-[#C4320A]">
+                            오늘 미완료 {Math.max(student.homework.today_total - student.homework.today_completed, 0)}개
+                          </span>
+                          <span className="rounded-full bg-[#FEF2F2] px-3 py-1 text-[#B42318]">
+                            밀린 숙제 {student.homework.overdue_count}개
+                          </span>
+                        </div>
+                      </div>
+                    </div>
                   ))}
                 </div>
 
@@ -287,7 +349,19 @@ export default function AdminStudentsPage() {
                                 ))}
                               </div>
                             </td>
-                            <td className="px-4 py-4 text-sm font-bold text-[#98A2B3]">-</td>
+                            <td className="px-4 py-4">
+                              <div className="flex max-w-[240px] flex-wrap gap-2">
+                                <span className="rounded-full bg-[#EEF2FF] px-3 py-1 text-xs font-black text-[#4F46E5]">
+                                  완료율 {student.homework.today_completion_rate}%
+                                </span>
+                                <span className="rounded-full bg-[#FFF7ED] px-3 py-1 text-xs font-black text-[#C4320A]">
+                                  미완료 {Math.max(student.homework.today_total - student.homework.today_completed, 0)}개
+                                </span>
+                                <span className="rounded-full bg-[#FEF2F2] px-3 py-1 text-xs font-black text-[#B42318]">
+                                  밀림 {student.homework.overdue_count}개
+                                </span>
+                              </div>
+                            </td>
                             <td className="px-4 py-4">
                               <span className={`rounded-full px-3 py-1 text-xs font-black ${status.className}`}>
                                 {status.label}
