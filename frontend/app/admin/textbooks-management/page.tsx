@@ -179,14 +179,27 @@ const TEXTBOOK_KEY_SUBJECT_SLUGS: Record<string, string> = {
   "확률과 통계": "hwaktong",
 };
 
-function generateTextbookKey(series: TextbookSeriesItem | undefined, subjects: string[]): string {
+function slugifyKeyPart(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function generateTextbookKey(
+  series: TextbookSeriesItem | undefined,
+  subjects: string[],
+  title: string,
+): string {
   if (!series) return "";
   const slug = series.english_name.toLowerCase().replace(/\s+/g, "-");
   const subjectSlug = subjects
     .map((s) => TEXTBOOK_KEY_SUBJECT_SLUGS[s] ?? "")
     .filter(Boolean)
     .join("-");
-  return [slug, subjectSlug].filter(Boolean).join("-");
+  const titleSlug = slugifyKeyPart(title);
+  return [slug, subjectSlug, titleSlug].filter(Boolean).join("-");
 }
 
 function badgeClass(active: boolean, onClass: string, offClass: string) {
@@ -456,8 +469,11 @@ export default function TextbooksManagementPage() {
 
   useEffect(() => {
     if (keyEdited) return;
-    setForm((f) => ({ ...f, textbookKey: generateTextbookKey(selectedSeries, f.subjects) }));
-  }, [selectedSeries, form.subjects, keyEdited]);
+    setForm((f) => ({
+      ...f,
+      textbookKey: generateTextbookKey(selectedSeries, f.subjects, f.title),
+    }));
+  }, [selectedSeries, form.subjects, form.title, keyEdited]);
 
   const sectionUnionCount = useMemo(() => computeUnionItemCount(sections), [sections]);
 
@@ -715,6 +731,7 @@ export default function TextbooksManagementPage() {
       setDetailSections(result.sections.map(apiSectionToForm));
       setSectionsMessage("저장되었습니다.");
       setEditingSections(false);
+      await handleSelectTextbook(selectedId);
     } catch (err) {
       setSectionsError(err instanceof Error ? err.message : "저장에 실패했습니다.");
     } finally {
@@ -1597,6 +1614,4 @@ export default function TextbooksManagementPage() {
     </main>
   );
 }
-
-
 

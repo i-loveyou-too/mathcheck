@@ -196,6 +196,13 @@ class DailyTaskTextbookInfo(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class LectureTaskItemResponse(BaseModel):
+    lecture_number: int
+    title: str
+    is_done: bool
+    updated_at: Optional[datetime] = None
+
+
 class DailyTaskResponse(BaseModel):
     id: int
     title: str
@@ -214,6 +221,7 @@ class DailyTaskResponse(BaseModel):
     order_index: int
     completed_at: Optional[datetime] = None
     textbook: Optional[DailyTaskTextbookInfo] = None
+    lecture_items: list[LectureTaskItemResponse] = []
     # Added for the homework assignment engine (phase 2): lets clients tell homework-generated
     # tasks apart from manual ones without dropping/renaming any pre-existing field above.
     source_type: str = "manual"
@@ -277,6 +285,11 @@ class StudentDailyTaskStatusRequest(BaseModel):
     status: str
 
 
+class StudentLectureTaskItemProgressRequest(BaseModel):
+    student_id: int
+    is_done: bool
+
+
 class DeleteResponse(BaseModel):
     ok: bool
 
@@ -291,6 +304,67 @@ class HomeworkAssignmentCreateRequest(BaseModel):
     start_date: date
     due_date: date
     memo: Optional[str] = None
+
+
+class LectureAssignmentPreviewRequest(BaseModel):
+    total_lectures: int
+    start_lecture_no: int
+    lectures_per_day: int
+    weekdays: list[str]
+    start_date: date
+    due_date: date
+
+
+class LectureAssignmentPreviewItem(BaseModel):
+    date: date
+    start_lecture_no: int
+    end_lecture_no: int
+    count: int
+
+
+class LectureAssignmentPreviewResponse(BaseModel):
+    possible: bool
+    total_lectures_to_assign: int
+    available_days_count: int
+    required_days_count: int
+    max_assignable_lectures: int
+    shortage_count: int
+    recommended_lectures_per_day: int
+    preview_items: list[LectureAssignmentPreviewItem]
+
+
+class LectureAssignmentCreateRequest(BaseModel):
+    student_id: int
+    subject: str
+    course_title: str
+    total_lectures: int
+    start_lecture_no: int
+    lectures_per_day: int
+    weekdays: list[str]
+    start_date: date
+    due_date: date
+    memo: Optional[str] = None
+
+
+class LectureAssignmentResponse(BaseModel):
+    id: int
+    student_id: int
+    subject: str
+    course_title: str
+    total_lectures: int
+    start_lecture_no: int
+    lectures_per_day: int
+    weekdays: list[str]
+    start_date: date
+    due_date: date
+    memo: Optional[str] = None
+    status: str
+    created_at: datetime
+
+
+class LectureAssignmentCreateResponse(BaseModel):
+    assignment: LectureAssignmentResponse
+    daily_tasks: list[DailyTaskResponse]
 
 
 class HomeworkAssignmentResponse(BaseModel):

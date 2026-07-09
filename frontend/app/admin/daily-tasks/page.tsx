@@ -150,6 +150,45 @@ type WeeklyTasksApiResponse = {
 };
 
 type HomeworkRangeType = "item" | "page" | "section" | "custom";
+type LectureWeekday = "mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun";
+type AssignType = "problem_count" | "page" | "manual" | "auto" | "lecture";
+
+type LecturePreviewItem = {
+  date: string;
+  start_lecture_no: number;
+  end_lecture_no: number;
+  count: number;
+};
+
+type LecturePreviewResponse = {
+  possible: boolean;
+  total_lectures_to_assign: number;
+  available_days_count: number;
+  required_days_count: number;
+  max_assignable_lectures: number;
+  shortage_count: number;
+  recommended_lectures_per_day: number;
+  preview_items: LecturePreviewItem[];
+};
+
+type LectureAssignmentCreateResponse = {
+  assignment: {
+    id: number;
+    student_id: number;
+    subject: string;
+    course_title: string;
+    total_lectures: number;
+    start_lecture_no: number;
+    lectures_per_day: number;
+    weekdays: LectureWeekday[];
+    start_date: string;
+    due_date: string;
+    memo: string | null;
+    status: string;
+    created_at: string;
+  };
+  daily_tasks: DailyTask[];
+};
 
 const customTextbookValue = "__custom__";
 
@@ -239,6 +278,16 @@ function makeAutoTitle(option: TextbookOption, startNumber: number, endNumber: n
 }
 
 const WEEKDAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
+
+const LECTURE_WEEKDAY_OPTIONS: { value: LectureWeekday; label: string }[] = [
+  { value: "mon", label: "월" },
+  { value: "tue", label: "화" },
+  { value: "wed", label: "수" },
+  { value: "thu", label: "목" },
+  { value: "fri", label: "금" },
+  { value: "sat", label: "토" },
+  { value: "sun", label: "일" },
+];
 
 function getDayLabel(dateStr: string) {
   const d = new Date(`${dateStr}T00:00:00`);
@@ -428,7 +477,7 @@ export default function AdminDailyTasksPage() {
   const [savingEdit, setSavingEdit] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [assignType, setAssignType] = useState<AssignType>("problem_count");
   const [studentTextbookIds, setStudentTextbookIds] = useState<Set<number>>(new Set());
 
   const [seriesList, setSeriesList] = useState<TextbookSeriesItem[]>([]);
@@ -470,7 +519,6 @@ export default function AdminDailyTasksPage() {
   const [sectionLoadErrors, setSectionLoadErrors] = useState<Record<number, string>>({});
 
   // 자동분배 숙제 (HomeworkAssignment 엔진) — 기존 수동/자동배정 흐름과 완전히 분리된 새 모드.
-  const [homeworkMode, setHomeworkMode] = useState(false);
   const [homeworkTextbooks, setHomeworkTextbooks] = useState<AdminTextbookCatalogItem[]>([]);
   const [loadingHomeworkTextbooks, setLoadingHomeworkTextbooks] = useState(false);
   const [homeworkTextbookId, setHomeworkTextbookId] = useState("");
@@ -481,6 +529,20 @@ export default function AdminDailyTasksPage() {
   const [homeworkDueDate, setHomeworkDueDate] = useState(today);
   const [homeworkMemo, setHomeworkMemo] = useState("");
   const [homeworkSubmitting, setHomeworkSubmitting] = useState(false);
+  const [lectureTotalLectures, setLectureTotalLectures] = useState("");
+  const [lectureStartLectureNo, setLectureStartLectureNo] = useState("1");
+  const [lectureLecturesPerDay, setLectureLecturesPerDay] = useState("1");
+  const [lectureWeekdays, setLectureWeekdays] = useState<LectureWeekday[]>(["mon", "wed", "fri"]);
+  const [lectureStartDate, setLectureStartDate] = useState(today);
+  const [lectureDueDate, setLectureDueDate] = useState(today);
+  const [lectureSubject, setLectureSubject] = useState("");
+  const [lectureCourseTitle, setLectureCourseTitle] = useState("");
+  const [lectureMemo, setLectureMemo] = useState("");
+  const [lecturePreviewLoading, setLecturePreviewLoading] = useState(false);
+  const [lectureCreateLoading, setLectureCreateLoading] = useState(false);
+  const [lecturePreviewError, setLecturePreviewError] = useState("");
+  const [lecturePreviewResult, setLecturePreviewResult] = useState<LecturePreviewResponse | null>(null);
+  const [lecturePreviewSignature, setLecturePreviewSignature] = useState("");
 
   const visibleCatalogTextbooks = useMemo(
     () => catalogTextbooks.filter((t) => !t.isStudentOnly || studentTextbookIds.has(t.id ?? -1)),
@@ -500,6 +562,40 @@ export default function AdminDailyTasksPage() {
   const selectedHomeworkSection = homeworkRangeType === "section" && homeworkStartValue
     ? (homeworkSections?.find((section) => String(section.id) === homeworkStartValue) ?? null)
     : null;
+  const lectureFormSignature = useMemo(
+    () => JSON.stringify({
+      student_id: selectedStudentId,
+      subject: lectureSubject.trim(),
+      course_title: lectureCourseTitle.trim(),
+      total_lectures: lectureTotalLectures,
+      start_lecture_no: lectureStartLectureNo,
+      lectures_per_day: lectureLecturesPerDay,
+      weekdays: [...lectureWeekdays].sort(),
+      start_date: lectureStartDate,
+      due_date: lectureDueDate,
+      memo: lectureMemo.trim(),
+    }),
+    [
+      selectedStudentId,
+      lectureSubject,
+      lectureCourseTitle,
+      lectureTotalLectures,
+      lectureStartLectureNo,
+      lectureLecturesPerDay,
+      lectureWeekdays,
+      lectureStartDate,
+      lectureDueDate,
+      lectureMemo,
+    ],
+  );
+  const canCreateLectureAssignment =
+    Boolean(selectedStudentId) &&
+    lectureSubject.trim().length > 0 &&
+    lectureCourseTitle.trim().length > 0 &&
+    lecturePreviewResult?.possible === true &&
+    lecturePreviewSignature === lectureFormSignature;
+  const lecturePreviewNeedsRefresh =
+    lecturePreviewResult !== null && lecturePreviewSignature !== lectureFormSignature;
 
   const generatedTitle = useMemo(() => {
     if (createForm.rangeType !== "item" || isCustomTask || !selectedTextbook.shortTitle || !createForm.startNumber || !createForm.endNumber) {
@@ -994,6 +1090,135 @@ export default function AdminDailyTasksPage() {
     }
   };
 
+  const invalidateLecturePreview = useCallback(() => {
+    setLecturePreviewSignature("");
+  }, []);
+
+  const toggleLectureWeekday = (weekday: LectureWeekday) => {
+    invalidateLecturePreview();
+    setLectureWeekdays((current) =>
+      current.includes(weekday) ? current.filter((value) => value !== weekday) : [...current, weekday],
+    );
+  };
+
+  const resetLectureForm = () => {
+    setLectureSubject("");
+    setLectureCourseTitle("");
+    setLectureTotalLectures("");
+    setLectureStartLectureNo("1");
+    setLectureLecturesPerDay("1");
+    setLectureWeekdays(["mon", "wed", "fri"]);
+    setLectureStartDate(today);
+    setLectureDueDate(today);
+    setLectureMemo("");
+    setLecturePreviewError("");
+    setLecturePreviewResult(null);
+    setLecturePreviewSignature("");
+  };
+
+  const handleLecturePreview = async () => {
+    setMessage("");
+    setError("");
+    setLecturePreviewError("");
+    setLecturePreviewResult(null);
+    setLecturePreviewSignature("");
+
+    if (!lectureTotalLectures || Number(lectureTotalLectures) <= 0) {
+      setLecturePreviewError("총 강의 수를 1 이상으로 입력해주세요.");
+      return;
+    }
+    if (!lectureStartLectureNo || Number(lectureStartLectureNo) < 1) {
+      setLecturePreviewError("시작 강의 번호를 1 이상으로 입력해주세요.");
+      return;
+    }
+    if (!lectureLecturesPerDay || Number(lectureLecturesPerDay) <= 0) {
+      setLecturePreviewError("하루 수강 강의 수를 1 이상으로 입력해주세요.");
+      return;
+    }
+    if (lectureWeekdays.length === 0) {
+      setLecturePreviewError("수강 요일을 하나 이상 선택해주세요.");
+      return;
+    }
+    if (lectureStartDate > lectureDueDate) {
+      setLecturePreviewError("시작일은 마감일보다 늦을 수 없습니다.");
+      return;
+    }
+
+    setLecturePreviewLoading(true);
+    try {
+      const result = await apiFetch<LecturePreviewResponse>("/admin/lecture-assignments/preview", {
+        method: "POST",
+        body: {
+          total_lectures: Number(lectureTotalLectures),
+          start_lecture_no: Number(lectureStartLectureNo),
+          lectures_per_day: Number(lectureLecturesPerDay),
+          weekdays: lectureWeekdays,
+          start_date: lectureStartDate,
+          due_date: lectureDueDate,
+        },
+      });
+      setLecturePreviewResult(result);
+      setLecturePreviewSignature(lectureFormSignature);
+    } catch (err) {
+      setLecturePreviewError(err instanceof ApiError ? err.message : "인강 미리보기를 불러오지 못했습니다.");
+    } finally {
+      setLecturePreviewLoading(false);
+    }
+  };
+
+  const handleLectureCreate = async () => {
+    setMessage("");
+    setError("");
+
+    if (!selectedStudentId) {
+      setError("학생을 선택해주세요.");
+      return;
+    }
+    if (!lectureSubject.trim()) {
+      setError("과목을 입력해주세요.");
+      return;
+    }
+    if (!lectureCourseTitle.trim()) {
+      setError("강의명을 입력해주세요.");
+      return;
+    }
+    if (lecturePreviewResult?.possible !== true) {
+      setError("배정 가능한 preview를 먼저 확인해주세요.");
+      return;
+    }
+    if (lecturePreviewSignature !== lectureFormSignature) {
+      setError("Preview 이후 입력값이 변경되었습니다. 다시 Preview를 눌러주세요.");
+      return;
+    }
+
+    setLectureCreateLoading(true);
+    try {
+      const response = await apiFetch<LectureAssignmentCreateResponse>("/admin/lecture-assignments", {
+        method: "POST",
+        body: {
+          student_id: Number(selectedStudentId),
+          subject: lectureSubject.trim(),
+          course_title: lectureCourseTitle.trim(),
+          total_lectures: Number(lectureTotalLectures),
+          start_lecture_no: Number(lectureStartLectureNo),
+          lectures_per_day: Number(lectureLecturesPerDay),
+          weekdays: lectureWeekdays,
+          start_date: lectureStartDate,
+          due_date: lectureDueDate,
+          memo: lectureMemo.trim() || null,
+        },
+      });
+      setMessage(`인강 배정이 생성되었습니다. ${response.daily_tasks.length}개의 일일 task가 추가되었습니다.`);
+      resetLectureForm();
+      await fetchTasks(selectedStudentId, selectedDate);
+      setTaskRefreshKey((k) => k + 1);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "인강 배정 생성에 실패했습니다. 다시 시도해주세요.");
+    } finally {
+      setLectureCreateLoading(false);
+    }
+  };
+
   const startEdit = (task: DailyTask) => {
     setEditTaskId(task.id);
     setEditForm({ category: task.category ?? "기타", detail: task.detail ?? "", difficulty: task.difficulty ?? "보통", endNumber: task.end_item_number === null ? "" : String(task.end_item_number), orderIndex: String(task.order_index), rangeType: task.start_item_number !== null ? "item" : "none", selectedTextbookValue: getTextbookValue(task.textbook_key), startNumber: task.start_item_number === null ? "" : String(task.start_item_number), status: task.status, taskDate: selectedDate, title: task.title });
@@ -1195,7 +1420,10 @@ export default function AdminDailyTasksPage() {
               <select
                 className={`mt-4 ${inputCls}`}
                 disabled={loadingStudents}
-                onChange={(event) => setSelectedStudentId(event.target.value)}
+                onChange={(event) => {
+                  setSelectedStudentId(event.target.value);
+                  invalidateLecturePreview();
+                }}
                 value={selectedStudentId}
               >
                 {students.map((student) => (
@@ -1210,12 +1438,12 @@ export default function AdminDailyTasksPage() {
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#0F172A] text-xs font-black text-white">2</span>
                 <h2 className="text-lg font-black text-[#17213B]">배정 방식</h2>
               </div>
-              <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
                 {[
-                  { icon: "📚", label: "문항수로 배정", sub: "문항 단위로 배정", active: !homeworkMode && !showCreateForm, onClick: () => { setHomeworkMode(false); setShowCreateForm(false); } },
-                  { icon: "📄", label: "페이지로 배정", sub: "페이지 단위로 배정", active: !homeworkMode && showCreateForm && createForm.rangeType === "free", onClick: () => { setHomeworkMode(false); setShowCreateForm(true); updateCreateForm({ rangeType: "free", startNumber: "", endNumber: "" }); setFreeInputMode("direct"); setItemInputMode("manual"); } },
-                  { icon: "✏️", label: "직접 등록", sub: "단건 숙제 직접 등록", active: !homeworkMode && showCreateForm && createForm.rangeType !== "free", onClick: () => { setHomeworkMode(false); setShowCreateForm(true); updateCreateForm({ rangeType: "none", startNumber: "", endNumber: "" }); setFreeInputMode("direct"); setItemInputMode("manual"); } },
-                  { icon: "🎯", label: "자동분배 숙제", sub: "마감일까지 자동 배정", active: homeworkMode, onClick: () => setHomeworkMode(true) },
+                  { icon: "📚", label: "문항수로 배정", sub: "문항 단위로 배정", active: assignType === "problem_count", onClick: () => { setAssignType("problem_count"); updateCreateForm({ rangeType: "item", startNumber: "", endNumber: "" }); setFreeInputMode("direct"); setItemInputMode("manual"); } },
+                  { icon: "📄", label: "페이지로 배정", sub: "페이지 단위로 배정", active: assignType === "page", onClick: () => { setAssignType("page"); updateCreateForm({ rangeType: "free", startNumber: "", endNumber: "" }); setFreeInputMode("direct"); setItemInputMode("manual"); } },
+                  { icon: "✏️", label: "직접 등록", sub: "단건 숙제 직접 등록", active: assignType === "manual", onClick: () => { setAssignType("manual"); updateCreateForm({ rangeType: "none", startNumber: "", endNumber: "" }); setFreeInputMode("direct"); setItemInputMode("manual"); } },
+                  { icon: "🎯", label: "자동분배 숙제", sub: "마감일까지 자동 배정", active: assignType === "auto", onClick: () => setAssignType("auto") },
                 ].map(({ icon, label, sub, active, onClick }) => (
                   <button
                     className={`rounded-2xl p-4 text-left transition ${active ? "bg-[#0F172A] text-white shadow-md" : "border border-[#EEF2F7] bg-white text-[#344054] hover:border-[#D0D5DD] hover:bg-[#F8FAFC]"}`}
@@ -1231,6 +1459,16 @@ export default function AdminDailyTasksPage() {
               </div>
 
               {/* 교재 빠른 등록 */}
+              <button
+                className={`mt-3 w-full rounded-2xl p-4 text-left transition ${assignType === "lecture" ? "bg-[#0F172A] text-white shadow-md" : "border border-[#EEF2F7] bg-white text-[#344054] hover:border-[#D0D5DD] hover:bg-[#F8FAFC]"}`}
+                onClick={() => setAssignType("lecture")}
+                type="button"
+              >
+                <span className="text-xl">🎬</span>
+                <p className="mt-3 text-xs font-black sm:text-sm">인강 배정</p>
+                <p className={`mt-0.5 hidden text-xs font-medium sm:block ${assignType === "lecture" ? "text-white/60" : "text-[#98A2B3]"}`}>분배 미리보기만 지원</p>
+              </button>
+
               <div className="mt-4 border-t border-[#F4F6FA] pt-4">
                 <button
                   className={`rounded-full px-4 py-1.5 text-xs font-bold transition ${showQuickReg ? "bg-[#0F172A] text-white" : "bg-[#F4F6FA] text-[#667085] hover:bg-[#EDEFF5]"}`}
@@ -1283,7 +1521,160 @@ export default function AdminDailyTasksPage() {
             </section>
 
             {/* 자동분배 숙제 (HomeworkAssignment 엔진) */}
-            {homeworkMode ? (
+            {assignType === "lecture" ? (
+              <section className={`${cardCls} p-5 sm:p-6`}>
+                <div className="flex items-center gap-3">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#0F172A] text-xs font-black text-white">3</span>
+                  <div>
+                    <h2 className="text-lg font-black text-[#17213B]">인강 배정 미리보기</h2>
+                    <p className="text-xs text-[#98A2B3]">실제 저장 없이 날짜별 분배 결과만 먼저 확인합니다.</p>
+                  </div>
+                </div>
+
+                <div className="mt-4 space-y-4">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-2 block text-xs font-bold text-[#667085]">과목</label>
+                      <input className={inputCls} onChange={(event) => { setLectureSubject(event.target.value); invalidateLecturePreview(); }} placeholder="예: 국어" value={lectureSubject} />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-xs font-bold text-[#667085]">강의명</label>
+                      <input className={inputCls} onChange={(event) => { setLectureCourseTitle(event.target.value); invalidateLecturePreview(); }} placeholder="예: 박석준 문학" value={lectureCourseTitle} />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="mb-2 block text-xs font-bold text-[#667085]">총 강의 수</label>
+                      <input className={inputCls} min="1" onChange={(event) => { setLectureTotalLectures(event.target.value); invalidateLecturePreview(); }} type="number" value={lectureTotalLectures} />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-xs font-bold text-[#667085]">시작 강의 번호</label>
+                      <input className={inputCls} min="1" onChange={(event) => { setLectureStartLectureNo(event.target.value); invalidateLecturePreview(); }} type="number" value={lectureStartLectureNo} />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-xs font-bold text-[#667085]">하루 수강 강의 수</label>
+                    <input className={inputCls} min="1" onChange={(event) => { setLectureLecturesPerDay(event.target.value); invalidateLecturePreview(); }} type="number" value={lectureLecturesPerDay} />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-xs font-bold text-[#667085]">수강 요일</label>
+                    <div className="grid grid-cols-4 gap-2 sm:grid-cols-7">
+                      {LECTURE_WEEKDAY_OPTIONS.map((option) => {
+                        const active = lectureWeekdays.includes(option.value);
+                        return (
+                          <button
+                            className={`rounded-xl py-2.5 text-xs font-bold transition ${active ? "bg-[#0F172A] text-white" : "border border-[#E5E7EB] bg-[#F8FAFC] text-[#667085] hover:bg-[#EDEFF5]"}`}
+                            key={option.value}
+                            onClick={() => toggleLectureWeekday(option.value)}
+                            type="button"
+                          >
+                            {option.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="mb-2 block text-xs font-bold text-[#667085]">시작일</label>
+                      <input className={inputCls} onChange={(event) => { setLectureStartDate(event.target.value); invalidateLecturePreview(); }} type="date" value={lectureStartDate} />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-xs font-bold text-[#667085]">마감일</label>
+                      <input className={inputCls} onChange={(event) => { setLectureDueDate(event.target.value); invalidateLecturePreview(); }} type="date" value={lectureDueDate} />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-xs font-bold text-[#667085]">메모</label>
+                    <textarea
+                      className={`${inputCls} min-h-[96px] resize-y`}
+                      onChange={(event) => { setLectureMemo(event.target.value); invalidateLecturePreview(); }}
+                      placeholder="학생에게 전달할 메모가 있으면 입력하세요."
+                      value={lectureMemo}
+                    />
+                  </div>
+
+                  <div className="flex gap-3">
+                    <button
+                      className="flex-1 rounded-2xl bg-[#0F172A] py-3.5 text-sm font-black text-white transition hover:bg-[#1E293B] disabled:opacity-50"
+                      disabled={lecturePreviewLoading || lectureCreateLoading}
+                      onClick={() => void handleLecturePreview()}
+                      type="button"
+                    >
+                      {lecturePreviewLoading ? "미리보기 불러오는 중..." : "Preview"}
+                    </button>
+                    <button
+                      className="flex-1 rounded-2xl border border-[#E5E7EB] bg-[#F8FAFC] py-3.5 text-sm font-black text-[#344054] transition hover:bg-white disabled:text-[#98A2B3] disabled:opacity-100"
+                      disabled={!canCreateLectureAssignment || lectureCreateLoading || lecturePreviewLoading}
+                      onClick={() => void handleLectureCreate()}
+                      type="button"
+                    >
+                      {lectureCreateLoading ? "배정 중..." : "배정하기"}
+                    </button>
+                  </div>
+
+                  {lecturePreviewNeedsRefresh ? (
+                    <p className="rounded-2xl bg-yellow-50 px-4 py-3 text-sm font-bold text-yellow-800">
+                      Preview 이후 입력값이 바뀌었습니다. 다시 Preview를 눌러야 배정할 수 있습니다.
+                    </p>
+                  ) : null}
+
+                  {lecturePreviewError ? (
+                    <p className="rounded-2xl bg-red-50 px-4 py-3 text-sm font-bold text-red-500">{lecturePreviewError}</p>
+                  ) : null}
+
+                  {!lecturePreviewLoading && !lecturePreviewResult ? (
+                    <div className="rounded-2xl border border-dashed border-[#D8DEEA] bg-[#F8FAFC] px-4 py-5 text-center text-sm font-bold text-[#98A2B3]">
+                      인강 조건을 입력하고 Preview를 눌러 분배 결과를 확인해주세요.
+                    </div>
+                  ) : null}
+
+                  {lecturePreviewResult ? (
+                    <div className="space-y-3">
+                      <div className={`rounded-2xl px-4 py-4 ${lecturePreviewResult.possible ? "bg-emerald-50" : "bg-yellow-50"}`}>
+                        <p className={`text-sm font-black ${lecturePreviewResult.possible ? "text-emerald-700" : "text-yellow-800"}`}>
+                          {lecturePreviewResult.possible ? "배정 가능합니다." : "현재 조건으로는 완료가 불가능합니다."}
+                        </p>
+                        <div className="mt-3 grid grid-cols-2 gap-2 text-xs font-bold text-[#344054] sm:grid-cols-3">
+                          <div className="rounded-xl bg-white/80 px-3 py-2">총 배정 강의 {lecturePreviewResult.total_lectures_to_assign}개</div>
+                          <div className="rounded-xl bg-white/80 px-3 py-2">가능일 {lecturePreviewResult.available_days_count}일</div>
+                          <div className="rounded-xl bg-white/80 px-3 py-2">필요일 {lecturePreviewResult.required_days_count}일</div>
+                          <div className="rounded-xl bg-white/80 px-3 py-2">최대 배정 {lecturePreviewResult.max_assignable_lectures}개</div>
+                          <div className="rounded-xl bg-white/80 px-3 py-2">부족 강의 {lecturePreviewResult.shortage_count}개</div>
+                          <div className="rounded-xl bg-white/80 px-3 py-2">추천 하루 수강량 {lecturePreviewResult.recommended_lectures_per_day}개</div>
+                        </div>
+                      </div>
+
+                      {lecturePreviewResult.possible ? (
+                        <div className="rounded-2xl border border-[#E5E7EB] bg-white p-4">
+                          <p className="text-sm font-black text-[#17213B]">날짜별 분배표</p>
+                          <div className="mt-3 space-y-2">
+                            {lecturePreviewResult.preview_items.map((item) => (
+                              <div className="flex items-center justify-between gap-3 rounded-2xl bg-[#F8FAFC] px-4 py-3" key={`${item.date}-${item.start_lecture_no}`}>
+                                <div>
+                                  <p className="text-sm font-black text-[#17213B]">{item.date}</p>
+                                  <p className="mt-1 text-xs font-bold text-[#667085]">{item.start_lecture_no}강 ~ {item.end_lecture_no}강</p>
+                                </div>
+                                <span className="rounded-full bg-[#EEF2FF] px-3 py-1 text-xs font-black text-[#4F46E5]">{item.count}개</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="rounded-2xl border border-yellow-200 bg-yellow-50 px-4 py-4 text-sm font-bold text-yellow-800">
+                          부족 강의 수 {lecturePreviewResult.shortage_count}개, 필요 수강일 {lecturePreviewResult.required_days_count}일, 실제 가능일 {lecturePreviewResult.available_days_count}일입니다. 추천 하루 수강량은 {lecturePreviewResult.recommended_lectures_per_day}개입니다.
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              </section>
+            ) : assignType === "auto" ? (
               <section className={`${cardCls} p-5 sm:p-6`}>
                 <div className="flex items-center gap-3">
                   <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#0F172A] text-xs font-black text-white">3</span>
@@ -1494,7 +1885,7 @@ export default function AdminDailyTasksPage() {
                   </button>
                 </div>
               </section>
-            ) : !showCreateForm ? (
+            ) : assignType === "problem_count" ? (
               <>
                 {/* 3. 배정 기준 */}
                 <section className={`${cardCls} p-5 sm:p-6`}>

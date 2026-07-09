@@ -274,6 +274,48 @@ class HomeworkAssignment(Base):
     textbook = relationship("MathTextbook")
 
 
+class LectureAssignment(Base):
+    __tablename__ = "math_lecture_assignments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("math_students.id"), nullable=False, index=True)
+    subject = Column(String(100), nullable=False)
+    course_title = Column(String(200), nullable=False)
+    total_lectures = Column(Integer, nullable=False)
+    start_lecture_no = Column(Integer, nullable=False)
+    lectures_per_day = Column(Integer, nullable=False)
+    weekdays = Column(String(100), nullable=False)
+    start_date = Column(Date, nullable=False)
+    due_date = Column(Date, nullable=False)
+    memo = Column(String(300), nullable=True)
+    status = Column(String(20), nullable=False, default="active")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    student = relationship("Student")
+
+
+class MathStudentLectureProgress(Base):
+    __tablename__ = "math_student_lecture_progress"
+    __table_args__ = (
+        UniqueConstraint(
+            "student_id",
+            "daily_task_id",
+            "lecture_number",
+            name="uq_math_student_lecture_progress_student_task_lecture",
+        ),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("math_students.id"), nullable=False, index=True)
+    daily_task_id = Column(Integer, ForeignKey("math_daily_tasks.id"), nullable=False, index=True)
+    lecture_number = Column(Integer, nullable=False)
+    is_done = Column(Boolean, nullable=False, default=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    student = relationship("Student")
+    daily_task = relationship("MathDailyTask")
+
+
 class MathDailyTask(Base):
     __tablename__ = "math_daily_tasks"
 
@@ -301,9 +343,14 @@ class MathDailyTask(Base):
     homework_assignment_id = Column(
         Integer, ForeignKey("math_homework_assignments.id"), nullable=True, index=True
     )
+    lecture_assignment_id = Column(
+        Integer, ForeignKey("math_lecture_assignments.id"), nullable=True, index=True
+    )
     range_type = Column(String(20), nullable=True)
     start_value = Column(Integer, nullable=True)
     end_value = Column(Integer, nullable=True)
+    lecture_start_number = Column(Integer, nullable=True)
+    lecture_end_number = Column(Integer, nullable=True)
     start_page = Column(Integer, nullable=True)
     end_page = Column(Integer, nullable=True)
     textbook_section_id = Column(
@@ -314,4 +361,5 @@ class MathDailyTask(Base):
     student = relationship("Student", back_populates="daily_tasks")
     textbook = relationship("MathTextbook", back_populates="daily_tasks")
     homework_assignment = relationship("HomeworkAssignment")
+    lecture_assignment = relationship("LectureAssignment")
     textbook_section = relationship("MathTextbookSection")

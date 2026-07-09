@@ -1,3 +1,4 @@
+import math
 from calendar import monthrange
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Optional
@@ -8,8 +9,10 @@ from sqlalchemy.orm import Session, selectinload
 from models import (
     Admin,
     HomeworkAssignment,
+    LectureAssignment,
     MathDailyTask,
     MathStudentItemProgress,
+    MathStudentLectureProgress,
     MathStudentTextbook,
     MathTextbook,
     MathTextbookItem,
@@ -489,6 +492,55 @@ def resolve_task_statuses(
         for task in tasks
     }
 
+    lecture_tasks = [
+        task
+        for task in tasks
+        if task.source_type == "lecture"
+        and task.lecture_start_number is not None
+        and task.lecture_end_number is not None
+    ]
+    if lecture_tasks:
+        lecture_task_ids = [task.id for task in lecture_tasks]
+        lecture_progress_rows = (
+            db.query(MathStudentLectureProgress)
+            .filter(MathStudentLectureProgress.daily_task_id.in_(lecture_task_ids))
+            .all()
+        )
+        lecture_progress_by_task: dict[int, dict[int, MathStudentLectureProgress]] = {}
+        for row in lecture_progress_rows:
+            lecture_progress_by_task.setdefault(row.daily_task_id, {})[row.lecture_number] = row
+
+        for task in lecture_tasks:
+            start = task.lecture_start_number
+            end = task.lecture_end_number
+            if start is None or end is None or end < start:
+                continue
+
+            lecture_numbers = list(range(start, end + 1))
+            progress_map = lecture_progress_by_task.get(task.id, {})
+            done_rows = [
+                progress_map[number]
+                for number in lecture_numbers
+                if progress_map.get(number) is not None and progress_map[number].is_done
+            ]
+            done_count = len(done_rows)
+
+            if done_count == len(lecture_numbers):
+                completed_at = max((row.updated_at for row in done_rows), default=None)
+                result[task.id] = {
+                    "status": "done",
+                    "completed_at": completed_at,
+                    "progress_rate": 100,
+                }
+            elif done_count > 0:
+                result[task.id] = {
+                    "status": "in_progress",
+                    "completed_at": None,
+                    "progress_rate": round((done_count / len(lecture_numbers)) * 100),
+                }
+            else:
+                result[task.id] = {"status": "todo", "completed_at": None, "progress_rate": 0}
+
     item_tasks = [t for t in tasks if t.completion_mode == "item_progress"]
     if not item_tasks:
         return result
@@ -581,6 +633,37 @@ def build_daily_task_summary(db: Session, tasks: list[MathDailyTask]) -> dict:
     }
 
 
+def serialize_lecture_task_items(db: Session, task: MathDailyTask) -> list[dict]:
+    if (
+        task.source_type != "lecture"
+        or task.lecture_start_number is None
+        or task.lecture_end_number is None
+        or task.lecture_end_number < task.lecture_start_number
+    ):
+        return []
+
+    progress_rows = (
+        db.query(MathStudentLectureProgress)
+        .filter(MathStudentLectureProgress.daily_task_id == task.id)
+        .all()
+    )
+    progress_map = {row.lecture_number: row for row in progress_rows}
+
+    return [
+        {
+            "lecture_number": lecture_number,
+            "title": f"{lecture_number}강",
+            "is_done": bool(progress_map.get(lecture_number).is_done)
+            if progress_map.get(lecture_number) is not None
+            else False,
+            "updated_at": progress_map.get(lecture_number).updated_at
+            if progress_map.get(lecture_number) is not None
+            else None,
+        }
+        for lecture_number in range(task.lecture_start_number, task.lecture_end_number + 1)
+    ]
+
+
 def serialize_daily_task(db: Session, task: MathDailyTask) -> dict:
     textbook = None
     if task.textbook is not None:
@@ -592,9 +675,11 @@ def serialize_daily_task(db: Session, task: MathDailyTask) -> dict:
         }
 
     resolved = resolve_task_statuses(db, [task])[task.id]
-    due_date = (
-        task.homework_assignment.due_date if task.homework_assignment is not None else None
-    )
+    due_date = None
+    if task.homework_assignment is not None:
+        due_date = task.homework_assignment.due_date
+    elif task.lecture_assignment is not None:
+        due_date = task.lecture_assignment.due_date
     start_item_number = task.start_item_number
     end_item_number = task.end_item_number
 
@@ -622,6 +707,7 @@ def serialize_daily_task(db: Session, task: MathDailyTask) -> dict:
         "order_index": task.order_index,
         "completed_at": resolved["completed_at"],
         "textbook": textbook,
+        "lecture_items": serialize_lecture_task_items(db, task),
         "source_type": task.source_type,
     }
 
@@ -632,6 +718,7 @@ def get_student_daily_tasks(db: Session, student_id: int, task_date: date) -> di
         .options(
             selectinload(MathDailyTask.textbook),
             selectinload(MathDailyTask.homework_assignment),
+            selectinload(MathDailyTask.lecture_assignment),
         )
         .filter(MathDailyTask.student_id == student_id, MathDailyTask.task_date == task_date)
         .order_by(MathDailyTask.order_index, MathDailyTask.id)
@@ -653,6 +740,7 @@ def get_student_weekly_tasks(db: Session, student_id: int, week_start: date) -> 
         .options(
             selectinload(MathDailyTask.textbook),
             selectinload(MathDailyTask.homework_assignment),
+            selectinload(MathDailyTask.lecture_assignment),
         )
         .filter(
             MathDailyTask.student_id == student_id,
@@ -1081,7 +1169,80 @@ def delete_daily_task(db: Session, task: MathDailyTask) -> None:
     db.commit()
 
 
+def update_lecture_task_progress(
+    db: Session,
+    task: MathDailyTask,
+    lecture_number: int,
+    is_done: bool,
+) -> MathDailyTask:
+    if (
+        task.source_type != "lecture"
+        or task.lecture_start_number is None
+        or task.lecture_end_number is None
+    ):
+        raise ValueError("This task does not support lecture-item progress.")
+    if lecture_number < task.lecture_start_number or lecture_number > task.lecture_end_number:
+        raise ValueError("lecture_number is out of range for this task.")
+
+    progress = (
+        db.query(MathStudentLectureProgress)
+        .filter(
+            MathStudentLectureProgress.student_id == task.student_id,
+            MathStudentLectureProgress.daily_task_id == task.id,
+            MathStudentLectureProgress.lecture_number == lecture_number,
+        )
+        .first()
+    )
+
+    now = now_kst()
+    if progress is None:
+        progress = MathStudentLectureProgress(
+            student_id=task.student_id,
+            daily_task_id=task.id,
+            lecture_number=lecture_number,
+            is_done=is_done,
+            updated_at=now,
+        )
+        db.add(progress)
+    else:
+        progress.is_done = is_done
+        progress.updated_at = now
+
+    db.flush()
+
+    rows = (
+        db.query(MathStudentLectureProgress)
+        .filter(MathStudentLectureProgress.daily_task_id == task.id)
+        .all()
+    )
+    progress_map = {row.lecture_number: row for row in rows}
+    lecture_numbers = list(range(task.lecture_start_number, task.lecture_end_number + 1))
+    done_rows = [
+        progress_map[number]
+        for number in lecture_numbers
+        if progress_map.get(number) is not None and progress_map[number].is_done
+    ]
+    done_count = len(done_rows)
+
+    if done_count == len(lecture_numbers):
+        task.status = "done"
+        task.completed_at = max((row.updated_at for row in done_rows), default=now)
+    elif done_count > 0:
+        task.status = "in_progress"
+        task.completed_at = None
+    else:
+        task.status = "todo"
+        task.completed_at = None
+
+    task.updated_at = now
+    db.commit()
+    db.refresh(task)
+    return get_daily_task(db, task.id) or task
+
+
 HOMEWORK_RANGE_TYPES = {"item", "page", "section", "custom"}
+LECTURE_WEEKDAY_ORDER = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+LECTURE_WEEKDAY_TO_INDEX = {value: index for index, value in enumerate(LECTURE_WEEKDAY_ORDER)}
 HOMEWORK_CATEGORY = "숙제"
 
 
@@ -1092,6 +1253,204 @@ def _distribute_counts(total: int, days: int) -> list[int]:
     """
     base, remainder = divmod(total, days)
     return [base + 1 if i < remainder else base for i in range(days)]
+
+
+def normalize_lecture_weekdays(weekdays: list[str]) -> list[str]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+
+    for value in weekdays:
+        weekday = value.strip().lower()
+        if weekday not in LECTURE_WEEKDAY_TO_INDEX:
+            raise ValueError(
+                f"Invalid weekday: {value}. Use one of {', '.join(LECTURE_WEEKDAY_ORDER)}."
+            )
+        if weekday in seen:
+            continue
+        seen.add(weekday)
+        normalized.append(weekday)
+
+    return normalized
+
+
+def preview_lecture_assignment(payload) -> dict:
+    if payload.total_lectures <= 0:
+        raise ValueError("total_lectures must be greater than 0.")
+    if payload.start_lecture_no < 1:
+        raise ValueError("start_lecture_no must be at least 1.")
+    if payload.lectures_per_day <= 0:
+        raise ValueError("lectures_per_day must be greater than 0.")
+    if payload.start_date > payload.due_date:
+        raise ValueError("start_date cannot be after due_date.")
+
+    weekdays = normalize_lecture_weekdays(payload.weekdays)
+    if not weekdays:
+        raise ValueError("weekdays must not be empty.")
+
+    total_lectures_to_assign = payload.total_lectures - payload.start_lecture_no + 1
+    if total_lectures_to_assign <= 0:
+        raise ValueError("total_lectures must be greater than or equal to start_lecture_no.")
+
+    allowed_indexes = {LECTURE_WEEKDAY_TO_INDEX[value] for value in weekdays}
+    available_dates: list[date] = []
+    cursor = payload.start_date
+    while cursor <= payload.due_date:
+        if cursor.weekday() in allowed_indexes:
+            available_dates.append(cursor)
+        cursor += timedelta(days=1)
+
+    available_days_count = len(available_dates)
+    required_days_count = math.ceil(total_lectures_to_assign / payload.lectures_per_day)
+    max_assignable_lectures = available_days_count * payload.lectures_per_day
+    shortage_count = max(total_lectures_to_assign - max_assignable_lectures, 0)
+    recommended_lectures_per_day = (
+        math.ceil(total_lectures_to_assign / available_days_count) if available_days_count > 0 else 0
+    )
+
+    if shortage_count > 0:
+        return {
+            "possible": False,
+            "total_lectures_to_assign": total_lectures_to_assign,
+            "available_days_count": available_days_count,
+            "required_days_count": required_days_count,
+            "max_assignable_lectures": max_assignable_lectures,
+            "shortage_count": shortage_count,
+            "recommended_lectures_per_day": recommended_lectures_per_day,
+            "preview_items": [],
+        }
+
+    preview_items = []
+    remaining = total_lectures_to_assign
+    next_lecture_no = payload.start_lecture_no
+
+    for available_date in available_dates:
+        if remaining <= 0:
+            break
+        count = min(payload.lectures_per_day, remaining)
+        end_lecture_no = next_lecture_no + count - 1
+        preview_items.append(
+            {
+                "date": available_date,
+                "start_lecture_no": next_lecture_no,
+                "end_lecture_no": end_lecture_no,
+                "count": count,
+            }
+        )
+        next_lecture_no = end_lecture_no + 1
+        remaining -= count
+
+    return {
+        "possible": True,
+        "total_lectures_to_assign": total_lectures_to_assign,
+        "available_days_count": available_days_count,
+        "required_days_count": required_days_count,
+        "max_assignable_lectures": max_assignable_lectures,
+        "shortage_count": 0,
+        "recommended_lectures_per_day": recommended_lectures_per_day,
+        "preview_items": preview_items,
+    }
+
+
+def serialize_lecture_assignment(assignment: LectureAssignment) -> dict:
+    weekdays = [value for value in (assignment.weekdays or "").split(",") if value]
+    return {
+        "id": assignment.id,
+        "student_id": assignment.student_id,
+        "subject": assignment.subject,
+        "course_title": assignment.course_title,
+        "total_lectures": assignment.total_lectures,
+        "start_lecture_no": assignment.start_lecture_no,
+        "lectures_per_day": assignment.lectures_per_day,
+        "weekdays": weekdays,
+        "start_date": assignment.start_date,
+        "due_date": assignment.due_date,
+        "memo": assignment.memo,
+        "status": assignment.status,
+        "created_at": assignment.created_at,
+    }
+
+
+def build_lecture_daily_tasks(
+    assignment: LectureAssignment,
+    preview_items: list[dict],
+) -> list[MathDailyTask]:
+    tasks: list[MathDailyTask] = []
+
+    for index, item in enumerate(preview_items):
+        title = f"{assignment.course_title} {item['start_lecture_no']}~{item['end_lecture_no']}강"
+        detail_parts = [assignment.subject]
+        if assignment.memo:
+            detail_parts.append(assignment.memo)
+
+        tasks.append(
+            MathDailyTask(
+                student_id=assignment.student_id,
+                task_date=item["date"],
+                title=title,
+                detail=" / ".join(part for part in detail_parts if part),
+                status="todo",
+                category=None,
+                order_index=index,
+                source_type="lecture",
+                lecture_assignment_id=assignment.id,
+                lecture_start_number=item["start_lecture_no"],
+                lecture_end_number=item["end_lecture_no"],
+                completion_mode="manual",
+            )
+        )
+
+    return tasks
+
+
+def create_lecture_assignment(db: Session, payload) -> dict:
+    student = get_student_by_id(db, payload.student_id)
+    if student is None:
+        raise ValueError("Student not found.")
+
+    if not payload.subject.strip():
+        raise ValueError("subject must not be empty.")
+    if not payload.course_title.strip():
+        raise ValueError("course_title must not be empty.")
+
+    preview = preview_lecture_assignment(payload)
+    if not preview["possible"]:
+        raise ValueError("현재 조건으로는 인강 배정을 완료할 수 없습니다.")
+
+    weekdays = normalize_lecture_weekdays(payload.weekdays)
+    assignment = LectureAssignment(
+        student_id=payload.student_id,
+        subject=payload.subject.strip(),
+        course_title=payload.course_title.strip(),
+        total_lectures=payload.total_lectures,
+        start_lecture_no=payload.start_lecture_no,
+        lectures_per_day=payload.lectures_per_day,
+        weekdays=",".join(weekdays),
+        start_date=payload.start_date,
+        due_date=payload.due_date,
+        memo=payload.memo.strip() if payload.memo else None,
+        status="active",
+    )
+    db.add(assignment)
+    db.flush()
+
+    for task in build_lecture_daily_tasks(assignment, preview["preview_items"]):
+        db.add(task)
+
+    db.commit()
+    db.refresh(assignment)
+
+    created_tasks = (
+        db.query(MathDailyTask)
+        .options(selectinload(MathDailyTask.textbook))
+        .filter(MathDailyTask.lecture_assignment_id == assignment.id)
+        .order_by(MathDailyTask.task_date, MathDailyTask.id)
+        .all()
+    )
+
+    return {
+        "assignment": serialize_lecture_assignment(assignment),
+        "daily_tasks": [serialize_daily_task(db, task) for task in created_tasks],
+    }
 
 
 def build_homework_daily_tasks(
@@ -1755,6 +2114,41 @@ def compute_item_numbers_from_sections(sections: list) -> list[int]:
 def replace_textbook_sections(db: Session, textbook_id: int, sections: list) -> list[MathTextbookSection]:
     validate_textbook_sections(sections)
 
+    target_item_numbers = compute_item_numbers_from_sections(sections)
+    existing_items = (
+        db.query(MathTextbookItem)
+        .filter(MathTextbookItem.textbook_id == textbook_id)
+        .all()
+    )
+    existing_by_number = {item.item_number: item for item in existing_items}
+
+    if target_item_numbers:
+        target_set = set(target_item_numbers)
+
+        for item_number in target_item_numbers:
+            existing_item = existing_by_number.get(item_number)
+            if existing_item is None:
+                db.add(
+                    MathTextbookItem(
+                        textbook_id=textbook_id,
+                        item_number=item_number,
+                        title=f"{item_number}번",
+                        item_type="problem",
+                        order_index=item_number,
+                        is_active=True,
+                    )
+                )
+                continue
+
+            existing_item.title = f"{item_number}번"
+            existing_item.item_type = "problem"
+            existing_item.order_index = item_number
+            existing_item.is_active = True
+
+        for item in existing_items:
+            if item.item_number not in target_set:
+                item.is_active = False
+
     db.query(MathTextbookSection).filter(MathTextbookSection.textbook_id == textbook_id).delete()
     for i, s in enumerate(sections):
         db.add(MathTextbookSection(
@@ -1777,6 +2171,16 @@ def create_textbook_with_items(db: Session, payload) -> MathTextbook:
     existing = db.query(MathTextbook).filter(MathTextbook.full_title == payload.full_title).first()
     if existing:
         raise ValueError(f"이미 존재하는 교재입니다: {payload.full_title}")
+
+    textbook_key = getattr(payload, "textbook_key", None)
+    if textbook_key:
+        existing_key = (
+            db.query(MathTextbook)
+            .filter(MathTextbook.textbook_key == textbook_key)
+            .first()
+        )
+        if existing_key:
+            raise ValueError(f"이미 존재하는 교재 키입니다: {textbook_key}")
 
     sections_input = getattr(payload, "sections", None) or []
     validate_textbook_sections(sections_input)
@@ -1803,7 +2207,7 @@ def create_textbook_with_items(db: Session, payload) -> MathTextbook:
 
     textbook = MathTextbook(
         series_id=payload.series_id,
-        textbook_key=getattr(payload, "textbook_key", None),
+        textbook_key=textbook_key,
         subject=primary_subject,
         title=payload.title,
         full_title=payload.full_title,
@@ -1856,6 +2260,8 @@ def update_textbook(db: Session, textbook_id: int, payload) -> Optional[MathText
         return None
 
     update_data = payload.model_dump(exclude_unset=True)
+    if "textbook_key" in update_data:
+        update_data["textbook_key"] = update_data["textbook_key"] or None
 
     full_title = update_data.get("full_title")
     if full_title is not None:

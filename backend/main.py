@@ -6,6 +6,7 @@ from typing import Optional
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import inspect, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 import crud
@@ -126,6 +127,58 @@ def ensure_daily_task_homework_columns():
             )
 
 
+def ensure_daily_task_lecture_columns():
+    inspector = inspect(engine)
+    if not inspector.has_table("math_daily_tasks"):
+        return
+
+    column_names = {column["name"] for column in inspector.get_columns("math_daily_tasks")}
+
+    statements = {
+        "lecture_assignment_id": "ALTER TABLE math_daily_tasks ADD COLUMN lecture_assignment_id INTEGER NULL",
+        "lecture_start_number": "ALTER TABLE math_daily_tasks ADD COLUMN lecture_start_number INTEGER NULL",
+        "lecture_end_number": "ALTER TABLE math_daily_tasks ADD COLUMN lecture_end_number INTEGER NULL",
+    }
+
+    with engine.begin() as connection:
+        for column_name, statement in statements.items():
+            if column_name not in column_names:
+                connection.execute(text(statement))
+
+        if "lecture_assignment_id" not in column_names:
+            connection.execute(
+                text(
+                    "ALTER TABLE math_daily_tasks "
+                    "ADD CONSTRAINT fk_math_daily_tasks_lecture_assignment "
+                    "FOREIGN KEY (lecture_assignment_id) REFERENCES math_lecture_assignments (id)"
+                )
+            )
+
+
+def ensure_student_lecture_progress_table():
+    inspector = inspect(engine)
+    if inspector.has_table("math_student_lecture_progress"):
+        return
+
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "CREATE TABLE math_student_lecture_progress ("
+                "id INTEGER PRIMARY KEY, "
+                "student_id INTEGER NOT NULL, "
+                "daily_task_id INTEGER NOT NULL, "
+                "lecture_number INTEGER NOT NULL, "
+                "is_done BOOLEAN NOT NULL DEFAULT FALSE, "
+                "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL, "
+                "CONSTRAINT uq_math_student_lecture_progress_student_task_lecture "
+                "UNIQUE (student_id, daily_task_id, lecture_number), "
+                "FOREIGN KEY (student_id) REFERENCES math_students (id), "
+                "FOREIGN KEY (daily_task_id) REFERENCES math_daily_tasks (id)"
+                ")"
+            )
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Create tables automatically on startup so the app is easy to run locally.
@@ -135,6 +188,8 @@ async def lifespan(app: FastAPI):
     ensure_textbook_is_student_only_column()
     ensure_textbook_structure_type_column()
     ensure_daily_task_homework_columns()
+    ensure_daily_task_lecture_columns()
+    ensure_student_lecture_progress_table()
     db = SessionLocal()
     try:
         crud.sync_textbook_keys(db)
@@ -434,6 +489,35 @@ def update_student_daily_task_status(
     return crud.serialize_daily_task(db, updated_task)
 
 
+@app.patch(
+    "/student/daily-tasks/{task_id}/lecture-items/{lecture_number}",
+    response_model=schemas.DailyTaskResponse,
+    tags=["Student"],
+)
+def update_student_lecture_task_item_status(
+    task_id: int,
+    lecture_number: int,
+    payload: schemas.StudentLectureTaskItemProgressRequest,
+    db: Session = Depends(get_db),
+):
+    task = crud.get_daily_task(db, task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="Daily task not found")
+    if task.student_id != payload.student_id:
+        raise HTTPException(status_code=403, detail="Not allowed")
+
+    try:
+        updated_task = crud.update_lecture_task_progress(
+            db,
+            task,
+            lecture_number,
+            payload.is_done,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return crud.serialize_daily_task(db, updated_task)
+
+
 @app.post("/auth/admin-login", response_model=schemas.AdminLoginResponse, tags=["Admin"])
 def admin_login(payload: schemas.AdminLoginRequest, db: Session = Depends(get_db)):
     admin = crud.get_admin_by_username(db, payload.username)
@@ -524,6 +608,40 @@ def delete_admin_daily_task(task_id: int, db: Session = Depends(get_db)):
 
 
 @app.post(
+    "/admin/lecture-assignments/preview",
+    response_model=schemas.LectureAssignmentPreviewResponse,
+    tags=["Admin"],
+)
+def preview_lecture_assignment(
+    payload: schemas.LectureAssignmentPreviewRequest,
+    db: Session = Depends(get_db),
+):
+    del db
+    try:
+        return crud.preview_lecture_assignment(payload)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post(
+    "/admin/lecture-assignments",
+    response_model=schemas.LectureAssignmentCreateResponse,
+    tags=["Admin"],
+)
+def create_lecture_assignment(
+    payload: schemas.LectureAssignmentCreateRequest,
+    db: Session = Depends(get_db),
+):
+    try:
+        return crud.create_lecture_assignment(db, payload)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="인강 배정을 저장하지 못했습니다.")
+
+
+@app.post(
     "/admin/homework-assignments",
     response_model=schemas.HomeworkAssignmentCreateResponse,
     tags=["Admin"],
@@ -603,6 +721,12 @@ def create_textbook(
         textbook = crud.create_textbook_with_items(db, payload)
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="중복된 교재 정보가 있어 저장할 수 없습니다. 교재명/교재 키를 확인해주세요.",
+        )
     result = crud.get_textbook_detail_admin(db, textbook.id)
     return result
 
@@ -642,6 +766,12 @@ def admin_update_textbook(
         textbook = crud.update_textbook(db, textbook_id, payload)
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="중복된 교재 정보가 있어 수정할 수 없습니다. 교재명/교재 키를 확인해주세요.",
+        )
 
     if textbook is None:
         raise HTTPException(status_code=404, detail="Textbook not found")

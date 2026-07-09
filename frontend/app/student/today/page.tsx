@@ -12,6 +12,13 @@ import { cn } from "@/lib/utils";
 
 type DailyTaskStatus = "todo" | "in_progress" | "done";
 
+type LectureTaskItemProgress = {
+  lecture_number: number;
+  title: string;
+  is_done: boolean;
+  updated_at?: string | null;
+};
+
 type DailyTask = {
   id: number;
   category: string | null;
@@ -35,7 +42,8 @@ type DailyTask = {
   textbook_id: number | null;
   textbook_key: string | null;
   title: string;
-  source_type?: "manual" | "homework";
+  lecture_items?: LectureTaskItemProgress[];
+  source_type?: "manual" | "homework" | "lecture";
 };
 
 type DailyTaskSummary = {
@@ -70,6 +78,13 @@ type ItemRangeTaskCard = {
   status: DailyTaskStatus;
   progress_rate: number;
   is_overdue: boolean;
+};
+
+type LectureTaskDisplay = {
+  courseTitle: string;
+  memo: string | null;
+  subject: string | null;
+  rangeLabel: string;
 };
 
 const dayLabels = ["월", "화", "수", "목", "금", "토", "일"];
@@ -197,6 +212,72 @@ function toItemRangeTaskCard(task: DailyTask, taskDate: string, todayKey: string
   };
 }
 
+function buildLectureTaskDisplay(task: DailyTask): LectureTaskDisplay {
+  const detailParts = task.detail?.split(" / ").map((part) => part.trim()).filter(Boolean) ?? [];
+  const subject = detailParts[0] ?? null;
+  const memo = detailParts.slice(1).join(" / ") || null;
+  const titleMatch = task.title.match(/^(.*?)(\d+)\s*~\s*(\d+)강$/);
+
+  if (titleMatch) {
+    return {
+      courseTitle: titleMatch[1]?.trim() || task.title,
+      memo,
+      subject,
+      rangeLabel: `${titleMatch[2]}~${titleMatch[3]}강`,
+    };
+  }
+
+  return {
+    courseTitle: task.title,
+    memo,
+    subject,
+    rangeLabel: "강의 범위 확인",
+  };
+}
+
+function isLectureTaskDone(task: DailyTask) {
+  if (task.source_type !== "lecture") {
+    return task.status === "done";
+  }
+
+  if ((task.lecture_items?.length ?? 0) > 0) {
+    return task.lecture_items?.every((item) => item.is_done) ?? false;
+  }
+
+  return task.status === "done";
+}
+
+function summarizeTasks(tasks: DailyTask[]) {
+  const total = tasks.length;
+  const done = tasks.filter(isLectureTaskDone).length;
+
+  return {
+    total,
+    done,
+    todo: total - done,
+    completion_rate: total > 0 ? Math.round((done / total) * 100) : 0,
+  };
+}
+
+function containsMathKeyword(value: string | null | undefined) {
+  if (!value) {
+    return false;
+  }
+
+  return value.toLowerCase().includes("수학") || value.toLowerCase().includes("math");
+}
+
+function isMathPriorityTask(task: DailyTask) {
+  return (
+    containsMathKeyword(task.category) ||
+    containsMathKeyword(task.title) ||
+    containsMathKeyword(task.detail) ||
+    containsMathKeyword(task.textbook?.subject) ||
+    containsMathKeyword(task.textbook?.title) ||
+    containsMathKeyword(task.textbook?.full_title)
+  );
+}
+
 function HomeworkTaskCardItem({
   card,
   onOpenTextbook,
@@ -312,6 +393,127 @@ function StandardTaskItem({
   );
 }
 
+function LectureTaskItem({
+  task,
+  taskDate,
+  onToggleLectureItem,
+}: {
+  task: DailyTask;
+  taskDate: string;
+  onToggleLectureItem: (
+    task: DailyTask,
+    lectureItem: LectureTaskItemProgress,
+    event: MouseEvent<HTMLButtonElement>,
+  ) => Promise<void>;
+}) {
+  const display = buildLectureTaskDisplay(task);
+  const isDone = task.status === "done";
+  const lectureItems = task.lecture_items ?? [];
+
+  return (
+    <article
+      className={cn(
+        "flex min-h-[108px] w-full items-center gap-3 rounded-[24px] border px-4 py-4 shadow-card transition",
+        isDone ? "border-[#DCFCE7] bg-[#F8FAFC]" : "border-[#C7D2FE] bg-white",
+      )}
+    >
+      <button
+        aria-label={`${task.title} 완료 상태 변경`}
+        className={cn(
+          "hidden h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 text-sm font-black transition",
+          isDone ? "border-[#22C55E] bg-[#22C55E] text-white" : "border-[#C7D2FE] bg-white text-transparent",
+        )}
+        onClick={() => {}}
+        type="button"
+      >
+        ✓
+      </button>
+      <div className="min-w-0 flex-1">
+        {display.subject ? (
+          <p className="truncate text-[11px] font-bold text-[#4F46E5]">{display.subject}</p>
+        ) : null}
+        <h3
+          className={cn(
+            "mt-0.5 truncate text-[15px] font-bold leading-snug text-[#17213B]",
+            isDone ? "text-[#9AA3B6] line-through" : "",
+          )}
+        >
+          {display.courseTitle}
+        </h3>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <span className="rounded-full bg-[#EEF2FF] px-2.5 py-1 text-[11px] font-bold text-[#4F46E5]">
+            {display.rangeLabel}
+          </span>
+          <span className="text-xs font-medium text-[#98A1B3]">
+            {formatCardDate(taskDate)}
+          </span>
+          {task.due_date ? (
+            <span className="text-xs font-medium text-[#98A1B3]">
+              마감 {formatCardDate(task.due_date)}
+            </span>
+          ) : null}
+        </div>
+        {display.memo ? (
+          <p className="mt-2 truncate text-xs font-medium text-[#98A1B3]">{display.memo}</p>
+        ) : null}
+        {(task.lecture_items ?? []).length > 0 ? (
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {(task.lecture_items ?? []).map((lectureItem) => (
+              <button
+                key={`${task.id}-${lectureItem.lecture_number}`}
+                aria-label={`${display.courseTitle} ${lectureItem.title} 완료 상태 변경`}
+                className={cn(
+                  "flex items-center gap-2 rounded-2xl border px-3 py-2 text-left transition",
+                  lectureItem.is_done
+                    ? "border-[#BBF7D0] bg-[#F0FDF4]"
+                    : "border-[#E5E7EB] bg-white hover:border-[#C7D2FE]",
+                )}
+                onClick={(event) => void onToggleLectureItem(task, lectureItem, event)}
+                type="button"
+              >
+                <span
+                  className={cn(
+                    "flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 text-xs font-black transition",
+                    lectureItem.is_done
+                      ? "border-[#22C55E] bg-[#22C55E] text-white"
+                      : "border-[#D0D5DD] bg-white text-transparent",
+                  )}
+                >
+                  ✓
+                </span>
+                <span
+                  className={cn(
+                    "text-sm font-bold",
+                    lectureItem.is_done ? "text-[#16A34A]" : "text-[#344054]",
+                  )}
+                >
+                  {lectureItem.title}
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </div>
+      {isDone ? (
+        <span className="shrink-0 rounded-full bg-[#DCFCE7] px-3 py-1 text-xs font-bold text-[#16A34A]">
+          {getStatusLabel(task.status)}
+        </span>
+      ) : (
+        <button
+          className="hidden shrink-0 rounded-full bg-[#0F172A] px-3.5 py-2 text-xs font-black text-white transition hover:bg-[#1E293B]"
+          onClick={() => {}}
+          type="button"
+        >
+          완료하기
+        </button>
+      )}
+      <div className="hidden h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#F7F8FC] text-2xl">
+        🎬
+      </div>
+    </article>
+  );
+}
+
 function CompletedStandardTaskItem({
   task,
   onToggleTaskStatus,
@@ -330,6 +532,215 @@ function CompletedStandardTaskItem({
         ✓
       </button>
       <p className="min-w-0 flex-1 truncate text-sm font-semibold text-[#9AA3B6] line-through">{task.title}</p>
+    </article>
+  );
+}
+
+function LectureTaskCard({
+  task,
+  taskDate,
+  onToggleLectureItem,
+}: {
+  task: DailyTask;
+  taskDate: string;
+  onToggleLectureItem: (
+    task: DailyTask,
+    lectureItem: LectureTaskItemProgress,
+    event: MouseEvent<HTMLButtonElement>,
+  ) => Promise<void>;
+}) {
+  const display = buildLectureTaskDisplay(task);
+  const lectureItems = task.lecture_items ?? [];
+  const doneCount = lectureItems.filter((item) => item.is_done).length;
+  const totalCount = lectureItems.length;
+  const progressRate = totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0;
+  const isDone = task.status === "done";
+
+  return (
+    <article className="rounded-[24px] border border-[#D9D6FF] bg-white px-5 py-5 shadow-[0_16px_40px_rgba(109,115,255,0.08)]">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          {display.subject ? (
+            <span className="inline-flex rounded-2xl bg-[#F1EDFF] px-4 py-2 text-sm font-black text-[#635BFF]">
+              {display.subject}
+            </span>
+          ) : null}
+          <h3 className="mt-4 truncate text-[16px] font-black leading-snug text-[#17213B]">
+            {display.courseTitle}
+          </h3>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <span className="rounded-full bg-[#F3F0FF] px-4 py-2 text-[13px] font-black text-[#635BFF]">
+              {display.rangeLabel}
+            </span>
+            <span className="text-[13px] font-bold text-[#98A1B3]">{formatCardDate(taskDate)}</span>
+            {task.due_date ? (
+              <span className="text-[13px] font-bold text-[#8C82FF]">마감 {formatCardDate(task.due_date)}</span>
+            ) : null}
+          </div>
+        </div>
+        <span
+          className={cn(
+            "shrink-0 rounded-full px-4 py-2 text-sm font-black",
+            isDone ? "bg-[#E8F8EC] text-[#2BA24C]" : "bg-[#F1EDFF] text-[#635BFF]",
+          )}
+        >
+          {isDone ? "완료" : "진행 중"}
+        </span>
+      </div>
+
+      <div className="mt-4 grid grid-cols-3 gap-2">
+        {lectureItems.map((lectureItem) => (
+          <button
+            key={`${task.id}-${lectureItem.lecture_number}`}
+            aria-label={`${display.courseTitle} ${lectureItem.title} 완료 상태 변경`}
+            className={cn(
+              "flex min-h-[40px] items-center gap-1.5 rounded-[14px] border px-2.5 py-2 text-left transition",
+              lectureItem.is_done
+                ? "border-[#E5E7EB] bg-[#F8FAFC] text-[#98A2B3] opacity-65"
+                : "border-[#DDD6FE] bg-white text-[#17213B] shadow-[0_4px_14px_rgba(109,115,255,0.08)] hover:border-[#C4B5FD]",
+            )}
+            onClick={(event) => void onToggleLectureItem(task, lectureItem, event)}
+            type="button"
+          >
+            <span
+              className={cn(
+                "flex h-4 w-4 shrink-0 items-center justify-center rounded-full border text-[9px] font-black transition",
+                lectureItem.is_done
+                  ? "border-[#D1D5DB] bg-[#E5E7EB] text-[#6B7280]"
+                  : "border-[#B8BFCC] bg-white text-transparent",
+              )}
+            >
+              ✓
+            </span>
+            <span
+              className={cn(
+                "truncate text-[11px] font-black",
+                lectureItem.is_done ? "text-[#98A2B3]" : "text-[#17213B]",
+              )}
+            >
+              {lectureItem.title}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-5 flex items-center gap-4">
+        <p className="shrink-0 text-sm font-black text-[#635BFF]">
+          {doneCount}/{totalCount}강 완료
+        </p>
+        <div className="h-3 flex-1 overflow-hidden rounded-full bg-[#F1EEFF]">
+          <div
+            className="h-full rounded-full bg-[linear-gradient(90deg,#635BFF_0%,#7C71FF_100%)] transition-all duration-500"
+            style={{ width: `${progressRate}%` }}
+          />
+        </div>
+        <p className="shrink-0 text-sm font-black text-[#635BFF]">{progressRate}%</p>
+      </div>
+    </article>
+  );
+}
+
+function CompletedMissionTaskCard({
+  task,
+  taskDate,
+  onOpenTask,
+}: {
+  task: DailyTask;
+  taskDate: string;
+  onOpenTask: (task: DailyTask) => void;
+}) {
+  return (
+    <article className="rounded-[24px] border border-[#D9D6FF] bg-white px-5 py-5 shadow-[0_16px_40px_rgba(109,115,255,0.08)]">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <span className="inline-flex rounded-2xl bg-[#F1EDFF] px-4 py-2 text-sm font-black text-[#635BFF]">
+            {task.category ?? "완료"}
+          </span>
+          <h3 className="mt-4 truncate text-[16px] font-black leading-snug text-[#17213B]">
+            {task.title}
+          </h3>
+          {task.detail ? (
+            <p className="mt-2 truncate text-sm font-bold text-[#A0A7B8] line-through">{task.detail}</p>
+          ) : null}
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <span className="text-[13px] font-bold text-[#98A1B3]">{formatCardDate(taskDate)}</span>
+          </div>
+        </div>
+        <span className="shrink-0 rounded-full bg-[#E8F8EC] px-4 py-2 text-sm font-black text-[#2BA24C]">
+          완료
+        </span>
+      </div>
+      <div className="mt-5 flex items-center gap-4">
+        <div className="h-3 flex-1 overflow-hidden rounded-full bg-[#F1EEFF]">
+          <div className="h-full w-full rounded-full bg-[linear-gradient(90deg,#635BFF_0%,#7C71FF_100%)]" />
+        </div>
+        <p className="shrink-0 text-sm font-black text-[#635BFF]">100%</p>
+      </div>
+      {task.textbook_key ? (
+        <div className="mt-5 flex justify-end">
+          <button
+            className="rounded-full border border-[#6D73FF] bg-white px-4 py-2 text-sm font-black text-[#6D73FF] transition hover:bg-[#F8FAFF]"
+            onClick={() => onOpenTask(task)}
+            type="button"
+          >
+            교재로 이동
+          </button>
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
+function CompletedHomeworkTaskCard({
+  card,
+  onOpenTextbook,
+}: {
+  card: ItemRangeTaskCard;
+  onOpenTextbook: (card: ItemRangeTaskCard) => void;
+}) {
+  return (
+    <article className="rounded-[24px] border border-[#D9D6FF] bg-white px-5 py-5 shadow-[0_16px_40px_rgba(109,115,255,0.08)]">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          {card.textbook_title ? (
+            <span className="inline-flex rounded-2xl bg-[#F1EDFF] px-4 py-2 text-sm font-black text-[#635BFF]">
+              {card.textbook_title}
+            </span>
+          ) : null}
+          <h3 className="mt-4 truncate text-[16px] font-black leading-snug text-[#17213B]">
+            {card.title}
+          </h3>
+          <p className="mt-2 truncate text-sm font-bold text-[#A0A7B8] line-through">
+            {card.range_label ?? "-"}
+          </p>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <span className="text-[13px] font-bold text-[#98A1B3]">{formatCardDate(card.task_date)}</span>
+            {card.due_date ? (
+              <span className="text-[13px] font-bold text-[#8C82FF]">마감 {formatCardDate(card.due_date)}</span>
+            ) : null}
+          </div>
+        </div>
+        <span className="shrink-0 rounded-full bg-[#E8F8EC] px-4 py-2 text-sm font-black text-[#2BA24C]">
+          완료
+        </span>
+      </div>
+      <div className="mt-5 flex items-center gap-4">
+        <div className="h-3 flex-1 overflow-hidden rounded-full bg-[#F1EEFF]">
+          <div className="h-full w-full rounded-full bg-[linear-gradient(90deg,#635BFF_0%,#7C71FF_100%)]" />
+        </div>
+        <p className="shrink-0 text-sm font-black text-[#635BFF]">100%</p>
+      </div>
+      {card.textbook_key ? (
+        <div className="mt-5 flex justify-end">
+          <button
+            className="rounded-full border border-[#6D73FF] bg-white px-4 py-2 text-sm font-black text-[#6D73FF] transition hover:bg-[#F8FAFF]"
+            onClick={() => onOpenTextbook(card)}
+            type="button"
+          >
+            교재로 이동
+          </button>
+        </div>
+      ) : null}
     </article>
   );
 }
@@ -400,12 +811,20 @@ export default function StudentTodayPage() {
   const itemRangeCards = useMemo(
     () =>
       selectedTasks
+        .filter((task) => task.source_type !== "lecture")
         .filter(isProblemRangeTask)
         .map((task) => toItemRangeTaskCard(task, selectedDateKey, todayKey)),
     [selectedDateKey, selectedTasks, todayKey],
   );
+  const lectureTasks = useMemo(
+    () => selectedTasks.filter((task) => task.source_type === "lecture"),
+    [selectedTasks],
+  );
   const regularTasks = useMemo(
-    () => selectedTasks.filter((task) => !isProblemRangeTask(task)),
+    () =>
+      selectedTasks.filter(
+        (task) => task.source_type !== "lecture" && !isProblemRangeTask(task),
+      ),
     [selectedTasks],
   );
 
@@ -413,6 +832,18 @@ export default function StudentTodayPage() {
   const completedItemRangeCards = itemRangeCards.filter((card) => card.status === "done");
   const pendingRegularTasks = regularTasks.filter((task) => task.status !== "done");
   const completedRegularTasks = regularTasks.filter((task) => task.status === "done");
+  const pendingNonLectureTasks = useMemo(
+    () =>
+      selectedTasks
+        .filter((task) => task.source_type !== "lecture" && task.status !== "done")
+        .sort((left, right) => {
+          const leftPriority = isMathPriorityTask(left) ? 0 : 1;
+          const rightPriority = isMathPriorityTask(right) ? 0 : 1;
+
+          return leftPriority - rightPriority;
+        }),
+    [selectedTasks],
+  );
 
   const weeklySummary = useMemo(() => {
     const days = weeklyData?.days ?? [];
@@ -426,9 +857,25 @@ export default function StudentTodayPage() {
     };
   }, [weeklyData]);
 
-  const todayTaskDay = weeklyData?.days.find((day) => day.date === todayKey);
-  const todayRemaining = (todayTaskDay?.tasks ?? []).filter((task) => task.status !== "done").length;
-  const todayCompletionRate = todayTaskDay?.summary.completion_rate ?? 0;
+  const progressSummary = useMemo(() => {
+    const tasks = selectedTasks.filter((task) => {
+      if (task.source_type !== "lecture") {
+        return true;
+      }
+
+      return (task.lecture_items?.length ?? 0) > 0;
+    });
+    const summary = summarizeTasks(tasks);
+
+    return {
+      total: summary.total,
+      done: summary.done,
+      remaining: summary.todo,
+      completionRate: summary.completion_rate,
+    };
+  }, [selectedTasks]);
+  const progressRemaining = progressSummary.remaining;
+  const progressCompletionRate = progressSummary.completionRate;
 
   const updateTaskInWeek = (taskId: number, status: DailyTaskStatus) => {
     setWeeklyData((current) => {
@@ -443,22 +890,35 @@ export default function StudentTodayPage() {
             progress_rate:
               task.completion_mode === "item_progress"
                 ? task.progress_rate
-                : status === "done"
+              : status === "done"
                   ? 100
                   : 0,
           };
         });
-        const done = nextTasks.filter((task) => task.status === "done").length;
-        const total = nextTasks.length;
+        const summary = summarizeTasks(nextTasks);
 
         return {
           ...day,
-          summary: {
-            total,
-            done,
-            todo: total - done,
-            completion_rate: total > 0 ? Math.round((done / total) * 100) : 0,
-          },
+          summary,
+          tasks: nextTasks,
+        };
+      });
+
+      return { ...current, days };
+    });
+  };
+
+  const replaceTaskInWeek = (updatedTask: DailyTask) => {
+    setWeeklyData((current) => {
+      if (!current) return current;
+
+      const days = current.days.map((day) => {
+        const nextTasks = day.tasks.map((task) => (task.id === updatedTask.id ? updatedTask : task));
+        const summary = summarizeTasks(nextTasks);
+
+        return {
+          ...day,
+          summary,
           tasks: nextTasks,
         };
       });
@@ -470,7 +930,7 @@ export default function StudentTodayPage() {
   const toggleTaskStatus = async (task: DailyTask, event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
 
-    if (studentId === null || isProblemRangeTask(task)) {
+    if (studentId === null || isProblemRangeTask(task) || task.source_type === "lecture") {
       return;
     }
 
@@ -496,6 +956,66 @@ export default function StudentTodayPage() {
         await fetchWeeklyTasks(studentId);
       } catch {
         setLoadError("오늘의 미션을 불러오지 못했습니다.");
+      }
+    }
+  };
+
+  const toggleLectureItem = async (
+    task: DailyTask,
+    lectureItem: LectureTaskItemProgress,
+    event: MouseEvent<HTMLButtonElement>,
+  ) => {
+    event.stopPropagation();
+
+    if (studentId === null) {
+      return;
+    }
+
+    const previousTask = task;
+    const nextLectureItems = (task.lecture_items ?? []).map((item) =>
+      item.lecture_number === lectureItem.lecture_number
+        ? { ...item, is_done: !item.is_done }
+        : item,
+    );
+    const doneCount = nextLectureItems.filter((item) => item.is_done).length;
+    const nextTask: DailyTask = {
+      ...task,
+      lecture_items: nextLectureItems,
+      status:
+        doneCount === 0
+          ? "todo"
+          : doneCount === nextLectureItems.length
+            ? "done"
+            : "in_progress",
+      progress_rate:
+        nextLectureItems.length > 0
+          ? Math.round((doneCount / nextLectureItems.length) * 100)
+          : 0,
+    };
+
+    setSaveError("");
+    replaceTaskInWeek(nextTask);
+
+    try {
+      const updatedTask = await apiFetch<DailyTask>(
+        `/student/daily-tasks/${task.id}/lecture-items/${lectureItem.lecture_number}`,
+        {
+          method: "PATCH",
+          body: {
+            student_id: studentId,
+            is_done: !lectureItem.is_done,
+          },
+        },
+      );
+      replaceTaskInWeek(updatedTask);
+    } catch {
+      replaceTaskInWeek(previousTask);
+      setSaveError("??ν븯吏 紐삵뻽?듬땲?? ?ㅼ떆 ?쒕룄??二쇱꽭??");
+
+      try {
+        await fetchWeeklyTasks(studentId);
+      } catch {
+        setLoadError("?ㅻ뒛??誘몄뀡??遺덈윭?ㅼ? 紐삵뻽?듬땲??");
       }
     }
   };
@@ -551,16 +1071,16 @@ export default function StudentTodayPage() {
           <p className="text-sm font-bold text-[#17213B]">
             {loading
               ? "불러오는 중..."
-              : todayRemaining === 0 && (todayTaskDay?.tasks.length ?? 0) > 0
+              : progressRemaining === 0 && progressSummary.total > 0
                 ? "오늘 미션 모두 완료"
-                : `${todayRemaining}개 남아있어요`}
+                : `${progressRemaining}개 남아있어요`}
           </p>
-          <span className="shrink-0 text-sm font-black text-[#6D73FF]">{todayCompletionRate}%</span>
+          <span className="shrink-0 text-sm font-black text-[#6D73FF]">{progressCompletionRate}%</span>
         </div>
         <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#E9EDF7]">
           <div
             className="h-full rounded-full bg-[linear-gradient(90deg,#6676FF_0%,#8E84FF_100%)] transition-all duration-500"
-            style={{ width: `${todayCompletionRate}%` }}
+            style={{ width: `${progressCompletionRate}%` }}
           />
         </div>
       </div>
@@ -587,23 +1107,24 @@ export default function StudentTodayPage() {
 
         {!loading && !loadError ? (
           <>
-            {pendingRegularTasks.length > 0 || pendingItemRangeCards.length > 0 ? (
+            {pendingNonLectureTasks.length > 0 ? (
               <div className="space-y-3">
-                {pendingRegularTasks.map((task) => (
-                  <StandardTaskItem
-                    key={task.id}
-                    onOpenTask={openTask}
-                    onToggleTaskStatus={toggleTaskStatus}
-                    task={task}
-                  />
-                ))}
-                {pendingItemRangeCards.map((card) => (
-                  <HomeworkTaskCardItem
-                    card={card}
-                    key={`item-range-${card.id}`}
-                    onOpenTextbook={openHomeworkTextbook}
-                  />
-                ))}
+                {pendingNonLectureTasks.map((task) =>
+                  isProblemRangeTask(task) ? (
+                    <HomeworkTaskCardItem
+                      card={toItemRangeTaskCard(task, selectedDateKey, todayKey)}
+                      key={`item-range-${task.id}`}
+                      onOpenTextbook={openHomeworkTextbook}
+                    />
+                  ) : (
+                    <StandardTaskItem
+                      key={task.id}
+                      onOpenTask={openTask}
+                      onToggleTaskStatus={toggleTaskStatus}
+                      task={task}
+                    />
+                  ),
+                )}
               </div>
             ) : null}
 
@@ -612,14 +1133,15 @@ export default function StudentTodayPage() {
                 <p className="mb-2 mt-5 text-xs font-bold text-[#98A1B3]">이미 완료한 미션</p>
                 <div className="space-y-2">
                   {completedRegularTasks.map((task) => (
-                    <CompletedStandardTaskItem
+                    <CompletedMissionTaskCard
                       key={task.id}
-                      onToggleTaskStatus={toggleTaskStatus}
+                      onOpenTask={openTask}
                       task={task}
+                      taskDate={selectedDateKey}
                     />
                   ))}
                   {completedItemRangeCards.map((card) => (
-                    <HomeworkTaskCardItem
+                    <CompletedHomeworkTaskCard
                       card={card}
                       key={`item-range-done-${card.id}`}
                       onOpenTextbook={openHomeworkTextbook}
@@ -627,6 +1149,22 @@ export default function StudentTodayPage() {
                   ))}
                 </div>
               </>
+            ) : null}
+
+            {lectureTasks.length > 0 ? (
+              <div className="mt-5">
+                <p className="mb-2 text-xs font-bold text-[#98A1B3]">인강 수강</p>
+                <div className="space-y-3">
+                  {lectureTasks.map((task) => (
+                    <LectureTaskCard
+                      key={`lecture-${task.id}`}
+                      onToggleLectureItem={toggleLectureItem}
+                      task={task}
+                      taskDate={selectedDateKey}
+                    />
+                  ))}
+                </div>
+              </div>
             ) : null}
 
             {selectedTasks.length === 0 ? (
