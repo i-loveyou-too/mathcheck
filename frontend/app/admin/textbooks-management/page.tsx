@@ -3,7 +3,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AdminBottomNav } from "@/components/admin-bottom-nav";
-import { apiFetch } from "@/lib/api";
+import { ApiError, apiFetch } from "@/lib/api";
 import { getAdmin } from "@/lib/storage";
 import {
   AdminStudentSummary,
@@ -575,8 +575,8 @@ export default function TextbooksManagementPage() {
     }
   }, []);
 
-  const handleSelectTextbook = async (id: number) => {
-    if (selectedId === id) {
+  const handleSelectTextbook = async (id: number, forceReload = false) => {
+    if (!forceReload && selectedId === id) {
       setSelectedId(null);
       setDetail(null);
       setAssignments(null);
@@ -775,7 +775,7 @@ export default function TextbooksManagementPage() {
     setSubmitting(true);
     try {
       if (formMode === "edit" && editingTextbookId) {
-        await apiFetch<TextbookMgmtDetail>(`/admin/textbooks/${editingTextbookId}`, {
+        const updatedDetail = await apiFetch<TextbookMgmtDetail>(`/admin/textbooks/${editingTextbookId}`, {
           method: "PATCH",
           body: {
             subjects: form.subjects,
@@ -789,9 +789,10 @@ export default function TextbooksManagementPage() {
             order_index: detail?.order_index ?? 0,
           },
         });
+        setDetail(updatedDetail);
         setMessage(`"${form.fullTitle.trim()}" 교재가 수정되었습니다.`);
         await fetchTextbooks();
-        await handleSelectTextbook(editingTextbookId);
+        await handleSelectTextbook(editingTextbookId, true);
         setShowAddForm(false);
         resetFormState();
       } else {
@@ -819,7 +820,22 @@ export default function TextbooksManagementPage() {
         resetFormState();
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "교재 저장에 실패했습니다.";
+      if (err instanceof ApiError) {
+        console.error("Textbook save failed", {
+          endpoint: formMode === "edit" && editingTextbookId ? `/admin/textbooks/${editingTextbookId}` : "/admin/textbooks",
+          method: formMode === "edit" ? "PATCH" : "POST",
+          status: err.status,
+          body: err.body,
+        });
+      } else {
+        console.error("Textbook save failed", err);
+      }
+      const msg =
+        err instanceof ApiError
+          ? `[${err.status}] ${err.message}`
+          : err instanceof Error
+            ? err.message
+            : "교재 저장에 실패했습니다.";
       setError(msg);
     } finally {
       setSubmitting(false);
@@ -1614,4 +1630,3 @@ export default function TextbooksManagementPage() {
     </main>
   );
 }
-

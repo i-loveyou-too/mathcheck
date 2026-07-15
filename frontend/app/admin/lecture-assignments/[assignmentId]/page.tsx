@@ -98,9 +98,21 @@ type EditFormState = {
   startLectureNo: string;
   lecturesPerDay: string;
   weekdays: LectureWeekday[];
-  startDate: string;
+  rescheduleStartDate: string;
   dueDate: string;
   memo: string;
+};
+
+type LectureAssignmentEditPayload = {
+  subject: string;
+  course_title: string;
+  total_lectures: number;
+  start_lecture_no: number;
+  lectures_per_day: number;
+  weekdays: LectureWeekday[];
+  due_date: string;
+  memo: string | null;
+  reschedule_start_date: string;
 };
 
 const WEEKDAY_KOR: Record<LectureWeekday, string> = {
@@ -126,6 +138,26 @@ const WEEKDAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
 function formatMonthDay(dateStr: string) {
   const d = parseDateKey(dateStr);
   return `${d.getMonth() + 1}월 ${d.getDate()}일 (${WEEKDAY_LABELS[d.getDay()]})`;
+}
+
+function buildLectureAssignmentPayload(editForm: EditFormState): LectureAssignmentEditPayload {
+  return {
+    subject: editForm.subject.trim(),
+    course_title: editForm.courseTitle.trim(),
+    total_lectures: Number(editForm.totalLectures),
+    start_lecture_no: Number(editForm.startLectureNo),
+    lectures_per_day: Number(editForm.lecturesPerDay),
+    weekdays: [...editForm.weekdays],
+    due_date: editForm.dueDate,
+    memo: editForm.memo.trim() || null,
+    reschedule_start_date: editForm.rescheduleStartDate,
+  };
+}
+
+function addDaysToDateKey(dateStr: string, days: number) {
+  const d = parseDateKey(dateStr);
+  d.setDate(d.getDate() + days);
+  return `${d.getFullYear()}-${`${d.getMonth() + 1}`.padStart(2, "0")}-${`${d.getDate()}`.padStart(2, "0")}`;
 }
 
 function formatMonthDayTime(isoStr: string) {
@@ -203,6 +235,16 @@ export default function AdminLectureAssignmentDetailPage() {
   const startEdit = () => {
     if (!detail) return;
     setMessage("");
+
+    const protectedDates = detail.daily_tasks
+      .filter((task) => task.status !== "todo" && task.task_date)
+      .map((task) => task.task_date as string)
+      .sort();
+    const lastProtectedDate = protectedDates.length > 0 ? protectedDates[protectedDates.length - 1] : null;
+    const defaultRescheduleStartDate = lastProtectedDate
+      ? addDaysToDateKey(lastProtectedDate, 1)
+      : detail.assignment.start_date;
+
     setEditForm({
       subject: detail.assignment.subject,
       courseTitle: detail.assignment.course_title,
@@ -210,7 +252,7 @@ export default function AdminLectureAssignmentDetailPage() {
       startLectureNo: String(detail.assignment.start_lecture_no),
       lecturesPerDay: String(detail.assignment.lectures_per_day),
       weekdays: detail.assignment.weekdays,
-      startDate: detail.assignment.start_date,
+      rescheduleStartDate: defaultRescheduleStartDate,
       dueDate: detail.assignment.due_date,
       memo: detail.assignment.memo ?? "",
     });
@@ -237,21 +279,15 @@ export default function AdminLectureAssignmentDetailPage() {
   };
 
   const handlePreview = async () => {
-    if (!editForm) return;
+    if (!editForm || !detail) return;
     setEditError("");
     setPreviewLoading(true);
     try {
-      const result = await apiFetch<LecturePreviewResponse>("/admin/lecture-assignments/preview", {
-        method: "POST",
-        body: {
-          total_lectures: Number(editForm.totalLectures),
-          start_lecture_no: Number(editForm.startLectureNo),
-          lectures_per_day: Number(editForm.lecturesPerDay),
-          weekdays: editForm.weekdays,
-          start_date: editForm.startDate,
-          due_date: editForm.dueDate,
-        },
-      });
+      const payload = buildLectureAssignmentPayload(editForm);
+      const result = await apiFetch<LecturePreviewResponse>(
+        `/admin/lecture-assignments/${detail.assignment.id}/reschedule-preview`,
+        { method: "POST", body: payload },
+      );
       setPreviewResult(result);
       setPreviewStale(false);
     } catch (err) {
@@ -266,21 +302,12 @@ export default function AdminLectureAssignmentDetailPage() {
     setEditError("");
     setSaving(true);
     try {
+      const payload = buildLectureAssignmentPayload(editForm);
       const result = await apiFetch<LectureAssignmentMutationResponse>(
         `/admin/lecture-assignments/${detail.assignment.id}`,
         {
           method: "PATCH",
-          body: {
-            subject: editForm.subject.trim(),
-            course_title: editForm.courseTitle.trim(),
-            total_lectures: Number(editForm.totalLectures),
-            start_lecture_no: Number(editForm.startLectureNo),
-            lectures_per_day: Number(editForm.lecturesPerDay),
-            weekdays: editForm.weekdays,
-            start_date: editForm.startDate,
-            due_date: editForm.dueDate,
-            memo: editForm.memo.trim() || null,
-          },
+          body: payload,
         },
       );
       setMessage(`저장되었습니다. 현재 ${result.daily_tasks.length}개의 일일 강의 task가 배정되어 있습니다.`);
@@ -470,13 +497,26 @@ export default function AdminLectureAssignmentDetailPage() {
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="mb-2 block text-xs font-bold text-[#667085]">시작일</label>
-                    <input className={inputCls} onChange={(e) => updateEditForm({ startDate: e.target.value })} type="date" value={editForm.startDate} />
+                    <label className="mb-2 block text-xs font-bold text-[#667085]">최초 시작일</label>
+                    <input className={`${inputCls} cursor-not-allowed opacity-60`} disabled readOnly type="date" value={detail.assignment.start_date} />
                   </div>
                   <div>
                     <label className="mb-2 block text-xs font-bold text-[#667085]">마감일</label>
                     <input className={inputCls} onChange={(e) => updateEditForm({ dueDate: e.target.value })} type="date" value={editForm.dueDate} />
                   </div>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-xs font-bold text-[#667085]">미완료 일정 다시 시작일</label>
+                  <input
+                    className={inputCls}
+                    onChange={(e) => updateEditForm({ rescheduleStartDate: e.target.value })}
+                    type="date"
+                    value={editForm.rescheduleStartDate}
+                  />
+                  <p className="mt-2 text-xs font-bold text-[#667085]">
+                    완료한 강의 기록은 유지되고, 미완료 일정만 선택한 날짜부터 다시 배정됩니다.
+                  </p>
                 </div>
 
                 <div>

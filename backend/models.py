@@ -316,6 +316,23 @@ class MathStudentLectureProgress(Base):
     daily_task = relationship("MathDailyTask")
 
 
+class AdminProgressChangeLog(Base):
+    __tablename__ = "admin_progress_change_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("math_students.id"), nullable=False, index=True)
+    target_type = Column(String(50), nullable=False)
+    target_id = Column(Integer, nullable=False, index=True)
+    old_status = Column(String(50), nullable=True)
+    new_status = Column(String(50), nullable=True)
+    changed_by = Column(String(50), nullable=False, default="admin")
+    changed_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    memo = Column(String(300), nullable=True)
+    target_detail = Column(String(100), nullable=True)
+
+    student = relationship("Student")
+
+
 class MathDailyTask(Base):
     __tablename__ = "math_daily_tasks"
 

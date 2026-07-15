@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { AdminStudentProgressManager } from "@/components/admin-student-progress-manager";
 import { AdminBottomNav } from "@/components/admin-bottom-nav";
 import { ProgressBar } from "@/components/progress-bar";
 import { apiFetch } from "@/lib/api";
@@ -768,6 +769,13 @@ export default function AdminStudentDetailPage() {
                   </div>
                 )}
               </section>
+
+              {studentInfo ? (
+                <AdminStudentProgressManager
+                  studentId={Number(params.studentId)}
+                  studentName={studentInfo.name}
+                />
+              ) : null}
             </>
           )}
         </div>

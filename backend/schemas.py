@@ -169,6 +169,27 @@ class StudentItemProgressResponse(BaseModel):
     updated_at: datetime
 
 
+class AdminStudentDailyTaskStatusRequest(BaseModel):
+    status: str
+    memo: Optional[str] = None
+
+
+class AdminStudentItemProgressRequest(BaseModel):
+    status: str
+    memo: Optional[str] = None
+
+
+class AdminStudentItemProgressBatchRequest(BaseModel):
+    item_ids: list[int]
+    status: str
+    memo: Optional[str] = None
+
+
+class AdminStudentLectureTaskItemProgressRequest(BaseModel):
+    is_done: bool
+    memo: Optional[str] = None
+
+
 class StudentDashboardProgressBucket(BaseModel):
     total: int
     done: int
@@ -409,9 +430,26 @@ class HomeworkAssignmentUpdateRequest(BaseModel):
     range_type: Optional[str] = None
     start_value: Optional[int] = None
     end_value: Optional[int] = None
-    start_date: Optional[date] = None
     due_date: Optional[date] = None
     memo: Optional[str] = None
+    # The assignment's original start_date is kept as a historical record and is never
+    # editable here. reschedule_start_date instead controls where *regenerated* (still
+    # incomplete) tasks are placed — see crud.update_homework_assignment.
+    reschedule_start_date: Optional[date] = None
+
+
+class HomeworkRangePreviewItem(BaseModel):
+    date: date
+    start_value: int
+    end_value: int
+    count: int
+
+
+class HomeworkRangePreviewResponse(BaseModel):
+    possible: bool
+    total_to_assign: int
+    available_days_count: int
+    preview_items: list[HomeworkRangePreviewItem]
 
 
 class HomeworkAssignmentUpdateResponse(BaseModel):
@@ -436,9 +474,12 @@ class LectureAssignmentUpdateRequest(BaseModel):
     start_lecture_no: Optional[int] = None
     lectures_per_day: Optional[int] = None
     weekdays: Optional[list[str]] = None
-    start_date: Optional[date] = None
     due_date: Optional[date] = None
     memo: Optional[str] = None
+    # The assignment's original start_date is kept as a historical record and is never
+    # editable here. reschedule_start_date instead controls where *regenerated* (still
+    # incomplete) tasks are placed — see crud.update_lecture_assignment.
+    reschedule_start_date: Optional[date] = None
 
 
 class LectureAssignmentUpdateResponse(BaseModel):

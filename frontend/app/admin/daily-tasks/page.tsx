@@ -506,7 +506,7 @@ type HomeworkEditFormState = {
   rangeType: HomeworkRangeType;
   startValue: string;
   endValue: string;
-  startDate: string;
+  rescheduleStartDate: string;
   dueDate: string;
   memo: string;
 };
@@ -518,57 +518,19 @@ type LectureEditFormState = {
   startLectureNo: string;
   lecturesPerDay: string;
   weekdays: LectureWeekday[];
-  startDate: string;
+  rescheduleStartDate: string;
   dueDate: string;
   memo: string;
 };
 
-function addDaysToDateStr(dateStr: string, days: number) {
-  return toLocalDateKey(addDays(new Date(`${dateStr}T00:00:00`), days));
-}
+type HomeworkRangePreviewItem = { date: string; start_value: number; end_value: number; count: number };
 
-function daysBetweenInclusive(startStr: string, endStr: string) {
-  const start = new Date(`${startStr}T00:00:00`);
-  const end = new Date(`${endStr}T00:00:00`);
-  return Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-}
-
-function distributeCountsEvenly(total: number, days: number): number[] {
-  if (days <= 0) return [];
-  const base = Math.floor(total / days);
-  const remainder = total % days;
-  return Array.from({ length: days }, (_, index) => (index < remainder ? base + 1 : base));
-}
-
-function buildHomeworkRangePreview(form: HomeworkEditFormState, textbookShortTitle: string) {
-  if (form.rangeType === "section") return null;
-  const startValue = Number(form.startValue);
-  const endValue = Number(form.endValue);
-  if (!form.startValue || !form.endValue || Number.isNaN(startValue) || Number.isNaN(endValue) || startValue > endValue) {
-    return null;
-  }
-  const dayCount = daysBetweenInclusive(form.startDate, form.dueDate);
-  if (dayCount === null || Number.isNaN(dayCount) || dayCount <= 0) return null;
-
-  const total = endValue - startValue + 1;
-  const counts = distributeCountsEvenly(total, dayCount);
-  const unit = form.rangeType === "item" ? "번" : "페이지";
-  const items: { date: string; label: string }[] = [];
-  let cursor = startValue;
-
-  counts.forEach((count, index) => {
-    if (count <= 0) return;
-    const rangeStart = cursor;
-    const rangeEnd = cursor + count - 1;
-    cursor = rangeEnd + 1;
-    items.push({
-      date: addDaysToDateStr(form.startDate, index),
-      label: `${textbookShortTitle} ${rangeStart}~${rangeEnd}${unit}`,
-    });
-  });
-
-  return items;
-}
+type HomeworkRangePreviewResponse = {
+  possible: boolean;
+  total_to_assign: number;
+  available_days_count: number;
+  preview_items: HomeworkRangePreviewItem[];
+};
 
 const WEEKDAY_KOR: Record<LectureWeekday, string> = {
   mon: "월", tue: "화", wed: "수", thu: "목", fri: "금", sat: "토", sun: "일",
@@ -641,7 +603,9 @@ function AutoAssignmentPlanManager({
   const [homeworkEditTextbooks, setHomeworkEditTextbooks] = useState<AdminTextbookCatalogItem[]>([]);
   const [loadingHomeworkEditTextbooks, setLoadingHomeworkEditTextbooks] = useState(false);
   const [homeworkEditSectionCache, setHomeworkEditSectionCache] = useState<Record<number, SectionsData>>({});
-  const [homeworkEditPreview, setHomeworkEditPreview] = useState<{ date: string; label: string }[] | null>(null);
+  const [homeworkEditPreview, setHomeworkEditPreview] = useState<HomeworkRangePreviewResponse | null>(null);
+  const [homeworkEditPreviewLoading, setHomeworkEditPreviewLoading] = useState(false);
+  const [homeworkEditPreviewStale, setHomeworkEditPreviewStale] = useState(true);
   const [homeworkEditError, setHomeworkEditError] = useState("");
   const [savingHomeworkEdit, setSavingHomeworkEdit] = useState(false);
 
@@ -665,12 +629,13 @@ function AutoAssignmentPlanManager({
       rangeType: assignment.range_type,
       startValue: assignment.start_value !== null ? String(assignment.start_value) : "",
       endValue: assignment.end_value !== null ? String(assignment.end_value) : "",
-      startDate: assignment.start_date,
+      rescheduleStartDate: assignment.start_date,
       dueDate: assignment.due_date,
       memo: assignment.memo ?? "",
     });
     setHomeworkEditError("");
     setHomeworkEditPreview(null);
+    setHomeworkEditPreviewStale(true);
     setLoadingHomeworkEditTextbooks(true);
     try {
       const result = await apiFetch<AdminTextbookCatalogResponse>(
@@ -690,6 +655,35 @@ function AutoAssignmentPlanManager({
   const updateHomeworkEditForm = (patch: Partial<HomeworkEditFormState>) => {
     setHomeworkEditForm((prev) => (prev ? { ...prev, ...patch } : prev));
     setHomeworkEditPreview(null);
+    setHomeworkEditPreviewStale(true);
+  };
+
+  const buildHomeworkEditPayload = (form: HomeworkEditFormState) => ({
+    textbook_id: Number(form.textbookId),
+    range_type: form.rangeType,
+    start_value: form.startValue ? Number(form.startValue) : null,
+    end_value: form.rangeType === "section" ? null : (form.endValue ? Number(form.endValue) : null),
+    due_date: form.dueDate,
+    memo: form.memo.trim() || null,
+    reschedule_start_date: form.rescheduleStartDate,
+  });
+
+  const handleHomeworkEditPreview = async () => {
+    if (!homeworkEditForm || editingHomeworkId === null) return;
+    setHomeworkEditError("");
+    setHomeworkEditPreviewLoading(true);
+    try {
+      const result = await apiFetch<HomeworkRangePreviewResponse>(
+        `/admin/homework-assignments/${editingHomeworkId}/reschedule-preview`,
+        { method: "POST", body: buildHomeworkEditPayload(homeworkEditForm) },
+      );
+      setHomeworkEditPreview(result);
+      setHomeworkEditPreviewStale(false);
+    } catch (err) {
+      setHomeworkEditError(err instanceof ApiError ? err.message : "미리보기를 불러오지 못했습니다.");
+    } finally {
+      setHomeworkEditPreviewLoading(false);
+    }
   };
 
   const handleHomeworkEditSave = async (assignmentId: number) => {
@@ -699,20 +693,7 @@ function AutoAssignmentPlanManager({
     try {
       const result = await apiFetch<HomeworkAssignmentMutationResponse>(
         `/admin/homework-assignments/${assignmentId}`,
-        {
-          method: "PATCH",
-          body: {
-            textbook_id: Number(homeworkEditForm.textbookId),
-            range_type: homeworkEditForm.rangeType,
-            start_value: homeworkEditForm.startValue ? Number(homeworkEditForm.startValue) : null,
-            end_value: homeworkEditForm.rangeType === "section"
-              ? null
-              : (homeworkEditForm.endValue ? Number(homeworkEditForm.endValue) : null),
-            start_date: homeworkEditForm.startDate,
-            due_date: homeworkEditForm.dueDate,
-            memo: homeworkEditForm.memo.trim() || null,
-          },
-        },
+        { method: "PATCH", body: buildHomeworkEditPayload(homeworkEditForm) },
       );
       setMessage(`저장되었습니다. 현재 ${result.daily_tasks.length}개의 일일 숙제가 배정되어 있습니다.`);
       setEditingHomeworkId(null);
@@ -748,6 +729,7 @@ function AutoAssignmentPlanManager({
   const [lectureEditError, setLectureEditError] = useState("");
   const [lectureEditPreview, setLectureEditPreview] = useState<LecturePreviewResponse | null>(null);
   const [lectureEditPreviewLoading, setLectureEditPreviewLoading] = useState(false);
+  const [lectureEditPreviewStale, setLectureEditPreviewStale] = useState(true);
   const [savingLectureEdit, setSavingLectureEdit] = useState(false);
 
   const startEditLecture = (assignment: LectureAssignmentListItem) => {
@@ -762,17 +744,19 @@ function AutoAssignmentPlanManager({
       startLectureNo: String(assignment.start_lecture_no),
       lecturesPerDay: String(assignment.lectures_per_day),
       weekdays: assignment.weekdays,
-      startDate: assignment.start_date,
+      rescheduleStartDate: assignment.start_date,
       dueDate: assignment.due_date,
       memo: assignment.memo ?? "",
     });
     setLectureEditError("");
     setLectureEditPreview(null);
+    setLectureEditPreviewStale(true);
   };
 
   const updateLectureEditForm = (patch: Partial<LectureEditFormState>) => {
     setLectureEditForm((prev) => (prev ? { ...prev, ...patch } : prev));
     setLectureEditPreview(null);
+    setLectureEditPreviewStale(true);
   };
 
   const toggleLectureEditWeekday = (weekday: LectureWeekday) => {
@@ -782,25 +766,32 @@ function AutoAssignmentPlanManager({
       return { ...prev, weekdays: exists ? prev.weekdays.filter((w) => w !== weekday) : [...prev.weekdays, weekday] };
     });
     setLectureEditPreview(null);
+    setLectureEditPreviewStale(true);
   };
 
+  const buildLectureEditPayload = (form: LectureEditFormState) => ({
+    subject: form.subject.trim(),
+    course_title: form.courseTitle.trim(),
+    total_lectures: Number(form.totalLectures),
+    start_lecture_no: Number(form.startLectureNo),
+    lectures_per_day: Number(form.lecturesPerDay),
+    weekdays: form.weekdays,
+    due_date: form.dueDate,
+    memo: form.memo.trim() || null,
+    reschedule_start_date: form.rescheduleStartDate,
+  });
+
   const handleLectureEditPreview = async () => {
-    if (!lectureEditForm) return;
+    if (!lectureEditForm || editingLectureId === null) return;
     setLectureEditError("");
     setLectureEditPreviewLoading(true);
     try {
-      const result = await apiFetch<LecturePreviewResponse>("/admin/lecture-assignments/preview", {
-        method: "POST",
-        body: {
-          total_lectures: Number(lectureEditForm.totalLectures),
-          start_lecture_no: Number(lectureEditForm.startLectureNo),
-          lectures_per_day: Number(lectureEditForm.lecturesPerDay),
-          weekdays: lectureEditForm.weekdays,
-          start_date: lectureEditForm.startDate,
-          due_date: lectureEditForm.dueDate,
-        },
-      });
+      const result = await apiFetch<LecturePreviewResponse>(
+        `/admin/lecture-assignments/${editingLectureId}/reschedule-preview`,
+        { method: "POST", body: buildLectureEditPayload(lectureEditForm) },
+      );
       setLectureEditPreview(result);
+      setLectureEditPreviewStale(false);
     } catch (err) {
       setLectureEditError(err instanceof ApiError ? err.message : "미리보기를 불러오지 못했습니다.");
     } finally {
@@ -815,20 +806,7 @@ function AutoAssignmentPlanManager({
     try {
       const result = await apiFetch<LectureAssignmentMutationResponse>(
         `/admin/lecture-assignments/${assignmentId}`,
-        {
-          method: "PATCH",
-          body: {
-            subject: lectureEditForm.subject.trim(),
-            course_title: lectureEditForm.courseTitle.trim(),
-            total_lectures: Number(lectureEditForm.totalLectures),
-            start_lecture_no: Number(lectureEditForm.startLectureNo),
-            lectures_per_day: Number(lectureEditForm.lecturesPerDay),
-            weekdays: lectureEditForm.weekdays,
-            start_date: lectureEditForm.startDate,
-            due_date: lectureEditForm.dueDate,
-            memo: lectureEditForm.memo.trim() || null,
-          },
-        },
+        { method: "PATCH", body: buildLectureEditPayload(lectureEditForm) },
       );
       setMessage(`저장되었습니다. 현재 ${result.daily_tasks.length}개의 일일 강의 task가 배정되어 있습니다.`);
       setEditingLectureId(null);
@@ -857,10 +835,6 @@ function AutoAssignmentPlanManager({
       setError("삭제에 실패했습니다. 다시 시도해주세요.");
     }
   };
-
-  const homeworkPreviewTextbookTitle = homeworkEditForm
-    ? homeworkEditTextbooks.find((t) => String(t.id) === homeworkEditForm.textbookId)?.short_title ?? ""
-    : "";
 
   return (
     <section className={`${cardCls} p-5 sm:p-6`}>
@@ -980,14 +954,29 @@ function AutoAssignmentPlanManager({
 
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label className="mb-1.5 block text-xs font-bold text-[#667085]">시작일</label>
-                        <input className={inputCls} onChange={(event) => updateHomeworkEditForm({ startDate: event.target.value })} type="date" value={homeworkEditForm.startDate} />
+                        <label className="mb-1.5 block text-xs font-bold text-[#667085]">최초 시작일</label>
+                        <input className={`${inputCls} cursor-not-allowed opacity-60`} disabled readOnly type="date" value={assignment.start_date} />
                       </div>
                       <div>
                         <label className="mb-1.5 block text-xs font-bold text-[#667085]">마감일</label>
                         <input className={inputCls} onChange={(event) => updateHomeworkEditForm({ dueDate: event.target.value })} type="date" value={homeworkEditForm.dueDate} />
                       </div>
                     </div>
+
+                    {homeworkEditForm.rangeType !== "section" ? (
+                      <div>
+                        <label className="mb-1.5 block text-xs font-bold text-[#667085]">미완료 범위 재배정 시작일</label>
+                        <input
+                          className={inputCls}
+                          onChange={(event) => updateHomeworkEditForm({ rescheduleStartDate: event.target.value })}
+                          type="date"
+                          value={homeworkEditForm.rescheduleStartDate}
+                        />
+                        <p className="mt-1.5 text-[11px] font-bold text-[#98A2B3]">
+                          완료한 문항 기록은 유지되고, 미완료 범위만 선택한 날짜부터 다시 배정됩니다.
+                        </p>
+                      </div>
+                    ) : null}
 
                     <div>
                       <label className="mb-1.5 block text-xs font-bold text-[#667085]">메모</label>
@@ -996,28 +985,35 @@ function AutoAssignmentPlanManager({
 
                     {homeworkEditForm.rangeType !== "section" ? (
                       <button
-                        className="w-full rounded-xl border border-[#E5E7EB] bg-white py-2.5 text-xs font-bold text-[#344054] hover:bg-[#F8FAFC]"
-                        onClick={() => setHomeworkEditPreview(buildHomeworkRangePreview(homeworkEditForm, homeworkPreviewTextbookTitle))}
+                        className="w-full rounded-xl border border-[#E5E7EB] bg-white py-2.5 text-xs font-bold text-[#344054] hover:bg-[#F8FAFC] disabled:opacity-50"
+                        disabled={homeworkEditPreviewLoading}
+                        onClick={() => void handleHomeworkEditPreview()}
                         type="button"
                       >
-                        변경 결과 미리보기
+                        {homeworkEditPreviewLoading ? "미리보기 불러오는 중..." : "변경 결과 미리보기"}
                       </button>
                     ) : null}
 
+                    {homeworkEditPreviewStale && homeworkEditPreview ? (
+                      <p className="rounded-xl bg-yellow-50 px-3 py-2 text-xs font-bold text-yellow-800">
+                        입력값이 바뀌었습니다. 저장하려면 미리보기를 다시 확인해야 합니다.
+                      </p>
+                    ) : null}
+
                     {homeworkEditPreview ? (
-                      <div className="rounded-xl bg-[#EEF2FF] p-3">
-                        <p className="text-xs font-black text-[#4F46E5]">
-                          미리보기 (전체 범위 기준 — 저장 시 이미 완료/진행 중인 부분은 그대로 유지되고 이후 구간만 새로 배정됩니다)
+                      <div className={`rounded-xl p-3 ${homeworkEditPreview.possible ? "bg-[#EEF2FF]" : "bg-yellow-50"}`}>
+                        <p className={`text-xs font-black ${homeworkEditPreview.possible ? "text-[#4F46E5]" : "text-yellow-800"}`}>
+                          {homeworkEditPreview.possible ? "재배정 가능합니다." : "남은 기간이 없어 나머지 범위를 재배정할 수 없습니다."}
                         </p>
-                        {homeworkEditPreview.length === 0 ? (
-                          <p className="mt-2 text-xs font-bold text-[#344054]">입력값을 확인해주세요.</p>
-                        ) : (
+                        {homeworkEditPreview.possible && homeworkEditPreview.preview_items.length > 0 ? (
                           <div className="mt-2 space-y-1">
-                            {homeworkEditPreview.map((item) => (
-                              <p className="text-xs font-bold text-[#344054]" key={`${item.date}-${item.label}`}>{item.date}: {item.label}</p>
+                            {homeworkEditPreview.preview_items.map((item) => (
+                              <p className="text-xs font-bold text-[#344054]" key={`${item.date}-${item.start_value}`}>
+                                {item.date}: {item.start_value === item.end_value ? `${item.start_value}` : `${item.start_value}~${item.end_value}`}
+                              </p>
                             ))}
                           </div>
-                        )}
+                        ) : null}
                       </div>
                     ) : null}
 
@@ -1026,7 +1022,16 @@ function AutoAssignmentPlanManager({
                     ) : null}
 
                     <div className="flex gap-2">
-                      <button className="flex-1 rounded-xl bg-[#0F172A] py-2.5 text-sm font-bold text-white disabled:opacity-50" disabled={savingHomeworkEdit} onClick={() => void handleHomeworkEditSave(assignment.id)} type="button">
+                      <button
+                        className="flex-1 rounded-xl bg-[#0F172A] py-2.5 text-sm font-bold text-white disabled:opacity-50"
+                        disabled={
+                          savingHomeworkEdit ||
+                          (homeworkEditForm.rangeType !== "section" &&
+                            (homeworkEditPreviewStale || homeworkEditPreview?.possible !== true))
+                        }
+                        onClick={() => void handleHomeworkEditSave(assignment.id)}
+                        type="button"
+                      >
                         {savingHomeworkEdit ? "저장 중..." : "저장"}
                       </button>
                       <button className="flex-1 rounded-xl border border-[#E5E7EB] bg-white py-2.5 text-sm font-bold text-[#667085]" onClick={() => { setEditingHomeworkId(null); setHomeworkEditForm(null); }} type="button">
@@ -1120,13 +1125,26 @@ function AutoAssignmentPlanManager({
 
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label className="mb-1.5 block text-xs font-bold text-[#667085]">시작일</label>
-                        <input className={inputCls} onChange={(event) => updateLectureEditForm({ startDate: event.target.value })} type="date" value={lectureEditForm.startDate} />
+                        <label className="mb-1.5 block text-xs font-bold text-[#667085]">최초 시작일</label>
+                        <input className={`${inputCls} cursor-not-allowed opacity-60`} disabled readOnly type="date" value={assignment.start_date} />
                       </div>
                       <div>
                         <label className="mb-1.5 block text-xs font-bold text-[#667085]">마감일</label>
                         <input className={inputCls} onChange={(event) => updateLectureEditForm({ dueDate: event.target.value })} type="date" value={lectureEditForm.dueDate} />
                       </div>
+                    </div>
+
+                    <div>
+                      <label className="mb-1.5 block text-xs font-bold text-[#667085]">미완료 일정 다시 시작일</label>
+                      <input
+                        className={inputCls}
+                        onChange={(event) => updateLectureEditForm({ rescheduleStartDate: event.target.value })}
+                        type="date"
+                        value={lectureEditForm.rescheduleStartDate}
+                      />
+                      <p className="mt-1.5 text-[11px] font-bold text-[#98A2B3]">
+                        완료한 강의 기록은 유지되고, 미완료 일정만 선택한 날짜부터 다시 배정됩니다.
+                      </p>
                     </div>
 
                     <div>
@@ -1143,10 +1161,16 @@ function AutoAssignmentPlanManager({
                       {lectureEditPreviewLoading ? "미리보기 불러오는 중..." : "변경 결과 미리보기"}
                     </button>
 
+                    {lectureEditPreviewStale && lectureEditPreview ? (
+                      <p className="rounded-xl bg-yellow-50 px-3 py-2 text-xs font-bold text-yellow-800">
+                        입력값이 바뀌었습니다. 저장하려면 미리보기를 다시 확인해야 합니다.
+                      </p>
+                    ) : null}
+
                     {lectureEditPreview ? (
                       <div className={`rounded-xl p-3 ${lectureEditPreview.possible ? "bg-emerald-50" : "bg-yellow-50"}`}>
                         <p className={`text-xs font-black ${lectureEditPreview.possible ? "text-emerald-700" : "text-yellow-800"}`}>
-                          {lectureEditPreview.possible ? "배정 가능합니다." : "현재 조건으로는 완료가 불가능합니다."} (전체 범위 기준 — 저장 시 이미 완료/진행 중인 강의 이후만 새로 배정됩니다)
+                          {lectureEditPreview.possible ? "재배정 가능합니다." : "현재 조건으로는 재배정을 완료할 수 없습니다."}
                         </p>
                         {lectureEditPreview.possible ? (
                           <div className="mt-2 space-y-1">
@@ -1163,7 +1187,12 @@ function AutoAssignmentPlanManager({
                     ) : null}
 
                     <div className="flex gap-2">
-                      <button className="flex-1 rounded-xl bg-[#0F172A] py-2.5 text-sm font-bold text-white disabled:opacity-50" disabled={savingLectureEdit} onClick={() => void handleLectureEditSave(assignment.id)} type="button">
+                      <button
+                        className="flex-1 rounded-xl bg-[#0F172A] py-2.5 text-sm font-bold text-white disabled:opacity-50"
+                        disabled={savingLectureEdit || lectureEditPreviewStale || lectureEditPreview?.possible !== true}
+                        onClick={() => void handleLectureEditSave(assignment.id)}
+                        type="button"
+                      >
                         {savingLectureEdit ? "저장 중..." : "저장"}
                       </button>
                       <button className="flex-1 rounded-xl border border-[#E5E7EB] bg-white py-2.5 text-sm font-bold text-[#667085]" onClick={() => { setEditingLectureId(null); setLectureEditForm(null); }} type="button">

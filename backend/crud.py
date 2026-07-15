@@ -1,6 +1,7 @@
+import logging
 import math
 from calendar import monthrange
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
 from typing import Optional
 
@@ -16,6 +17,7 @@ from study_dates import (
 
 from models import (
     Admin,
+    AdminProgressChangeLog,
     CurriculumEdge,
     CurriculumNode,
     CurriculumTemplate,
@@ -1253,6 +1255,51 @@ def update_lecture_task_progress(
     return get_daily_task(db, task.id) or task
 
 
+def get_student_lecture_progress_entry(
+    db: Session,
+    student_id: int,
+    daily_task_id: int,
+    lecture_number: int,
+) -> Optional[MathStudentLectureProgress]:
+    return (
+        db.query(MathStudentLectureProgress)
+        .filter(
+            MathStudentLectureProgress.student_id == student_id,
+            MathStudentLectureProgress.daily_task_id == daily_task_id,
+            MathStudentLectureProgress.lecture_number == lecture_number,
+        )
+        .first()
+    )
+
+
+def create_admin_progress_change_log(
+    db: Session,
+    *,
+    student_id: int,
+    target_type: str,
+    target_id: int,
+    old_status: Optional[str],
+    new_status: Optional[str],
+    memo: Optional[str] = None,
+    target_detail: Optional[str] = None,
+) -> None:
+    if old_status == new_status:
+        return
+
+    db.add(
+        AdminProgressChangeLog(
+            student_id=student_id,
+            target_type=target_type,
+            target_id=target_id,
+            old_status=old_status,
+            new_status=new_status,
+            changed_by="admin",
+            memo=memo,
+            target_detail=target_detail,
+        )
+    )
+
+
 HOMEWORK_RANGE_TYPES = {"item", "page", "section", "custom"}
 LECTURE_WEEKDAY_ORDER = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 LECTURE_WEEKDAY_TO_INDEX = {value: index for index, value in enumerate(LECTURE_WEEKDAY_ORDER)}
@@ -1266,6 +1313,52 @@ def _distribute_counts(total: int, days: int) -> list[int]:
     """
     base, remainder = divmod(total, days)
     return [base + 1 if i < remainder else base for i in range(days)]
+
+
+def preview_homework_range(start_value: int, end_value: int, start_date: date, due_date: date) -> dict:
+    """Pure day-by-day distribution preview for an item/page homework range — the single
+    calculation both the reschedule-preview endpoint and update_homework_assignment() use, so
+    they can never diverge (the latter builds tasks directly from this function's
+    preview_items instead of re-deriving them).
+    """
+    if start_value > end_value:
+        return {"possible": True, "total_to_assign": 0, "available_days_count": 0, "preview_items": []}
+
+    total = end_value - start_value + 1
+    if start_date > due_date:
+        return {
+            "possible": False,
+            "total_to_assign": total,
+            "available_days_count": 0,
+            "preview_items": [],
+        }
+
+    day_count = (due_date - start_date).days + 1
+    counts = _distribute_counts(total, day_count)
+    cursor = start_value
+    preview_items = []
+
+    for offset, count in enumerate(counts):
+        if count <= 0:
+            continue
+        range_start = cursor
+        range_end = cursor + count - 1
+        cursor = range_end + 1
+        preview_items.append(
+            {
+                "date": start_date + timedelta(days=offset),
+                "start_value": range_start,
+                "end_value": range_end,
+                "count": count,
+            }
+        )
+
+    return {
+        "possible": True,
+        "total_to_assign": total,
+        "available_days_count": day_count,
+        "preview_items": preview_items,
+    }
 
 
 def normalize_lecture_weekdays(weekdays: list[str]) -> list[str]:
@@ -1287,6 +1380,14 @@ def normalize_lecture_weekdays(weekdays: list[str]) -> list[str]:
 
 
 def preview_lecture_assignment(payload) -> dict:
+    logger.info(
+        "lecture assignment preview compare: start_date=%s due_date=%s start_lecture_no=%s lectures_per_day=%s weekdays=%s",
+        payload.start_date.isoformat(),
+        payload.due_date.isoformat(),
+        payload.start_lecture_no,
+        payload.lectures_per_day,
+        payload.weekdays,
+    )
     if payload.total_lectures <= 0:
         raise ValueError("total_lectures must be greater than 0.")
     if payload.start_lecture_no < 1:
@@ -1722,23 +1823,85 @@ def _homework_assignment_result(db: Session, assignment: HomeworkAssignment) -> 
     }
 
 
-def update_homework_assignment(db: Session, assignment: HomeworkAssignment, payload) -> dict:
+def _build_homework_tasks_from_range_items(
+    assignment: HomeworkAssignment,
+    textbook: MathTextbook,
+    range_type: str,
+    items: list[dict],
+) -> list[MathDailyTask]:
+    """Builds MathDailyTask rows directly from preview_homework_range()'s preview_items — used
+    by update_homework_assignment() so the persisted rows come from literally the same
+    computation the reschedule-preview endpoint returned, not a re-derived copy.
+    """
+    short_title = build_textbook_short_title(textbook.full_title)
+    textbook_key = resolve_textbook_key(textbook)
+
+    common_fields = dict(
+        student_id=assignment.student_id,
+        textbook_id=textbook.id,
+        textbook_key=textbook_key,
+        detail=assignment.memo,
+        status="todo",
+        category=HOMEWORK_CATEGORY,
+        order_index=0,
+        source_type="homework",
+        homework_assignment_id=assignment.id,
+        range_type=range_type,
+    )
+
+    tasks: list[MathDailyTask] = []
+    for item in items:
+        range_start = item["start_value"]
+        range_end = item["end_value"]
+        if range_type == "item":
+            title = assignment.title or f"{short_title} {range_start}~{range_end}번"
+            tasks.append(
+                MathDailyTask(
+                    **common_fields,
+                    task_date=item["date"],
+                    title=title,
+                    start_value=range_start,
+                    end_value=range_end,
+                    completion_mode="item_progress",
+                )
+            )
+        else:
+            title = assignment.title or f"{short_title} {range_start}~{range_end}페이지"
+            tasks.append(
+                MathDailyTask(
+                    **common_fields,
+                    task_date=item["date"],
+                    title=title,
+                    start_value=range_start,
+                    end_value=range_end,
+                    start_page=range_start,
+                    end_page=range_end,
+                    completion_mode="manual",
+                )
+            )
+    return tasks
+
+
+def _plan_homework_assignment_update(db: Session, assignment: HomeworkAssignment, payload) -> dict:
+    """Single source of truth for a homework-assignment edit — see
+    _plan_lecture_assignment_update() for the equivalent lecture-side rationale.
+    assignment.start_date is never part of this plan or mutated below; reschedule_start_date
+    only controls where *regenerated* (still-todo) tasks are placed.
+    """
     update_data = payload.model_dump(exclude_unset=True)
 
     new_textbook_id = update_data.get("textbook_id", assignment.textbook_id)
     new_range_type = update_data.get("range_type", assignment.range_type)
     new_start_value = update_data.get("start_value", assignment.start_value)
     new_end_value = update_data.get("end_value", assignment.end_value)
-    new_start_date = update_data.get("start_date", assignment.start_date)
     new_due_date = update_data.get("due_date", assignment.due_date)
     new_memo = update_data.get("memo", assignment.memo)
+    reschedule_start_date = update_data.get("reschedule_start_date")
 
     if new_range_type not in HOMEWORK_RANGE_TYPES:
         raise ValueError(f"알 수 없는 range_type입니다: {new_range_type}")
     if new_range_type == "custom":
         raise ValueError("custom 범위 타입은 아직 지원되지 않습니다 (MVP).")
-    if new_start_date > new_due_date:
-        raise ValueError("start_date는 due_date보다 늦을 수 없습니다.")
 
     textbook = db.query(MathTextbook).filter(MathTextbook.id == new_textbook_id).first()
     if textbook is None:
@@ -1786,13 +1949,14 @@ def update_homework_assignment(db: Session, assignment: HomeworkAssignment, payl
 
     protected_tasks, todo_tasks = _split_homework_tasks_by_completion(db, assignment.id)
 
+    remaining_start_value = new_start_value
+    remaining_start_date = None
+
     if protected_tasks:
         if new_textbook_id != assignment.textbook_id:
             raise ValueError("이미 진행 중인 기록이 있어 교재를 변경할 수 없습니다.")
         if new_range_type != assignment.range_type:
             raise ValueError("이미 진행 중인 기록이 있어 범위 방식을 변경할 수 없습니다.")
-        if new_start_date != assignment.start_date:
-            raise ValueError("이미 시작된 배정의 시작일은 변경할 수 없습니다.")
 
         max_protected_date = max(t.task_date for t in protected_tasks)
         if new_due_date < max_protected_date:
@@ -1810,53 +1974,77 @@ def update_homework_assignment(db: Session, assignment: HomeworkAssignment, payl
                 raise ValueError(
                     f"완료/진행 중인 범위(~{max_protected_end})보다 작은 값으로 줄일 수 없습니다."
                 )
+
+            remaining_start_value = max_protected_end + 1
+            if reschedule_start_date is not None:
+                if reschedule_start_date <= max_protected_date:
+                    raise ValueError(
+                        f"완료/진행 중인 마지막 날짜({max_protected_date}) 이후 날짜를 재배정 시작일로 선택해주세요."
+                    )
+                remaining_start_date = reschedule_start_date
+            else:
+                remaining_start_date = max_protected_date + timedelta(days=1)
         elif new_range_type == "section":
             if new_start_value != assignment.start_value:
                 raise ValueError("이미 진행 중인 기록이 있어 section을 변경할 수 없습니다.")
+    else:
+        remaining_start_date = (
+            reschedule_start_date if reschedule_start_date is not None else assignment.start_date
+        )
 
-    for task in todo_tasks:
+    preview = None
+    if new_range_type in ("item", "page"):
+        preview = preview_homework_range(remaining_start_value, new_end_value, remaining_start_date, new_due_date)
+
+    return {
+        "new_textbook_id": new_textbook_id,
+        "new_range_type": new_range_type,
+        "new_start_value": new_start_value,
+        "new_end_value": new_end_value,
+        "new_due_date": new_due_date,
+        "new_memo": new_memo,
+        "textbook": textbook,
+        "section": section,
+        "protected_tasks": protected_tasks,
+        "todo_tasks": todo_tasks,
+        "remaining_start_value": remaining_start_value,
+        "remaining_start_date": remaining_start_date,
+        "preview": preview,
+    }
+
+
+def preview_homework_assignment_update(db: Session, assignment: HomeworkAssignment, payload) -> dict:
+    plan = _plan_homework_assignment_update(db, assignment, payload)
+    if plan["preview"] is None:
+        return {"possible": True, "total_to_assign": 0, "available_days_count": 0, "preview_items": []}
+    return plan["preview"]
+
+
+def update_homework_assignment(db: Session, assignment: HomeworkAssignment, payload) -> dict:
+    plan = _plan_homework_assignment_update(db, assignment, payload)
+
+    if plan["preview"] is not None and not plan["preview"]["possible"]:
+        raise ValueError("남은 기간이 없어 나머지 범위를 재배정할 수 없습니다.")
+
+    for task in plan["todo_tasks"]:
         db.delete(task)
 
-    assignment.textbook_id = new_textbook_id
-    assignment.range_type = new_range_type
-    assignment.start_value = new_start_value
-    assignment.end_value = new_end_value
-    assignment.start_date = new_start_date
-    assignment.due_date = new_due_date
-    assignment.memo = new_memo
+    assignment.textbook_id = plan["new_textbook_id"]
+    assignment.range_type = plan["new_range_type"]
+    assignment.start_value = plan["new_start_value"]
+    assignment.end_value = plan["new_end_value"]
+    assignment.due_date = plan["new_due_date"]
+    assignment.memo = plan["new_memo"]
     db.flush()
 
-    if new_range_type in ("item", "page"):
-        if protected_tasks:
-            max_protected_end = max(
-                t.end_value for t in protected_tasks if t.end_value is not None
-            )
-            max_protected_date = max(t.task_date for t in protected_tasks)
-            remaining_start_value = max_protected_end + 1
-            remaining_start_date = max_protected_date + timedelta(days=1)
-        else:
-            remaining_start_value = new_start_value
-            remaining_start_date = new_start_date
-
-        if remaining_start_value <= new_end_value:
-            if remaining_start_date > new_due_date:
-                raise ValueError("남은 기간이 없어 나머지 범위를 재배정할 수 없습니다.")
-            remaining_assignment = HomeworkAssignment(
-                id=assignment.id,
-                student_id=assignment.student_id,
-                textbook_id=assignment.textbook_id,
-                title=assignment.title,
-                range_type=new_range_type,
-                start_value=remaining_start_value,
-                end_value=new_end_value,
-                start_date=remaining_start_date,
-                due_date=new_due_date,
-                memo=assignment.memo,
-            )
-            for task in build_homework_daily_tasks(remaining_assignment, textbook, None):
+    if plan["new_range_type"] in ("item", "page"):
+        if plan["preview"] is not None and plan["preview"]["preview_items"]:
+            for task in _build_homework_tasks_from_range_items(
+                assignment, plan["textbook"], plan["new_range_type"], plan["preview"]["preview_items"]
+            ):
                 db.add(task)
-    elif new_range_type == "section" and not protected_tasks:
-        for task in build_homework_daily_tasks(assignment, textbook, section):
+    elif plan["new_range_type"] == "section" and not plan["protected_tasks"]:
+        for task in build_homework_daily_tasks(assignment, plan["textbook"], plan["section"]):
             db.add(task)
 
     db.commit()
@@ -1971,7 +2159,17 @@ def get_lecture_assignment_detail(db: Session, assignment: LectureAssignment) ->
     }
 
 
-def update_lecture_assignment(db: Session, assignment: LectureAssignment, payload) -> dict:
+def _plan_lecture_assignment_update(db: Session, assignment: LectureAssignment, payload) -> dict:
+    """Single source of truth for a lecture-assignment edit: validates the payload and computes
+    exactly which (still-todo) tasks would be deleted and regenerated. Both the reschedule
+    preview endpoint and update_lecture_assignment() call this so they can never diverge —
+    the preview endpoint returns plan["preview"] as-is, and the mutation applies plan's fields
+    and builds tasks from plan["preview"]["preview_items"] directly (not a re-derived copy).
+
+    assignment.start_date is intentionally never part of this plan or mutated anywhere below —
+    it stays the immutable original-enrollment date. reschedule_start_date only controls where
+    *regenerated* (still-todo) tasks are placed.
+    """
     update_data = payload.model_dump(exclude_unset=True)
 
     new_subject = (update_data.get("subject", assignment.subject) or "").strip()
@@ -1982,9 +2180,10 @@ def update_lecture_assignment(db: Session, assignment: LectureAssignment, payloa
     new_weekdays = update_data.get("weekdays") or [
         value for value in (assignment.weekdays or "").split(",") if value
     ]
-    new_start_date = update_data.get("start_date", assignment.start_date)
+    requested_start_lecture_no = update_data.get("start_lecture_no")
     new_due_date = update_data.get("due_date", assignment.due_date)
     new_memo = update_data.get("memo", assignment.memo)
+    reschedule_start_date = update_data.get("reschedule_start_date")
 
     if not new_subject:
         raise ValueError("subject must not be empty.")
@@ -1993,55 +2192,101 @@ def update_lecture_assignment(db: Session, assignment: LectureAssignment, payloa
 
     protected_tasks, todo_tasks = _split_lecture_tasks_by_completion(db, assignment.id)
 
-    remaining_start_date = new_start_date
+    logger.info(
+        "lecture assignment update plan: assignment_id=%s protected_tasks=%s reschedule_start_date=%s update_keys=%s",
+        assignment.id,
+        len(protected_tasks),
+        reschedule_start_date.isoformat() if reschedule_start_date is not None else None,
+        sorted(update_data.keys()),
+    )
+
     if protected_tasks:
-        if new_start_date != assignment.start_date:
-            raise ValueError("이미 시작된 배정의 시작일은 변경할 수 없습니다.")
+        if requested_start_lecture_no is not None and requested_start_lecture_no != assignment.start_lecture_no:
+            raise ValueError("이미 시작된 배정의 시작 강의 번호는 변경할 수 없습니다.")
 
         max_protected_end = max(
             t.lecture_end_number for t in protected_tasks if t.lecture_end_number is not None
         )
         max_protected_date = max(t.task_date for t in protected_tasks)
 
-        if new_start_lecture_no <= max_protected_end:
-            raise ValueError(
-                f"완료된 마지막 강의({max_protected_end}강)보다 이전 번호로 시작할 수 없습니다."
-            )
         if new_due_date < max_protected_date:
             raise ValueError(
                 f"완료/진행 중인 날짜({max_protected_date})보다 이전으로 마감일을 변경할 수 없습니다."
             )
-        remaining_start_date = max_protected_date + timedelta(days=1)
+        if new_total_lectures < max_protected_end:
+            raise ValueError(
+                f"완료/진행 중인 마지막 강의({max_protected_end}강)보다 전체 강의 수를 줄일 수 없습니다."
+            )
+
+        remaining_start_lecture_no = max_protected_end + 1
+
+        if reschedule_start_date is not None:
+            if reschedule_start_date <= max_protected_date:
+                raise ValueError(
+                    f"완료/진행 중인 마지막 날짜({max_protected_date}) 이후 날짜를 재배정 시작일로 선택해주세요."
+                )
+            remaining_start_date = reschedule_start_date
+        else:
+            remaining_start_date = max_protected_date + timedelta(days=1)
+    else:
+        remaining_start_lecture_no = new_start_lecture_no
+        remaining_start_date = (
+            reschedule_start_date if reschedule_start_date is not None else assignment.start_date
+        )
+
+    weekdays_normalized = normalize_lecture_weekdays(new_weekdays)
 
     preview_payload = SimpleNamespace(
         total_lectures=new_total_lectures,
-        start_lecture_no=new_start_lecture_no,
+        start_lecture_no=remaining_start_lecture_no,
         lectures_per_day=new_lectures_per_day,
-        weekdays=new_weekdays,
+        weekdays=weekdays_normalized,
         start_date=remaining_start_date,
         due_date=new_due_date,
     )
     preview = preview_lecture_assignment(preview_payload)
-    if not preview["possible"]:
+
+    return {
+        "new_subject": new_subject,
+        "new_course_title": new_course_title,
+        "new_total_lectures": new_total_lectures,
+        "new_start_lecture_no": new_start_lecture_no,
+        "new_lectures_per_day": new_lectures_per_day,
+        "weekdays_normalized": weekdays_normalized,
+        "new_due_date": new_due_date,
+        "new_memo": new_memo,
+        "protected_tasks": protected_tasks,
+        "todo_tasks": todo_tasks,
+        "remaining_start_lecture_no": remaining_start_lecture_no,
+        "remaining_start_date": remaining_start_date,
+        "preview": preview,
+    }
+
+
+def preview_lecture_assignment_update(db: Session, assignment: LectureAssignment, payload) -> dict:
+    return _plan_lecture_assignment_update(db, assignment, payload)["preview"]
+
+
+def update_lecture_assignment(db: Session, assignment: LectureAssignment, payload) -> dict:
+    plan = _plan_lecture_assignment_update(db, assignment, payload)
+
+    if not plan["preview"]["possible"]:
         raise ValueError("현재 조건으로는 인강 재배정을 완료할 수 없습니다.")
 
-    weekdays_normalized = normalize_lecture_weekdays(new_weekdays)
-
-    for task in todo_tasks:
+    for task in plan["todo_tasks"]:
         db.delete(task)
 
-    assignment.subject = new_subject
-    assignment.course_title = new_course_title
-    assignment.total_lectures = new_total_lectures
-    assignment.start_lecture_no = new_start_lecture_no
-    assignment.lectures_per_day = new_lectures_per_day
-    assignment.weekdays = ",".join(weekdays_normalized)
-    assignment.start_date = new_start_date
-    assignment.due_date = new_due_date
-    assignment.memo = new_memo.strip() if new_memo else None
+    assignment.subject = plan["new_subject"]
+    assignment.course_title = plan["new_course_title"]
+    assignment.total_lectures = plan["new_total_lectures"]
+    assignment.start_lecture_no = plan["new_start_lecture_no"]
+    assignment.lectures_per_day = plan["new_lectures_per_day"]
+    assignment.weekdays = ",".join(plan["weekdays_normalized"])
+    assignment.due_date = plan["new_due_date"]
+    assignment.memo = plan["new_memo"].strip() if plan["new_memo"] else None
     db.flush()
 
-    for task in build_lecture_daily_tasks(assignment, preview["preview_items"]):
+    for task in build_lecture_daily_tasks(assignment, plan["preview"]["preview_items"]):
         db.add(task)
 
     db.commit()
@@ -2196,7 +2441,7 @@ def get_textbook_progress(db: Session, student_id: int, textbook_key: str) -> Op
     }
 
 
-def upsert_student_item_progress(
+def _set_student_item_progress(
     db: Session,
     student_id: int,
     item_id: int,
@@ -2224,9 +2469,69 @@ def upsert_student_item_progress(
         progress.status = status
         progress.updated_at = now
 
+    db.flush()
+    return progress
+
+
+def upsert_student_item_progress(
+    db: Session,
+    student_id: int,
+    item_id: int,
+    status: str,
+) -> MathStudentItemProgress:
+    progress = _set_student_item_progress(db, student_id, item_id, status)
     db.commit()
     db.refresh(progress)
     return progress
+
+
+def set_student_item_progress_batch(
+    db: Session,
+    student_id: int,
+    item_ids: list[int],
+    status: str,
+    memo: Optional[str] = None,
+) -> list[MathStudentItemProgress]:
+    if not item_ids:
+        return []
+
+    rows = (
+        db.query(MathTextbookItem)
+        .filter(MathTextbookItem.id.in_(item_ids), MathTextbookItem.is_active.is_(True))
+        .all()
+    )
+    found_ids = {row.id for row in rows}
+    missing_ids = [item_id for item_id in item_ids if item_id not in found_ids]
+    if missing_ids:
+        raise ValueError(f"Item not found: {missing_ids[0]}")
+
+    updated_rows: list[MathStudentItemProgress] = []
+    for item_id in item_ids:
+        existing = (
+            db.query(MathStudentItemProgress)
+            .filter(
+                MathStudentItemProgress.student_id == student_id,
+                MathStudentItemProgress.item_id == item_id,
+            )
+            .first()
+        )
+        old_status = existing.status if existing is not None else "not_started"
+        progress = _set_student_item_progress(db, student_id, item_id, status)
+        create_admin_progress_change_log(
+            db,
+            student_id=student_id,
+            target_type="textbook_item",
+            target_id=item_id,
+            old_status=old_status,
+            new_status=status,
+            memo=memo,
+        )
+        updated_rows.append(progress)
+
+    db.commit()
+    for row in updated_rows:
+        db.refresh(row)
+    return updated_rows
 
 
 def build_item_progress_bucket(done: int, partial: int, total: int) -> dict:
@@ -2997,6 +3302,8 @@ def get_textbooks_for_student_catalog(db: Session, student_id: int) -> dict:
 
 CURRICULUM_NODE_TYPES = {"textbook", "lecture", "exam", "review", "custom"}
 CURRICULUM_STATUSES = {"planned", "in_progress", "completed", "paused", "skipped"}
+
+logger = logging.getLogger(__name__)
 
 
 def get_student_curriculum(db: Session, student_curriculum_id: int) -> Optional[StudentCurriculum]:

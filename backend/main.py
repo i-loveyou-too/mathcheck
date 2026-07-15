@@ -534,6 +534,174 @@ def update_student_lecture_task_item_status(
     return crud.serialize_daily_task(db, updated_task)
 
 
+@app.patch(
+    "/admin/students/{student_id}/daily-tasks/{task_id}",
+    response_model=schemas.DailyTaskResponse,
+    tags=["Admin"],
+)
+def admin_update_student_daily_task_status(
+    student_id: int,
+    task_id: int,
+    payload: schemas.AdminStudentDailyTaskStatusRequest,
+    db: Session = Depends(get_db),
+):
+    if payload.status not in crud.DAILY_TASK_STATUSES:
+        raise HTTPException(status_code=400, detail="Invalid status")
+
+    task = crud.get_daily_task(db, task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="Daily task not found")
+    if task.student_id != student_id:
+        raise HTTPException(status_code=404, detail="Daily task not found")
+
+    old_status = task.status
+    try:
+        updated_task = crud.update_daily_task(
+            db,
+            task,
+            schemas.AdminDailyTaskUpdateRequest(status=payload.status),
+        )
+    except ValueError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+
+    crud.create_admin_progress_change_log(
+        db,
+        student_id=student_id,
+        target_type="daily_task",
+        target_id=task_id,
+        old_status=old_status,
+        new_status=updated_task.status,
+        memo=payload.memo,
+    )
+    db.commit()
+    return crud.serialize_daily_task(db, updated_task)
+
+
+@app.patch(
+    "/admin/students/{student_id}/textbook-items/{item_id}",
+    response_model=schemas.StudentItemProgressResponse,
+    tags=["Admin"],
+)
+def admin_update_student_textbook_item_progress(
+    student_id: int,
+    item_id: int,
+    payload: schemas.AdminStudentItemProgressRequest,
+    db: Session = Depends(get_db),
+):
+    if payload.status not in crud.ITEM_PROGRESS_STATUSES:
+        raise HTTPException(status_code=400, detail="Invalid status")
+
+    student = crud.get_student_by_id(db, student_id)
+    if student is None:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    item = crud.get_textbook_item(db, item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Item not found")
+
+    existing = (
+        db.query(models.MathStudentItemProgress)
+        .filter(
+            models.MathStudentItemProgress.student_id == student_id,
+            models.MathStudentItemProgress.item_id == item_id,
+        )
+        .first()
+    )
+    old_status = existing.status if existing is not None else "not_started"
+    progress = crud.upsert_student_item_progress(db, student_id, item_id, payload.status)
+    crud.create_admin_progress_change_log(
+        db,
+        student_id=student_id,
+        target_type="textbook_item",
+        target_id=item_id,
+        old_status=old_status,
+        new_status=progress.status,
+        memo=payload.memo,
+    )
+    db.commit()
+    db.refresh(progress)
+    return progress
+
+
+@app.patch(
+    "/admin/students/{student_id}/textbook-items",
+    response_model=list[schemas.StudentItemProgressResponse],
+    tags=["Admin"],
+)
+def admin_update_student_textbook_items_progress(
+    student_id: int,
+    payload: schemas.AdminStudentItemProgressBatchRequest,
+    db: Session = Depends(get_db),
+):
+    if payload.status not in crud.ITEM_PROGRESS_STATUSES:
+        raise HTTPException(status_code=400, detail="Invalid status")
+
+    student = crud.get_student_by_id(db, student_id)
+    if student is None:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    try:
+        return crud.set_student_item_progress_batch(
+            db,
+            student_id,
+            payload.item_ids,
+            payload.status,
+            payload.memo,
+        )
+    except ValueError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.patch(
+    "/admin/students/{student_id}/daily-tasks/{task_id}/lecture-items/{lecture_number}",
+    response_model=schemas.DailyTaskResponse,
+    tags=["Admin"],
+)
+def admin_update_student_lecture_task_item_status(
+    student_id: int,
+    task_id: int,
+    lecture_number: int,
+    payload: schemas.AdminStudentLectureTaskItemProgressRequest,
+    db: Session = Depends(get_db),
+):
+    task = crud.get_daily_task(db, task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="Daily task not found")
+    if task.student_id != student_id:
+        raise HTTPException(status_code=404, detail="Daily task not found")
+
+    existing = crud.get_student_lecture_progress_entry(db, student_id, task_id, lecture_number)
+    old_status = "done" if existing and existing.is_done else "todo"
+
+    try:
+        updated_task = crud.update_lecture_task_progress(
+            db,
+            task,
+            lecture_number,
+            payload.is_done,
+        )
+    except ValueError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+
+    updated_entry = crud.get_student_lecture_progress_entry(db, student_id, task_id, lecture_number)
+    new_status = "done" if updated_entry and updated_entry.is_done else "todo"
+    crud.create_admin_progress_change_log(
+        db,
+        student_id=student_id,
+        target_type="lecture_item",
+        target_id=task_id,
+        old_status=old_status,
+        new_status=new_status,
+        memo=payload.memo,
+        target_detail=str(lecture_number),
+    )
+    db.commit()
+    return crud.serialize_daily_task(db, updated_task)
+
+
 @app.get(
     "/student/curriculums",
     response_model=list[schemas.CurriculumListItem],
@@ -773,6 +941,26 @@ def admin_lecture_assignment_detail(assignment_id: int, db: Session = Depends(ge
     return crud.get_lecture_assignment_detail(db, assignment)
 
 
+@app.post(
+    "/admin/lecture-assignments/{assignment_id}/reschedule-preview",
+    response_model=schemas.LectureAssignmentPreviewResponse,
+    tags=["Admin"],
+)
+def preview_lecture_assignment_reschedule(
+    assignment_id: int,
+    payload: schemas.LectureAssignmentUpdateRequest,
+    db: Session = Depends(get_db),
+):
+    assignment = crud.get_lecture_assignment_by_id(db, assignment_id)
+    if assignment is None:
+        raise HTTPException(status_code=404, detail="Lecture assignment not found")
+
+    try:
+        return crud.preview_lecture_assignment_update(db, assignment, payload)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @app.patch(
     "/admin/lecture-assignments/{assignment_id}",
     response_model=schemas.LectureAssignmentUpdateResponse,
@@ -832,6 +1020,26 @@ def create_homework_assignment(
 )
 def list_homework_assignments(student_id: Optional[int] = None, db: Session = Depends(get_db)):
     return crud.list_homework_assignments(db, student_id)
+
+
+@app.post(
+    "/admin/homework-assignments/{assignment_id}/reschedule-preview",
+    response_model=schemas.HomeworkRangePreviewResponse,
+    tags=["Admin"],
+)
+def preview_homework_assignment_reschedule(
+    assignment_id: int,
+    payload: schemas.HomeworkAssignmentUpdateRequest,
+    db: Session = Depends(get_db),
+):
+    assignment = crud.get_homework_assignment_by_id(db, assignment_id)
+    if assignment is None:
+        raise HTTPException(status_code=404, detail="Homework assignment not found")
+
+    try:
+        return crud.preview_homework_assignment_update(db, assignment, payload)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.patch(
