@@ -449,6 +449,755 @@ function SectionPicker({ sectionsData, mode, currentStart, currentEnd, onSelectP
   );
 }
 
+type HomeworkAssignmentListItem = {
+  id: number;
+  student_id: number;
+  textbook_id: number;
+  title: string | null;
+  range_type: HomeworkRangeType;
+  start_value: number | null;
+  end_value: number | null;
+  start_date: string;
+  due_date: string;
+  memo: string | null;
+  status: string;
+  created_at: string;
+  created_by: string | null;
+  student_name: string | null;
+  textbook_title: string | null;
+};
+
+type HomeworkAssignmentMutationResponse = {
+  assignment: HomeworkAssignmentListItem;
+  daily_tasks: DailyTask[];
+};
+
+type LectureAssignmentListItem = {
+  id: number;
+  student_id: number;
+  subject: string;
+  course_title: string;
+  total_lectures: number;
+  start_lecture_no: number;
+  lectures_per_day: number;
+  weekdays: LectureWeekday[];
+  start_date: string;
+  due_date: string;
+  memo: string | null;
+  status: string;
+  created_at: string;
+  student_name: string | null;
+};
+
+type LectureAssignmentMutationResponse = {
+  assignment: LectureAssignmentListItem;
+  daily_tasks: DailyTask[];
+};
+
+type AssignmentDeleteResponse = {
+  ok: boolean;
+  deleted_task_count: number;
+  preserved_completed_count: number;
+};
+
+type HomeworkEditFormState = {
+  textbookId: string;
+  rangeType: HomeworkRangeType;
+  startValue: string;
+  endValue: string;
+  startDate: string;
+  dueDate: string;
+  memo: string;
+};
+
+type LectureEditFormState = {
+  subject: string;
+  courseTitle: string;
+  totalLectures: string;
+  startLectureNo: string;
+  lecturesPerDay: string;
+  weekdays: LectureWeekday[];
+  startDate: string;
+  dueDate: string;
+  memo: string;
+};
+
+function addDaysToDateStr(dateStr: string, days: number) {
+  return toLocalDateKey(addDays(new Date(`${dateStr}T00:00:00`), days));
+}
+
+function daysBetweenInclusive(startStr: string, endStr: string) {
+  const start = new Date(`${startStr}T00:00:00`);
+  const end = new Date(`${endStr}T00:00:00`);
+  return Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+}
+
+function distributeCountsEvenly(total: number, days: number): number[] {
+  if (days <= 0) return [];
+  const base = Math.floor(total / days);
+  const remainder = total % days;
+  return Array.from({ length: days }, (_, index) => (index < remainder ? base + 1 : base));
+}
+
+function buildHomeworkRangePreview(form: HomeworkEditFormState, textbookShortTitle: string) {
+  if (form.rangeType === "section") return null;
+  const startValue = Number(form.startValue);
+  const endValue = Number(form.endValue);
+  if (!form.startValue || !form.endValue || Number.isNaN(startValue) || Number.isNaN(endValue) || startValue > endValue) {
+    return null;
+  }
+  const dayCount = daysBetweenInclusive(form.startDate, form.dueDate);
+  if (dayCount === null || Number.isNaN(dayCount) || dayCount <= 0) return null;
+
+  const total = endValue - startValue + 1;
+  const counts = distributeCountsEvenly(total, dayCount);
+  const unit = form.rangeType === "item" ? "번" : "페이지";
+  const items: { date: string; label: string }[] = [];
+  let cursor = startValue;
+
+  counts.forEach((count, index) => {
+    if (count <= 0) return;
+    const rangeStart = cursor;
+    const rangeEnd = cursor + count - 1;
+    cursor = rangeEnd + 1;
+    items.push({
+      date: addDaysToDateStr(form.startDate, index),
+      label: `${textbookShortTitle} ${rangeStart}~${rangeEnd}${unit}`,
+    });
+  });
+
+  return items;
+}
+
+const WEEKDAY_KOR: Record<LectureWeekday, string> = {
+  mon: "월", tue: "화", wed: "수", thu: "목", fri: "금", sat: "토", sun: "일",
+};
+
+function AutoAssignmentPlanManager({
+  selectedStudentId,
+  cardCls,
+  inputCls,
+  onMutated,
+}: {
+  selectedStudentId: string;
+  cardCls: string;
+  inputCls: string;
+  onMutated: () => void;
+}) {
+  const [planTab, setPlanTab] = useState<"homework" | "lecture">("homework");
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  // ---- homework list ----
+  const [homeworkList, setHomeworkList] = useState<HomeworkAssignmentListItem[]>([]);
+  const [loadingHomeworkList, setLoadingHomeworkList] = useState(false);
+  const [homeworkListError, setHomeworkListError] = useState("");
+
+  const fetchHomeworkList = useCallback(async () => {
+    if (!selectedStudentId) { setHomeworkList([]); return; }
+    setLoadingHomeworkList(true);
+    setHomeworkListError("");
+    try {
+      const result = await apiFetch<HomeworkAssignmentListItem[]>(
+        `/admin/homework-assignments?student_id=${selectedStudentId}`,
+      );
+      setHomeworkList(result.filter((assignment) => assignment.status !== "cancelled"));
+    } catch {
+      setHomeworkListError("자동분배 숙제 목록을 불러오지 못했습니다.");
+    } finally {
+      setLoadingHomeworkList(false);
+    }
+  }, [selectedStudentId]);
+
+  useEffect(() => { void fetchHomeworkList(); }, [fetchHomeworkList]);
+
+  // ---- lecture list ----
+  const [lectureList, setLectureList] = useState<LectureAssignmentListItem[]>([]);
+  const [loadingLectureList, setLoadingLectureList] = useState(false);
+  const [lectureListError, setLectureListError] = useState("");
+
+  const fetchLectureList = useCallback(async () => {
+    if (!selectedStudentId) { setLectureList([]); return; }
+    setLoadingLectureList(true);
+    setLectureListError("");
+    try {
+      const result = await apiFetch<LectureAssignmentListItem[]>(
+        `/admin/lecture-assignments?student_id=${selectedStudentId}`,
+      );
+      setLectureList(result.filter((assignment) => assignment.status !== "cancelled"));
+    } catch {
+      setLectureListError("인강 배정 목록을 불러오지 못했습니다.");
+    } finally {
+      setLoadingLectureList(false);
+    }
+  }, [selectedStudentId]);
+
+  useEffect(() => { void fetchLectureList(); }, [fetchLectureList]);
+
+  // ---- homework edit ----
+  const [editingHomeworkId, setEditingHomeworkId] = useState<number | null>(null);
+  const [homeworkEditForm, setHomeworkEditForm] = useState<HomeworkEditFormState | null>(null);
+  const [homeworkEditTextbooks, setHomeworkEditTextbooks] = useState<AdminTextbookCatalogItem[]>([]);
+  const [loadingHomeworkEditTextbooks, setLoadingHomeworkEditTextbooks] = useState(false);
+  const [homeworkEditSectionCache, setHomeworkEditSectionCache] = useState<Record<number, SectionsData>>({});
+  const [homeworkEditPreview, setHomeworkEditPreview] = useState<{ date: string; label: string }[] | null>(null);
+  const [homeworkEditError, setHomeworkEditError] = useState("");
+  const [savingHomeworkEdit, setSavingHomeworkEdit] = useState(false);
+
+  const fetchHomeworkEditSections = useCallback(async (textbookId: number) => {
+    if (homeworkEditSectionCache[textbookId]) return;
+    try {
+      const result = await apiFetch<SectionsData>(`/admin/textbooks/${textbookId}/sections`);
+      setHomeworkEditSectionCache((current) => ({ ...current, [textbookId]: result }));
+    } catch {
+      // ignore; section select just stays empty
+    }
+  }, [homeworkEditSectionCache]);
+
+  const startEditHomework = async (assignment: HomeworkAssignmentListItem) => {
+    setMessage(""); setError("");
+    setEditingLectureId(null);
+    setLectureEditForm(null);
+    setEditingHomeworkId(assignment.id);
+    setHomeworkEditForm({
+      textbookId: String(assignment.textbook_id),
+      rangeType: assignment.range_type,
+      startValue: assignment.start_value !== null ? String(assignment.start_value) : "",
+      endValue: assignment.end_value !== null ? String(assignment.end_value) : "",
+      startDate: assignment.start_date,
+      dueDate: assignment.due_date,
+      memo: assignment.memo ?? "",
+    });
+    setHomeworkEditError("");
+    setHomeworkEditPreview(null);
+    setLoadingHomeworkEditTextbooks(true);
+    try {
+      const result = await apiFetch<AdminTextbookCatalogResponse>(
+        `/admin/textbooks-for-student/${assignment.student_id}`,
+      );
+      setHomeworkEditTextbooks(result.textbooks);
+    } catch {
+      setHomeworkEditError("교재 목록을 불러오지 못했습니다.");
+    } finally {
+      setLoadingHomeworkEditTextbooks(false);
+    }
+    if (assignment.range_type === "section") {
+      void fetchHomeworkEditSections(assignment.textbook_id);
+    }
+  };
+
+  const updateHomeworkEditForm = (patch: Partial<HomeworkEditFormState>) => {
+    setHomeworkEditForm((prev) => (prev ? { ...prev, ...patch } : prev));
+    setHomeworkEditPreview(null);
+  };
+
+  const handleHomeworkEditSave = async (assignmentId: number) => {
+    if (!homeworkEditForm) return;
+    setHomeworkEditError("");
+    setSavingHomeworkEdit(true);
+    try {
+      const result = await apiFetch<HomeworkAssignmentMutationResponse>(
+        `/admin/homework-assignments/${assignmentId}`,
+        {
+          method: "PATCH",
+          body: {
+            textbook_id: Number(homeworkEditForm.textbookId),
+            range_type: homeworkEditForm.rangeType,
+            start_value: homeworkEditForm.startValue ? Number(homeworkEditForm.startValue) : null,
+            end_value: homeworkEditForm.rangeType === "section"
+              ? null
+              : (homeworkEditForm.endValue ? Number(homeworkEditForm.endValue) : null),
+            start_date: homeworkEditForm.startDate,
+            due_date: homeworkEditForm.dueDate,
+            memo: homeworkEditForm.memo.trim() || null,
+          },
+        },
+      );
+      setMessage(`저장되었습니다. 현재 ${result.daily_tasks.length}개의 일일 숙제가 배정되어 있습니다.`);
+      setEditingHomeworkId(null);
+      setHomeworkEditForm(null);
+      await fetchHomeworkList();
+      onMutated();
+    } catch (err) {
+      setHomeworkEditError(err instanceof ApiError ? err.message : "저장에 실패했습니다. 다시 시도해주세요.");
+    } finally {
+      setSavingHomeworkEdit(false);
+    }
+  };
+
+  const handleHomeworkDelete = async (assignmentId: number) => {
+    setMessage(""); setError("");
+    if (!window.confirm("이 자동분배 숙제를 삭제할까요? 완료/진행 중인 기록은 보존됩니다.")) return;
+    try {
+      const result = await apiFetch<AssignmentDeleteResponse>(`/admin/homework-assignments/${assignmentId}`, {
+        method: "DELETE",
+      });
+      setMessage(`삭제되었습니다. (미완료 ${result.deleted_task_count}개 삭제, 완료/진행 중 ${result.preserved_completed_count}개 보존)`);
+      if (editingHomeworkId === assignmentId) { setEditingHomeworkId(null); setHomeworkEditForm(null); }
+      await fetchHomeworkList();
+      onMutated();
+    } catch {
+      setError("삭제에 실패했습니다. 다시 시도해주세요.");
+    }
+  };
+
+  // ---- lecture edit ----
+  const [editingLectureId, setEditingLectureId] = useState<number | null>(null);
+  const [lectureEditForm, setLectureEditForm] = useState<LectureEditFormState | null>(null);
+  const [lectureEditError, setLectureEditError] = useState("");
+  const [lectureEditPreview, setLectureEditPreview] = useState<LecturePreviewResponse | null>(null);
+  const [lectureEditPreviewLoading, setLectureEditPreviewLoading] = useState(false);
+  const [savingLectureEdit, setSavingLectureEdit] = useState(false);
+
+  const startEditLecture = (assignment: LectureAssignmentListItem) => {
+    setMessage(""); setError("");
+    setEditingHomeworkId(null);
+    setHomeworkEditForm(null);
+    setEditingLectureId(assignment.id);
+    setLectureEditForm({
+      subject: assignment.subject,
+      courseTitle: assignment.course_title,
+      totalLectures: String(assignment.total_lectures),
+      startLectureNo: String(assignment.start_lecture_no),
+      lecturesPerDay: String(assignment.lectures_per_day),
+      weekdays: assignment.weekdays,
+      startDate: assignment.start_date,
+      dueDate: assignment.due_date,
+      memo: assignment.memo ?? "",
+    });
+    setLectureEditError("");
+    setLectureEditPreview(null);
+  };
+
+  const updateLectureEditForm = (patch: Partial<LectureEditFormState>) => {
+    setLectureEditForm((prev) => (prev ? { ...prev, ...patch } : prev));
+    setLectureEditPreview(null);
+  };
+
+  const toggleLectureEditWeekday = (weekday: LectureWeekday) => {
+    setLectureEditForm((prev) => {
+      if (!prev) return prev;
+      const exists = prev.weekdays.includes(weekday);
+      return { ...prev, weekdays: exists ? prev.weekdays.filter((w) => w !== weekday) : [...prev.weekdays, weekday] };
+    });
+    setLectureEditPreview(null);
+  };
+
+  const handleLectureEditPreview = async () => {
+    if (!lectureEditForm) return;
+    setLectureEditError("");
+    setLectureEditPreviewLoading(true);
+    try {
+      const result = await apiFetch<LecturePreviewResponse>("/admin/lecture-assignments/preview", {
+        method: "POST",
+        body: {
+          total_lectures: Number(lectureEditForm.totalLectures),
+          start_lecture_no: Number(lectureEditForm.startLectureNo),
+          lectures_per_day: Number(lectureEditForm.lecturesPerDay),
+          weekdays: lectureEditForm.weekdays,
+          start_date: lectureEditForm.startDate,
+          due_date: lectureEditForm.dueDate,
+        },
+      });
+      setLectureEditPreview(result);
+    } catch (err) {
+      setLectureEditError(err instanceof ApiError ? err.message : "미리보기를 불러오지 못했습니다.");
+    } finally {
+      setLectureEditPreviewLoading(false);
+    }
+  };
+
+  const handleLectureEditSave = async (assignmentId: number) => {
+    if (!lectureEditForm) return;
+    setLectureEditError("");
+    setSavingLectureEdit(true);
+    try {
+      const result = await apiFetch<LectureAssignmentMutationResponse>(
+        `/admin/lecture-assignments/${assignmentId}`,
+        {
+          method: "PATCH",
+          body: {
+            subject: lectureEditForm.subject.trim(),
+            course_title: lectureEditForm.courseTitle.trim(),
+            total_lectures: Number(lectureEditForm.totalLectures),
+            start_lecture_no: Number(lectureEditForm.startLectureNo),
+            lectures_per_day: Number(lectureEditForm.lecturesPerDay),
+            weekdays: lectureEditForm.weekdays,
+            start_date: lectureEditForm.startDate,
+            due_date: lectureEditForm.dueDate,
+            memo: lectureEditForm.memo.trim() || null,
+          },
+        },
+      );
+      setMessage(`저장되었습니다. 현재 ${result.daily_tasks.length}개의 일일 강의 task가 배정되어 있습니다.`);
+      setEditingLectureId(null);
+      setLectureEditForm(null);
+      await fetchLectureList();
+      onMutated();
+    } catch (err) {
+      setLectureEditError(err instanceof ApiError ? err.message : "저장에 실패했습니다. 다시 시도해주세요.");
+    } finally {
+      setSavingLectureEdit(false);
+    }
+  };
+
+  const handleLectureDelete = async (assignmentId: number) => {
+    setMessage(""); setError("");
+    if (!window.confirm("이 인강 배정을 삭제할까요? 완료/진행 중인 기록은 보존됩니다.")) return;
+    try {
+      const result = await apiFetch<AssignmentDeleteResponse>(`/admin/lecture-assignments/${assignmentId}`, {
+        method: "DELETE",
+      });
+      setMessage(`삭제되었습니다. (미완료 ${result.deleted_task_count}개 삭제, 완료/진행 중 ${result.preserved_completed_count}개 보존)`);
+      if (editingLectureId === assignmentId) { setEditingLectureId(null); setLectureEditForm(null); }
+      await fetchLectureList();
+      onMutated();
+    } catch {
+      setError("삭제에 실패했습니다. 다시 시도해주세요.");
+    }
+  };
+
+  const homeworkPreviewTextbookTitle = homeworkEditForm
+    ? homeworkEditTextbooks.find((t) => String(t.id) === homeworkEditForm.textbookId)?.short_title ?? ""
+    : "";
+
+  return (
+    <section className={`${cardCls} p-5 sm:p-6`}>
+      <div className="flex items-center gap-3">
+        <span className="text-base">🗂️</span>
+        <div>
+          <h2 className="text-lg font-black text-[#17213B]">자동분배 계획 관리</h2>
+          <p className="text-xs text-[#98A2B3]">자동분배 숙제·인강 배정을 수정/삭제합니다. 완료·진행 중인 기록은 항상 보존됩니다.</p>
+        </div>
+      </div>
+
+      <div className="mt-4 flex gap-2">
+        <button
+          className={`flex-1 rounded-xl py-2.5 text-xs font-bold transition ${planTab === "homework" ? "bg-[#0F172A] text-white" : "border border-[#E5E7EB] bg-[#F8FAFC] text-[#667085] hover:bg-[#EDEFF5]"}`}
+          onClick={() => setPlanTab("homework")}
+          type="button"
+        >
+          자동분배 숙제
+        </button>
+        <button
+          className={`flex-1 rounded-xl py-2.5 text-xs font-bold transition ${planTab === "lecture" ? "bg-[#0F172A] text-white" : "border border-[#E5E7EB] bg-[#F8FAFC] text-[#667085] hover:bg-[#EDEFF5]"}`}
+          onClick={() => setPlanTab("lecture")}
+          type="button"
+        >
+          인강 배정
+        </button>
+      </div>
+
+      {(message || error) ? (
+        <div className="mt-3 space-y-2">
+          {message ? <p className="rounded-2xl bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-600">{message}</p> : null}
+          {error ? <p className="rounded-2xl bg-red-50 px-4 py-3 text-sm font-bold text-red-500">{error}</p> : null}
+        </div>
+      ) : null}
+
+      {!selectedStudentId ? (
+        <div className="mt-4 rounded-2xl border border-dashed border-[#D0D5DD] p-6 text-center text-sm font-bold text-[#98A2B3]">
+          학생을 선택해주세요.
+        </div>
+      ) : planTab === "homework" ? (
+        <div className="mt-4 space-y-3">
+          {loadingHomeworkList ? (
+            <p className="py-4 text-center text-xs font-bold text-[#98A2B3]">불러오는 중...</p>
+          ) : homeworkListError ? (
+            <p className="rounded-2xl bg-red-50 px-4 py-3 text-sm font-bold text-red-500">{homeworkListError}</p>
+          ) : homeworkList.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-[#D0D5DD] p-6 text-center text-sm font-bold text-[#98A2B3]">
+              자동분배로 생성된 숙제가 없습니다.
+            </div>
+          ) : (
+            homeworkList.map((assignment) => (
+              <article className="rounded-2xl bg-[#F8FAFC] p-4" key={assignment.id}>
+                {editingHomeworkId === assignment.id && homeworkEditForm ? (
+                  <div className="space-y-3">
+                    <div>
+                      <label className="mb-1.5 block text-xs font-bold text-[#667085]">교재</label>
+                      <select
+                        className={inputCls}
+                        disabled={loadingHomeworkEditTextbooks}
+                        onChange={(event) => {
+                          updateHomeworkEditForm({ textbookId: event.target.value });
+                          if (homeworkEditForm.rangeType === "section") void fetchHomeworkEditSections(Number(event.target.value));
+                        }}
+                        value={homeworkEditForm.textbookId}
+                      >
+                        {homeworkEditTextbooks.map((t) => (
+                          <option key={t.id} value={t.id}>{t.short_title}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="mb-1.5 block text-xs font-bold text-[#667085]">범위 방식</label>
+                      <div className="flex gap-1">
+                        {(["item", "page", "section"] as const).map((type) => (
+                          <button
+                            className={`flex-1 rounded-lg py-1.5 text-xs font-bold transition ${homeworkEditForm.rangeType === type ? "bg-[#0F172A] text-white" : "bg-white text-[#667085]"}`}
+                            key={type}
+                            onClick={() => {
+                              updateHomeworkEditForm({ rangeType: type, startValue: "", endValue: "" });
+                              if (type === "section") void fetchHomeworkEditSections(Number(homeworkEditForm.textbookId));
+                            }}
+                            type="button"
+                          >
+                            {type === "item" ? "문항" : type === "page" ? "페이지" : "구간"}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {homeworkEditForm.rangeType === "section" ? (
+                      <div>
+                        <label className="mb-1.5 block text-xs font-bold text-[#667085]">구간 선택</label>
+                        <select
+                          className={inputCls}
+                          onChange={(event) => updateHomeworkEditForm({ startValue: event.target.value })}
+                          value={homeworkEditForm.startValue}
+                        >
+                          <option value="">선택</option>
+                          {(homeworkEditSectionCache[Number(homeworkEditForm.textbookId)]?.sections ?? []).map((s) => (
+                            <option key={s.id} value={s.id}>{s.section_title}</option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="mb-1.5 block text-xs font-bold text-[#667085]">시작 값</label>
+                          <input className={inputCls} onChange={(event) => updateHomeworkEditForm({ startValue: event.target.value })} type="number" value={homeworkEditForm.startValue} />
+                        </div>
+                        <div>
+                          <label className="mb-1.5 block text-xs font-bold text-[#667085]">끝 값</label>
+                          <input className={inputCls} onChange={(event) => updateHomeworkEditForm({ endValue: event.target.value })} type="number" value={homeworkEditForm.endValue} />
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="mb-1.5 block text-xs font-bold text-[#667085]">시작일</label>
+                        <input className={inputCls} onChange={(event) => updateHomeworkEditForm({ startDate: event.target.value })} type="date" value={homeworkEditForm.startDate} />
+                      </div>
+                      <div>
+                        <label className="mb-1.5 block text-xs font-bold text-[#667085]">마감일</label>
+                        <input className={inputCls} onChange={(event) => updateHomeworkEditForm({ dueDate: event.target.value })} type="date" value={homeworkEditForm.dueDate} />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="mb-1.5 block text-xs font-bold text-[#667085]">메모</label>
+                      <input className={inputCls} onChange={(event) => updateHomeworkEditForm({ memo: event.target.value })} value={homeworkEditForm.memo} />
+                    </div>
+
+                    {homeworkEditForm.rangeType !== "section" ? (
+                      <button
+                        className="w-full rounded-xl border border-[#E5E7EB] bg-white py-2.5 text-xs font-bold text-[#344054] hover:bg-[#F8FAFC]"
+                        onClick={() => setHomeworkEditPreview(buildHomeworkRangePreview(homeworkEditForm, homeworkPreviewTextbookTitle))}
+                        type="button"
+                      >
+                        변경 결과 미리보기
+                      </button>
+                    ) : null}
+
+                    {homeworkEditPreview ? (
+                      <div className="rounded-xl bg-[#EEF2FF] p-3">
+                        <p className="text-xs font-black text-[#4F46E5]">
+                          미리보기 (전체 범위 기준 — 저장 시 이미 완료/진행 중인 부분은 그대로 유지되고 이후 구간만 새로 배정됩니다)
+                        </p>
+                        {homeworkEditPreview.length === 0 ? (
+                          <p className="mt-2 text-xs font-bold text-[#344054]">입력값을 확인해주세요.</p>
+                        ) : (
+                          <div className="mt-2 space-y-1">
+                            {homeworkEditPreview.map((item) => (
+                              <p className="text-xs font-bold text-[#344054]" key={`${item.date}-${item.label}`}>{item.date}: {item.label}</p>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ) : null}
+
+                    {homeworkEditError ? (
+                      <p className="rounded-xl bg-red-50 px-3 py-2 text-xs font-bold text-red-500">{homeworkEditError}</p>
+                    ) : null}
+
+                    <div className="flex gap-2">
+                      <button className="flex-1 rounded-xl bg-[#0F172A] py-2.5 text-sm font-bold text-white disabled:opacity-50" disabled={savingHomeworkEdit} onClick={() => void handleHomeworkEditSave(assignment.id)} type="button">
+                        {savingHomeworkEdit ? "저장 중..." : "저장"}
+                      </button>
+                      <button className="flex-1 rounded-xl border border-[#E5E7EB] bg-white py-2.5 text-sm font-bold text-[#667085]" onClick={() => { setEditingHomeworkId(null); setHomeworkEditForm(null); }} type="button">
+                        취소
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-black text-[#17213B]">{assignment.student_name ?? "학생"} · {assignment.textbook_title ?? "교재"}</p>
+                      <p className="mt-1 text-xs font-bold text-[#667085]">
+                        {assignment.range_type === "item" ? "문항" : assignment.range_type === "page" ? "페이지" : assignment.range_type === "section" ? "구간" : "custom"}
+                        {" · "}
+                        {assignment.start_value ?? "-"}
+                        {assignment.range_type !== "section" ? `~${assignment.end_value ?? "-"}` : ""}
+                      </p>
+                      <p className="mt-1 text-xs font-bold text-[#98A2B3]">{assignment.start_date} ~ {assignment.due_date}</p>
+                      {assignment.memo ? <p className="mt-1 text-xs text-[#98A2B3]">{assignment.memo}</p> : null}
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <button className="rounded-full bg-white px-2.5 py-1 text-xs font-bold text-[#4F46E5] hover:bg-[#EEF2FF]" onClick={() => void startEditHomework(assignment)} type="button">수정</button>
+                      <button className="rounded-full bg-white px-2.5 py-1 text-xs font-bold text-red-400 hover:bg-red-50" onClick={() => void handleHomeworkDelete(assignment.id)} type="button">삭제</button>
+                    </div>
+                  </div>
+                )}
+              </article>
+            ))
+          )}
+        </div>
+      ) : (
+        <div className="mt-4 space-y-3">
+          {loadingLectureList ? (
+            <p className="py-4 text-center text-xs font-bold text-[#98A2B3]">불러오는 중...</p>
+          ) : lectureListError ? (
+            <p className="rounded-2xl bg-red-50 px-4 py-3 text-sm font-bold text-red-500">{lectureListError}</p>
+          ) : lectureList.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-[#D0D5DD] p-6 text-center text-sm font-bold text-[#98A2B3]">
+              생성된 인강 배정이 없습니다.
+            </div>
+          ) : (
+            lectureList.map((assignment) => (
+              <article className="rounded-2xl bg-[#F8FAFC] p-4" key={assignment.id}>
+                {editingLectureId === assignment.id && lectureEditForm ? (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      <div>
+                        <label className="mb-1.5 block text-xs font-bold text-[#667085]">과목</label>
+                        <input className={inputCls} onChange={(event) => updateLectureEditForm({ subject: event.target.value })} value={lectureEditForm.subject} />
+                      </div>
+                      <div>
+                        <label className="mb-1.5 block text-xs font-bold text-[#667085]">강의명</label>
+                        <input className={inputCls} onChange={(event) => updateLectureEditForm({ courseTitle: event.target.value })} value={lectureEditForm.courseTitle} />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="mb-1.5 block text-xs font-bold text-[#667085]">총 강의 수</label>
+                        <input className={inputCls} min="1" onChange={(event) => updateLectureEditForm({ totalLectures: event.target.value })} type="number" value={lectureEditForm.totalLectures} />
+                      </div>
+                      <div>
+                        <label className="mb-1.5 block text-xs font-bold text-[#667085]">시작 강의 번호</label>
+                        <input className={inputCls} min="1" onChange={(event) => updateLectureEditForm({ startLectureNo: event.target.value })} type="number" value={lectureEditForm.startLectureNo} />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="mb-1.5 block text-xs font-bold text-[#667085]">하루 수강 강의 수</label>
+                      <input className={inputCls} min="1" onChange={(event) => updateLectureEditForm({ lecturesPerDay: event.target.value })} type="number" value={lectureEditForm.lecturesPerDay} />
+                    </div>
+
+                    <div>
+                      <label className="mb-1.5 block text-xs font-bold text-[#667085]">수강 요일</label>
+                      <div className="grid grid-cols-7 gap-1.5">
+                        {LECTURE_WEEKDAY_OPTIONS.map((option) => {
+                          const active = lectureEditForm.weekdays.includes(option.value);
+                          return (
+                            <button
+                              className={`rounded-lg py-2 text-xs font-bold transition ${active ? "bg-[#0F172A] text-white" : "border border-[#E5E7EB] bg-white text-[#667085]"}`}
+                              key={option.value}
+                              onClick={() => toggleLectureEditWeekday(option.value)}
+                              type="button"
+                            >
+                              {option.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="mb-1.5 block text-xs font-bold text-[#667085]">시작일</label>
+                        <input className={inputCls} onChange={(event) => updateLectureEditForm({ startDate: event.target.value })} type="date" value={lectureEditForm.startDate} />
+                      </div>
+                      <div>
+                        <label className="mb-1.5 block text-xs font-bold text-[#667085]">마감일</label>
+                        <input className={inputCls} onChange={(event) => updateLectureEditForm({ dueDate: event.target.value })} type="date" value={lectureEditForm.dueDate} />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="mb-1.5 block text-xs font-bold text-[#667085]">메모</label>
+                      <input className={inputCls} onChange={(event) => updateLectureEditForm({ memo: event.target.value })} value={lectureEditForm.memo} />
+                    </div>
+
+                    <button
+                      className="w-full rounded-xl border border-[#E5E7EB] bg-white py-2.5 text-xs font-bold text-[#344054] hover:bg-[#F8FAFC] disabled:opacity-50"
+                      disabled={lectureEditPreviewLoading}
+                      onClick={() => void handleLectureEditPreview()}
+                      type="button"
+                    >
+                      {lectureEditPreviewLoading ? "미리보기 불러오는 중..." : "변경 결과 미리보기"}
+                    </button>
+
+                    {lectureEditPreview ? (
+                      <div className={`rounded-xl p-3 ${lectureEditPreview.possible ? "bg-emerald-50" : "bg-yellow-50"}`}>
+                        <p className={`text-xs font-black ${lectureEditPreview.possible ? "text-emerald-700" : "text-yellow-800"}`}>
+                          {lectureEditPreview.possible ? "배정 가능합니다." : "현재 조건으로는 완료가 불가능합니다."} (전체 범위 기준 — 저장 시 이미 완료/진행 중인 강의 이후만 새로 배정됩니다)
+                        </p>
+                        {lectureEditPreview.possible ? (
+                          <div className="mt-2 space-y-1">
+                            {lectureEditPreview.preview_items.map((item) => (
+                              <p className="text-xs font-bold text-[#344054]" key={`${item.date}-${item.start_lecture_no}`}>{item.date}: {item.start_lecture_no}강~{item.end_lecture_no}강</p>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+
+                    {lectureEditError ? (
+                      <p className="rounded-xl bg-red-50 px-3 py-2 text-xs font-bold text-red-500">{lectureEditError}</p>
+                    ) : null}
+
+                    <div className="flex gap-2">
+                      <button className="flex-1 rounded-xl bg-[#0F172A] py-2.5 text-sm font-bold text-white disabled:opacity-50" disabled={savingLectureEdit} onClick={() => void handleLectureEditSave(assignment.id)} type="button">
+                        {savingLectureEdit ? "저장 중..." : "저장"}
+                      </button>
+                      <button className="flex-1 rounded-xl border border-[#E5E7EB] bg-white py-2.5 text-sm font-bold text-[#667085]" onClick={() => { setEditingLectureId(null); setLectureEditForm(null); }} type="button">
+                        취소
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-black text-[#17213B]">{assignment.student_name ?? "학생"} · {assignment.subject} · {assignment.course_title}</p>
+                      <p className="mt-1 text-xs font-bold text-[#667085]">
+                        총 {assignment.total_lectures}강 · {assignment.start_lecture_no}강부터 · 하루 {assignment.lectures_per_day}강 · {assignment.weekdays.map((w) => WEEKDAY_KOR[w]).join(",")}
+                      </p>
+                      <p className="mt-1 text-xs font-bold text-[#98A2B3]">{assignment.start_date} ~ {assignment.due_date}</p>
+                      {assignment.memo ? <p className="mt-1 text-xs text-[#98A2B3]">{assignment.memo}</p> : null}
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <Link className="rounded-full bg-white px-2.5 py-1 text-xs font-bold text-[#667085] hover:bg-[#F4F6FA]" href={`/admin/lecture-assignments/${assignment.id}`}>
+                        상세보기
+                      </Link>
+                      <button className="rounded-full bg-white px-2.5 py-1 text-xs font-bold text-[#4F46E5] hover:bg-[#EEF2FF]" onClick={() => startEditLecture(assignment)} type="button">수정</button>
+                      <button className="rounded-full bg-white px-2.5 py-1 text-xs font-bold text-red-400 hover:bg-red-50" onClick={() => void handleLectureDelete(assignment.id)} type="button">삭제</button>
+                    </div>
+                  </div>
+                )}
+              </article>
+            ))
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function AdminDailyTasksPage() {
   const router = useRouter();
   const today = useMemo(() => toLocalDateKey(new Date()), []);
@@ -2268,15 +3017,19 @@ export default function AdminDailyTasksPage() {
             </section>
 
             {/* Mobile-only: 주간 계획표 (edit mode) */}
-            <section className={`${cardCls} p-5 xl:hidden`}>
+            <section className={`${cardCls} p-5`}>
               <div className="mb-4 flex items-center justify-between gap-3">
-                <h2 className="text-base font-black text-[#17213B]">숙제 수정/삭제</h2>
+                <h2 className="text-base font-black text-[#17213B]">일일 숙제 수정</h2>
                 <div className="flex items-center gap-2">
                   {loadingWeekly ? <span className="text-xs font-bold text-[#98A2B3]">불러오는 중...</span> : null}
                   <input className="rounded-xl border border-[#E5E7EB] bg-[#F8FAFC] px-3 py-2 text-sm font-bold text-[#17213B] outline-none" onChange={(event) => setSelectedDate(event.target.value)} type="date" value={selectedDate} />
                 </div>
               </div>
-              {weeklyTasks.length > 0 ? (
+              {!selectedStudentId ? (
+                <div className="rounded-2xl border border-dashed border-[#D0D5DD] p-6 text-center text-sm font-bold text-[#98A2B3]">
+                  학생을 선택해주세요.
+                </div>
+              ) : weeklyTasks.some((day) => day.tasks.length > 0) ? (
                 <div className="space-y-4">
                   {weeklyTasks.map((day) => (
                     <div key={day.date}>
@@ -2349,10 +3102,18 @@ export default function AdminDailyTasksPage() {
                 </div>
               ) : (
                 <div className="rounded-2xl border border-dashed border-[#D0D5DD] p-6 text-center text-sm font-bold text-[#98A2B3]">
-                  {loadingWeekly ? "불러오는 중..." : selectedStudentId ? "이번 주 배정된 숙제가 없습니다." : "학생을 선택해주세요."}
+                  {loadingWeekly ? "불러오는 중..." : "선택한 기간에 숙제가 없습니다."}
                 </div>
               )}
             </section>
+
+            {/* 자동분배 계획 관리 */}
+            <AutoAssignmentPlanManager
+              cardCls={cardCls}
+              inputCls={inputCls}
+              onMutated={() => { setTaskRefreshKey((k) => k + 1); void fetchTasks(selectedStudentId, selectedDate); }}
+              selectedStudentId={selectedStudentId}
+            />
           </div>
 
           {/* ── RIGHT SIDEBAR (PC only) ── */}
@@ -2401,68 +3162,6 @@ export default function AdminDailyTasksPage() {
                 ) : renderWeekTimeline()}
               </div>
 
-              {/* Edit area */}
-              {weeklyTasks.some((d) => d.tasks.length > 0) ? (
-                <div className="mt-4 border-t border-[#F4F6FA] pt-4">
-                  <p className="mb-2 text-xs font-bold text-[#98A2B3]">날짜 선택 (수정/삭제)</p>
-                  <input className="w-full rounded-xl border border-[#E5E7EB] bg-[#F8FAFC] px-3 py-2 text-sm font-bold text-[#17213B] outline-none focus:border-[#0F172A]" onChange={(event) => setSelectedDate(event.target.value)} type="date" value={selectedDate} />
-                  {loadingTasks ? <p className="mt-2 text-xs font-bold text-[#98A2B3]">불러오는 중...</p> : tasks.length > 0 ? (
-                    <div className="mt-2 space-y-1.5">
-                      {tasks.map((task) => (
-                        <article className="rounded-xl border border-[#EEF2F7] bg-white p-3" key={task.id}>
-                          {editTaskId === task.id ? (
-                            <div className="space-y-2">
-                              <div className="grid grid-cols-2 gap-2">
-                                <input className="rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-2 py-1.5 text-xs font-bold outline-none" onChange={(event) => updateEditForm({ taskDate: event.target.value })} type="date" value={editForm.taskDate} />
-                                <input className="rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-2 py-1.5 text-xs font-bold outline-none" onChange={(event) => updateEditForm({ orderIndex: event.target.value })} type="number" value={editForm.orderIndex} />
-                              </div>
-                              <input className="w-full rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-2 py-1.5 text-xs font-bold outline-none" onChange={(event) => updateEditForm({ title: event.target.value })} value={editForm.title} />
-                              <input className="w-full rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-2 py-1.5 text-xs font-bold outline-none" onChange={(event) => updateEditForm({ detail: event.target.value })} placeholder="상세" value={editForm.detail} />
-                              <div className="flex gap-1">
-                                {(["item", "free", "none"] as const).map((type) => (
-                                  <button className={`flex-1 rounded-lg py-1 text-[10px] font-bold transition ${editForm.rangeType === type ? "bg-[#0F172A] text-white" : "bg-[#F4F6FA] text-[#667085]"}`} key={type} onClick={() => updateEditForm({ rangeType: type, startNumber: "", endNumber: "" })} type="button">
-                                    {type === "item" ? "문항" : type === "free" ? "페이지" : "없음"}
-                                  </button>
-                                ))}
-                              </div>
-                              {editForm.rangeType === "item" ? (
-                                <div className="grid grid-cols-2 gap-1.5">
-                                  <input className="rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-2 py-1.5 text-xs font-bold outline-none" onChange={(event) => updateEditForm({ startNumber: event.target.value })} placeholder="시작" type="number" value={editForm.startNumber} />
-                                  <input className="rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-2 py-1.5 text-xs font-bold outline-none" onChange={(event) => updateEditForm({ endNumber: event.target.value })} placeholder="끝" type="number" value={editForm.endNumber} />
-                                </div>
-                              ) : null}
-                              <div className="grid grid-cols-2 gap-1.5">
-                                <select className="rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-2 py-1.5 text-xs font-bold outline-none" onChange={(event) => updateEditForm({ status: event.target.value as DailyTaskStatus })} value={editForm.status}>
-                                  <option value="todo">예정</option>
-                                  <option value="in_progress">진행중</option>
-                                  <option value="done">완료</option>
-                                </select>
-                                <input className="rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-2 py-1.5 text-xs font-bold outline-none" onChange={(event) => updateEditForm({ category: event.target.value })} placeholder="카테고리" value={editForm.category} />
-                              </div>
-                              <div className="flex gap-1.5">
-                                <button className="flex-1 rounded-xl bg-[#0F172A] px-2 py-1.5 text-xs font-bold text-white" disabled={savingEdit} onClick={() => void handleSaveEdit(task.id)} type="button">저장</button>
-                                <button className="flex-1 rounded-xl border border-[#E5E7EB] bg-white px-2 py-1.5 text-xs font-bold text-[#667085]" onClick={() => setEditTaskId(null)} type="button">취소</button>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="min-w-0">
-                                <p className="truncate text-xs font-black text-[#17213B]">{task.title}</p>
-                                {task.detail ? <p className="mt-0.5 truncate text-[10px] text-[#98A2B3]">{task.detail}</p> : null}
-                              </div>
-                              <div className="flex shrink-0 items-center gap-1">
-                                <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-black ${task.status === "done" ? "bg-emerald-100 text-emerald-600" : task.status === "in_progress" ? "bg-amber-100 text-amber-600" : "bg-[#F1F5F9] text-[#64748B]"}`}>{getStatusLabel(task.status)}</span>
-                                <button className="rounded-full bg-[#EEF2FF] px-2 py-0.5 text-[10px] font-bold text-[#4F46E5]" onClick={() => startEdit(task)} type="button">수정</button>
-                                <button className="rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-bold text-red-400" onClick={() => void handleDelete(task.id)} type="button">삭제</button>
-                              </div>
-                            </div>
-                          )}
-                        </article>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
             </section>
           </aside>
         </div>

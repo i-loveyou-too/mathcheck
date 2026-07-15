@@ -44,6 +44,7 @@ type DailyTask = {
   title: string;
   lecture_items?: LectureTaskItemProgress[];
   source_type?: "manual" | "homework" | "lecture";
+  lecture_assignment_id?: number | null;
 };
 
 type DailyTaskSummary = {
@@ -539,10 +540,12 @@ function CompletedStandardTaskItem({
 function LectureTaskCard({
   task,
   taskDate,
+  onOpenLecture,
   onToggleLectureItem,
 }: {
   task: DailyTask;
   taskDate: string;
+  onOpenLecture: (task: DailyTask) => void;
   onToggleLectureItem: (
     task: DailyTask,
     lectureItem: LectureTaskItemProgress,
@@ -557,7 +560,13 @@ function LectureTaskCard({
   const isDone = task.status === "done";
 
   return (
-    <article className="rounded-[24px] border border-[#D9D6FF] bg-white px-5 py-5 shadow-[0_16px_40px_rgba(109,115,255,0.08)]">
+    <article
+      className={cn(
+        "rounded-[24px] border border-[#D9D6FF] bg-white px-5 py-5 shadow-[0_16px_40px_rgba(109,115,255,0.08)] transition",
+        task.lecture_assignment_id ? "cursor-pointer hover:border-[#C4B5FD]" : "",
+      )}
+      onClick={() => onOpenLecture(task)}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           {display.subject ? (
@@ -1032,6 +1041,12 @@ export default function StudentTodayPage() {
     }
   };
 
+  const openLecture = (task: DailyTask) => {
+    if (task.lecture_assignment_id) {
+      router.push(`/student/lectures/${task.lecture_assignment_id}`);
+    }
+  };
+
   const moveWeek = (dayOffset: number) => {
     const nextWeekStart = addLocalDays(currentWeekStart, dayOffset);
     setWeeklyData(null);
@@ -1158,6 +1173,7 @@ export default function StudentTodayPage() {
                   {lectureTasks.map((task) => (
                     <LectureTaskCard
                       key={`lecture-${task.id}`}
+                      onOpenLecture={openLecture}
                       onToggleLectureItem={toggleLectureItem}
                       task={task}
                       taskDate={selectedDateKey}

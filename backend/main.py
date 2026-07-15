@@ -342,6 +342,21 @@ def student_today_tasks(student_id: int, today: date, db: Session = Depends(get_
 
 
 @app.get(
+    "/student/lecture-assignments/{assignment_id}",
+    response_model=schemas.LectureAssignmentDetailResponse,
+    tags=["Student"],
+)
+def student_lecture_assignment_detail(assignment_id: int, student_id: int, db: Session = Depends(get_db)):
+    assignment = crud.get_lecture_assignment_by_id(db, assignment_id)
+    if assignment is None:
+        raise HTTPException(status_code=404, detail="Lecture assignment not found")
+    if assignment.student_id != student_id:
+        raise HTTPException(status_code=403, detail="Not allowed")
+
+    return crud.get_lecture_assignment_detail(db, assignment)
+
+
+@app.get(
     "/student/achievement-tracker",
     response_model=schemas.AchievementTrackerResponse,
     tags=["Student"],
@@ -641,6 +656,64 @@ def create_lecture_assignment(
         raise HTTPException(status_code=409, detail="인강 배정을 저장하지 못했습니다.")
 
 
+@app.get(
+    "/admin/lecture-assignments",
+    response_model=list[schemas.LectureAssignmentListItem],
+    tags=["Admin"],
+)
+def list_lecture_assignments(student_id: Optional[int] = None, db: Session = Depends(get_db)):
+    return crud.list_lecture_assignments(db, student_id)
+
+
+@app.get(
+    "/admin/lecture-assignments/{assignment_id}",
+    response_model=schemas.LectureAssignmentDetailResponse,
+    tags=["Admin"],
+)
+def admin_lecture_assignment_detail(assignment_id: int, db: Session = Depends(get_db)):
+    assignment = crud.get_lecture_assignment_by_id(db, assignment_id)
+    if assignment is None:
+        raise HTTPException(status_code=404, detail="Lecture assignment not found")
+
+    return crud.get_lecture_assignment_detail(db, assignment)
+
+
+@app.patch(
+    "/admin/lecture-assignments/{assignment_id}",
+    response_model=schemas.LectureAssignmentUpdateResponse,
+    tags=["Admin"],
+)
+def update_lecture_assignment(
+    assignment_id: int,
+    payload: schemas.LectureAssignmentUpdateRequest,
+    db: Session = Depends(get_db),
+):
+    assignment = crud.get_lecture_assignment_by_id(db, assignment_id)
+    if assignment is None:
+        raise HTTPException(status_code=404, detail="Lecture assignment not found")
+
+    try:
+        return crud.update_lecture_assignment(db, assignment, payload)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="인강 배정을 저장하지 못했습니다.")
+
+
+@app.delete(
+    "/admin/lecture-assignments/{assignment_id}",
+    response_model=schemas.LectureAssignmentDeleteResponse,
+    tags=["Admin"],
+)
+def delete_lecture_assignment(assignment_id: int, db: Session = Depends(get_db)):
+    assignment = crud.get_lecture_assignment_by_id(db, assignment_id)
+    if assignment is None:
+        raise HTTPException(status_code=404, detail="Lecture assignment not found")
+
+    return crud.delete_lecture_assignment(db, assignment)
+
+
 @app.post(
     "/admin/homework-assignments",
     response_model=schemas.HomeworkAssignmentCreateResponse,
@@ -655,6 +728,48 @@ def create_homework_assignment(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return result
+
+
+@app.get(
+    "/admin/homework-assignments",
+    response_model=list[schemas.HomeworkAssignmentListItem],
+    tags=["Admin"],
+)
+def list_homework_assignments(student_id: Optional[int] = None, db: Session = Depends(get_db)):
+    return crud.list_homework_assignments(db, student_id)
+
+
+@app.patch(
+    "/admin/homework-assignments/{assignment_id}",
+    response_model=schemas.HomeworkAssignmentUpdateResponse,
+    tags=["Admin"],
+)
+def update_homework_assignment(
+    assignment_id: int,
+    payload: schemas.HomeworkAssignmentUpdateRequest,
+    db: Session = Depends(get_db),
+):
+    assignment = crud.get_homework_assignment_by_id(db, assignment_id)
+    if assignment is None:
+        raise HTTPException(status_code=404, detail="Homework assignment not found")
+
+    try:
+        return crud.update_homework_assignment(db, assignment, payload)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.delete(
+    "/admin/homework-assignments/{assignment_id}",
+    response_model=schemas.HomeworkAssignmentDeleteResponse,
+    tags=["Admin"],
+)
+def delete_homework_assignment(assignment_id: int, db: Session = Depends(get_db)):
+    assignment = crud.get_homework_assignment_by_id(db, assignment_id)
+    if assignment is None:
+        raise HTTPException(status_code=404, detail="Homework assignment not found")
+
+    return crud.delete_homework_assignment(db, assignment)
 
 
 @app.get(

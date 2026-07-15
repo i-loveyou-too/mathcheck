@@ -1,6 +1,7 @@
 import math
 from calendar import monthrange
 from datetime import date, datetime, time, timedelta, timezone
+from types import SimpleNamespace
 from typing import Optional
 
 from sqlalchemy import func, or_
@@ -693,6 +694,7 @@ def serialize_daily_task(db: Session, task: MathDailyTask) -> dict:
         "id": task.id,
         "title": task.title,
         "detail": task.detail,
+        "task_date": task.task_date,
         "textbook_id": task.textbook_id,
         "textbook_key": task.textbook_key,
         "start_item_number": start_item_number,
@@ -709,6 +711,9 @@ def serialize_daily_task(db: Session, task: MathDailyTask) -> dict:
         "textbook": textbook,
         "lecture_items": serialize_lecture_task_items(db, task),
         "source_type": task.source_type,
+        "lecture_assignment_id": task.lecture_assignment_id,
+        "lecture_start_number": task.lecture_start_number,
+        "lecture_end_number": task.lecture_end_number,
     }
 
 
@@ -1643,6 +1648,413 @@ def serialize_homework_assignment(assignment: HomeworkAssignment) -> dict:
         "status": assignment.status,
         "created_at": assignment.created_at,
         "created_by": assignment.created_by,
+    }
+
+
+def get_homework_assignment_by_id(db: Session, assignment_id: int) -> Optional[HomeworkAssignment]:
+    return db.query(HomeworkAssignment).filter(HomeworkAssignment.id == assignment_id).first()
+
+
+def get_lecture_assignment_by_id(db: Session, assignment_id: int) -> Optional[LectureAssignment]:
+    return db.query(LectureAssignment).filter(LectureAssignment.id == assignment_id).first()
+
+
+def serialize_homework_assignment_list_item(assignment: HomeworkAssignment) -> dict:
+    base = serialize_homework_assignment(assignment)
+    base["student_name"] = assignment.student.name if assignment.student else None
+    base["textbook_title"] = assignment.textbook.full_title if assignment.textbook else None
+    return base
+
+
+def list_homework_assignments(db: Session, student_id: Optional[int] = None) -> list[dict]:
+    query = db.query(HomeworkAssignment).options(
+        selectinload(HomeworkAssignment.student),
+        selectinload(HomeworkAssignment.textbook),
+    )
+    if student_id is not None:
+        query = query.filter(HomeworkAssignment.student_id == student_id)
+    assignments = query.order_by(HomeworkAssignment.created_at.desc()).all()
+    return [serialize_homework_assignment_list_item(a) for a in assignments]
+
+
+def _split_homework_tasks_by_completion(
+    db: Session, assignment_id: int
+) -> tuple[list[MathDailyTask], list[MathDailyTask]]:
+    """Returns (protected, todo) daily tasks for a homework assignment, where "protected"
+    means resolve_task_statuses() reports anything other than "todo" (done or in_progress) —
+    those carry real student check records (MathStudentItemProgress for item-mode tasks, or
+    task.status/completed_at itself for manual page/section tasks) and must never be
+    deleted or regenerated.
+    """
+    tasks = (
+        db.query(MathDailyTask)
+        .filter(MathDailyTask.homework_assignment_id == assignment_id)
+        .order_by(MathDailyTask.task_date, MathDailyTask.id)
+        .all()
+    )
+    if not tasks:
+        return [], []
+    statuses = resolve_task_statuses(db, tasks)
+    protected = [t for t in tasks if statuses[t.id]["status"] != "todo"]
+    todo = [t for t in tasks if statuses[t.id]["status"] == "todo"]
+    return protected, todo
+
+
+def _homework_assignment_result(db: Session, assignment: HomeworkAssignment) -> dict:
+    tasks = (
+        db.query(MathDailyTask)
+        .options(selectinload(MathDailyTask.textbook))
+        .filter(MathDailyTask.homework_assignment_id == assignment.id)
+        .order_by(MathDailyTask.task_date, MathDailyTask.id)
+        .all()
+    )
+    return {
+        "assignment": serialize_homework_assignment(assignment),
+        "daily_tasks": [serialize_daily_task(db, task) for task in tasks],
+    }
+
+
+def update_homework_assignment(db: Session, assignment: HomeworkAssignment, payload) -> dict:
+    update_data = payload.model_dump(exclude_unset=True)
+
+    new_textbook_id = update_data.get("textbook_id", assignment.textbook_id)
+    new_range_type = update_data.get("range_type", assignment.range_type)
+    new_start_value = update_data.get("start_value", assignment.start_value)
+    new_end_value = update_data.get("end_value", assignment.end_value)
+    new_start_date = update_data.get("start_date", assignment.start_date)
+    new_due_date = update_data.get("due_date", assignment.due_date)
+    new_memo = update_data.get("memo", assignment.memo)
+
+    if new_range_type not in HOMEWORK_RANGE_TYPES:
+        raise ValueError(f"알 수 없는 range_type입니다: {new_range_type}")
+    if new_range_type == "custom":
+        raise ValueError("custom 범위 타입은 아직 지원되지 않습니다 (MVP).")
+    if new_start_date > new_due_date:
+        raise ValueError("start_date는 due_date보다 늦을 수 없습니다.")
+
+    textbook = db.query(MathTextbook).filter(MathTextbook.id == new_textbook_id).first()
+    if textbook is None:
+        raise ValueError("교재를 찾을 수 없습니다.")
+    if not is_textbook_visible_to_student(db, textbook, assignment.student_id):
+        raise ValueError("해당 학생에게 배정되지 않은 교재입니다.")
+
+    section: Optional[MathTextbookSection] = None
+
+    if new_range_type in ("item", "page"):
+        if new_start_value is None or new_end_value is None:
+            raise ValueError("start_value와 end_value가 필요합니다.")
+        if new_start_value > new_end_value:
+            raise ValueError("start_value는 end_value보다 클 수 없습니다.")
+
+        if new_range_type == "item":
+            expected_count = new_end_value - new_start_value + 1
+            existing_count = (
+                db.query(func.count(MathTextbookItem.id))
+                .filter(
+                    MathTextbookItem.textbook_id == textbook.id,
+                    MathTextbookItem.is_active.is_(True),
+                    MathTextbookItem.item_number >= new_start_value,
+                    MathTextbookItem.item_number <= new_end_value,
+                )
+                .scalar()
+                or 0
+            )
+            if existing_count < expected_count:
+                raise ValueError("요청한 문항 범위 중 존재하지 않는 문항이 있습니다.")
+
+    if new_range_type == "section":
+        if new_start_value is None:
+            raise ValueError("section 범위는 start_value(section_id)가 필요합니다.")
+        section = (
+            db.query(MathTextbookSection)
+            .filter(
+                MathTextbookSection.id == new_start_value,
+                MathTextbookSection.textbook_id == textbook.id,
+            )
+            .first()
+        )
+        if section is None:
+            raise ValueError("해당 교재에 존재하지 않는 section입니다.")
+
+    protected_tasks, todo_tasks = _split_homework_tasks_by_completion(db, assignment.id)
+
+    if protected_tasks:
+        if new_textbook_id != assignment.textbook_id:
+            raise ValueError("이미 진행 중인 기록이 있어 교재를 변경할 수 없습니다.")
+        if new_range_type != assignment.range_type:
+            raise ValueError("이미 진행 중인 기록이 있어 범위 방식을 변경할 수 없습니다.")
+        if new_start_date != assignment.start_date:
+            raise ValueError("이미 시작된 배정의 시작일은 변경할 수 없습니다.")
+
+        max_protected_date = max(t.task_date for t in protected_tasks)
+        if new_due_date < max_protected_date:
+            raise ValueError(
+                f"완료/진행 중인 날짜({max_protected_date})보다 이전으로 마감일을 변경할 수 없습니다."
+            )
+
+        if new_range_type in ("item", "page"):
+            if new_start_value != assignment.start_value:
+                raise ValueError("이미 진행된 범위가 있어 시작 값을 변경할 수 없습니다.")
+            max_protected_end = max(
+                t.end_value for t in protected_tasks if t.end_value is not None
+            )
+            if new_end_value < max_protected_end:
+                raise ValueError(
+                    f"완료/진행 중인 범위(~{max_protected_end})보다 작은 값으로 줄일 수 없습니다."
+                )
+        elif new_range_type == "section":
+            if new_start_value != assignment.start_value:
+                raise ValueError("이미 진행 중인 기록이 있어 section을 변경할 수 없습니다.")
+
+    for task in todo_tasks:
+        db.delete(task)
+
+    assignment.textbook_id = new_textbook_id
+    assignment.range_type = new_range_type
+    assignment.start_value = new_start_value
+    assignment.end_value = new_end_value
+    assignment.start_date = new_start_date
+    assignment.due_date = new_due_date
+    assignment.memo = new_memo
+    db.flush()
+
+    if new_range_type in ("item", "page"):
+        if protected_tasks:
+            max_protected_end = max(
+                t.end_value for t in protected_tasks if t.end_value is not None
+            )
+            max_protected_date = max(t.task_date for t in protected_tasks)
+            remaining_start_value = max_protected_end + 1
+            remaining_start_date = max_protected_date + timedelta(days=1)
+        else:
+            remaining_start_value = new_start_value
+            remaining_start_date = new_start_date
+
+        if remaining_start_value <= new_end_value:
+            if remaining_start_date > new_due_date:
+                raise ValueError("남은 기간이 없어 나머지 범위를 재배정할 수 없습니다.")
+            remaining_assignment = HomeworkAssignment(
+                id=assignment.id,
+                student_id=assignment.student_id,
+                textbook_id=assignment.textbook_id,
+                title=assignment.title,
+                range_type=new_range_type,
+                start_value=remaining_start_value,
+                end_value=new_end_value,
+                start_date=remaining_start_date,
+                due_date=new_due_date,
+                memo=assignment.memo,
+            )
+            for task in build_homework_daily_tasks(remaining_assignment, textbook, None):
+                db.add(task)
+    elif new_range_type == "section" and not protected_tasks:
+        for task in build_homework_daily_tasks(assignment, textbook, section):
+            db.add(task)
+
+    db.commit()
+    db.refresh(assignment)
+
+    return _homework_assignment_result(db, assignment)
+
+
+def delete_homework_assignment(db: Session, assignment: HomeworkAssignment) -> dict:
+    protected_tasks, todo_tasks = _split_homework_tasks_by_completion(db, assignment.id)
+
+    for task in todo_tasks:
+        db.delete(task)
+
+    assignment.status = "cancelled"
+    db.commit()
+
+    return {
+        "ok": True,
+        "deleted_task_count": len(todo_tasks),
+        "preserved_completed_count": len(protected_tasks),
+    }
+
+
+def serialize_lecture_assignment_list_item(assignment: LectureAssignment) -> dict:
+    base = serialize_lecture_assignment(assignment)
+    base["student_name"] = assignment.student.name if assignment.student else None
+    return base
+
+
+def list_lecture_assignments(db: Session, student_id: Optional[int] = None) -> list[dict]:
+    query = db.query(LectureAssignment).options(selectinload(LectureAssignment.student))
+    if student_id is not None:
+        query = query.filter(LectureAssignment.student_id == student_id)
+    assignments = query.order_by(LectureAssignment.created_at.desc()).all()
+    return [serialize_lecture_assignment_list_item(a) for a in assignments]
+
+
+def _split_lecture_tasks_by_completion(
+    db: Session, assignment_id: int
+) -> tuple[list[MathDailyTask], list[MathDailyTask]]:
+    """Same "protected" definition as _split_homework_tasks_by_completion, but for lecture
+    tasks: MathStudentLectureProgress rows are keyed directly by daily_task_id (not by a
+    student+lecture-number pair independent of the task row), so a protected lecture task
+    must never be deleted — doing so would either FK-violate or cascade-delete the actual
+    completion/partial-check records.
+    """
+    tasks = (
+        db.query(MathDailyTask)
+        .filter(MathDailyTask.lecture_assignment_id == assignment_id)
+        .order_by(MathDailyTask.task_date, MathDailyTask.id)
+        .all()
+    )
+    if not tasks:
+        return [], []
+    statuses = resolve_task_statuses(db, tasks)
+    protected = [t for t in tasks if statuses[t.id]["status"] != "todo"]
+    todo = [t for t in tasks if statuses[t.id]["status"] == "todo"]
+    return protected, todo
+
+
+def _lecture_assignment_result(db: Session, assignment: LectureAssignment) -> dict:
+    tasks = (
+        db.query(MathDailyTask)
+        .options(selectinload(MathDailyTask.textbook))
+        .filter(MathDailyTask.lecture_assignment_id == assignment.id)
+        .order_by(MathDailyTask.task_date, MathDailyTask.id)
+        .all()
+    )
+    return {
+        "assignment": serialize_lecture_assignment(assignment),
+        "daily_tasks": [serialize_daily_task(db, task) for task in tasks],
+    }
+
+
+def get_lecture_assignment_detail(db: Session, assignment: LectureAssignment) -> dict:
+    tasks = (
+        db.query(MathDailyTask)
+        .options(selectinload(MathDailyTask.textbook))
+        .filter(MathDailyTask.lecture_assignment_id == assignment.id)
+        .order_by(MathDailyTask.task_date, MathDailyTask.id)
+        .all()
+    )
+
+    total_to_assign = assignment.total_lectures - assignment.start_lecture_no + 1
+    task_ids = [task.id for task in tasks]
+    completed_rows = (
+        db.query(MathStudentLectureProgress)
+        .filter(
+            MathStudentLectureProgress.daily_task_id.in_(task_ids),
+            MathStudentLectureProgress.is_done.is_(True),
+        )
+        .all()
+        if task_ids
+        else []
+    )
+    completed_count = len({row.lecture_number for row in completed_rows})
+    progress_rate = round((completed_count / total_to_assign) * 100) if total_to_assign > 0 else 0
+
+    student = assignment.student
+    assignment_dict = serialize_lecture_assignment(assignment)
+    assignment_dict["student_name"] = student.name if student else None
+    assignment_dict["student_grade"] = student.grade if student else None
+
+    return {
+        "assignment": assignment_dict,
+        "daily_tasks": [serialize_daily_task(db, task) for task in tasks],
+        "total_lectures_to_assign": total_to_assign,
+        "completed_lecture_count": completed_count,
+        "remaining_lecture_count": max(total_to_assign - completed_count, 0),
+        "progress_rate": progress_rate,
+    }
+
+
+def update_lecture_assignment(db: Session, assignment: LectureAssignment, payload) -> dict:
+    update_data = payload.model_dump(exclude_unset=True)
+
+    new_subject = (update_data.get("subject", assignment.subject) or "").strip()
+    new_course_title = (update_data.get("course_title", assignment.course_title) or "").strip()
+    new_total_lectures = update_data.get("total_lectures", assignment.total_lectures)
+    new_start_lecture_no = update_data.get("start_lecture_no", assignment.start_lecture_no)
+    new_lectures_per_day = update_data.get("lectures_per_day", assignment.lectures_per_day)
+    new_weekdays = update_data.get("weekdays") or [
+        value for value in (assignment.weekdays or "").split(",") if value
+    ]
+    new_start_date = update_data.get("start_date", assignment.start_date)
+    new_due_date = update_data.get("due_date", assignment.due_date)
+    new_memo = update_data.get("memo", assignment.memo)
+
+    if not new_subject:
+        raise ValueError("subject must not be empty.")
+    if not new_course_title:
+        raise ValueError("course_title must not be empty.")
+
+    protected_tasks, todo_tasks = _split_lecture_tasks_by_completion(db, assignment.id)
+
+    remaining_start_date = new_start_date
+    if protected_tasks:
+        if new_start_date != assignment.start_date:
+            raise ValueError("이미 시작된 배정의 시작일은 변경할 수 없습니다.")
+
+        max_protected_end = max(
+            t.lecture_end_number for t in protected_tasks if t.lecture_end_number is not None
+        )
+        max_protected_date = max(t.task_date for t in protected_tasks)
+
+        if new_start_lecture_no <= max_protected_end:
+            raise ValueError(
+                f"완료된 마지막 강의({max_protected_end}강)보다 이전 번호로 시작할 수 없습니다."
+            )
+        if new_due_date < max_protected_date:
+            raise ValueError(
+                f"완료/진행 중인 날짜({max_protected_date})보다 이전으로 마감일을 변경할 수 없습니다."
+            )
+        remaining_start_date = max_protected_date + timedelta(days=1)
+
+    preview_payload = SimpleNamespace(
+        total_lectures=new_total_lectures,
+        start_lecture_no=new_start_lecture_no,
+        lectures_per_day=new_lectures_per_day,
+        weekdays=new_weekdays,
+        start_date=remaining_start_date,
+        due_date=new_due_date,
+    )
+    preview = preview_lecture_assignment(preview_payload)
+    if not preview["possible"]:
+        raise ValueError("현재 조건으로는 인강 재배정을 완료할 수 없습니다.")
+
+    weekdays_normalized = normalize_lecture_weekdays(new_weekdays)
+
+    for task in todo_tasks:
+        db.delete(task)
+
+    assignment.subject = new_subject
+    assignment.course_title = new_course_title
+    assignment.total_lectures = new_total_lectures
+    assignment.start_lecture_no = new_start_lecture_no
+    assignment.lectures_per_day = new_lectures_per_day
+    assignment.weekdays = ",".join(weekdays_normalized)
+    assignment.start_date = new_start_date
+    assignment.due_date = new_due_date
+    assignment.memo = new_memo.strip() if new_memo else None
+    db.flush()
+
+    for task in build_lecture_daily_tasks(assignment, preview["preview_items"]):
+        db.add(task)
+
+    db.commit()
+    db.refresh(assignment)
+
+    return _lecture_assignment_result(db, assignment)
+
+
+def delete_lecture_assignment(db: Session, assignment: LectureAssignment) -> dict:
+    protected_tasks, todo_tasks = _split_lecture_tasks_by_completion(db, assignment.id)
+
+    for task in todo_tasks:
+        db.delete(task)
+
+    assignment.status = "cancelled"
+    db.commit()
+
+    return {
+        "ok": True,
+        "deleted_task_count": len(todo_tasks),
+        "preserved_completed_count": len(protected_tasks),
     }
 
 

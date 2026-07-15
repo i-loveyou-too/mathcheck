@@ -207,6 +207,10 @@ class DailyTaskResponse(BaseModel):
     id: int
     title: str
     detail: Optional[str] = None
+    # Additive: the weekly-view response nests tasks under a per-day bucket that already
+    # carries the date, so this was never needed there. Flat list responses (lecture/homework
+    # assignment detail) have no such bucket, so each task must carry its own date.
+    task_date: Optional[date] = None
     textbook_id: Optional[int] = None
     textbook_key: Optional[str] = None
     start_item_number: Optional[int] = None
@@ -225,6 +229,11 @@ class DailyTaskResponse(BaseModel):
     # Added for the homework assignment engine (phase 2): lets clients tell homework-generated
     # tasks apart from manual ones without dropping/renaming any pre-existing field above.
     source_type: str = "manual"
+    # Additive fields for the lecture assignment detail pages: lets clients link a task back to
+    # its parent assignment and show its lecture range without parsing the title string.
+    lecture_assignment_id: Optional[int] = None
+    lecture_start_number: Optional[int] = None
+    lecture_end_number: Optional[int] = None
 
 
 class DailyTaskSummary(BaseModel):
@@ -388,6 +397,73 @@ class HomeworkAssignmentResponse(BaseModel):
 class HomeworkAssignmentCreateResponse(BaseModel):
     assignment: HomeworkAssignmentResponse
     daily_tasks: list[DailyTaskResponse]
+
+
+class HomeworkAssignmentListItem(HomeworkAssignmentResponse):
+    student_name: Optional[str] = None
+    textbook_title: Optional[str] = None
+
+
+class HomeworkAssignmentUpdateRequest(BaseModel):
+    textbook_id: Optional[int] = None
+    range_type: Optional[str] = None
+    start_value: Optional[int] = None
+    end_value: Optional[int] = None
+    start_date: Optional[date] = None
+    due_date: Optional[date] = None
+    memo: Optional[str] = None
+
+
+class HomeworkAssignmentUpdateResponse(BaseModel):
+    assignment: HomeworkAssignmentResponse
+    daily_tasks: list[DailyTaskResponse]
+
+
+class HomeworkAssignmentDeleteResponse(BaseModel):
+    ok: bool
+    deleted_task_count: int
+    preserved_completed_count: int
+
+
+class LectureAssignmentListItem(LectureAssignmentResponse):
+    student_name: Optional[str] = None
+
+
+class LectureAssignmentUpdateRequest(BaseModel):
+    subject: Optional[str] = None
+    course_title: Optional[str] = None
+    total_lectures: Optional[int] = None
+    start_lecture_no: Optional[int] = None
+    lectures_per_day: Optional[int] = None
+    weekdays: Optional[list[str]] = None
+    start_date: Optional[date] = None
+    due_date: Optional[date] = None
+    memo: Optional[str] = None
+
+
+class LectureAssignmentUpdateResponse(BaseModel):
+    assignment: LectureAssignmentResponse
+    daily_tasks: list[DailyTaskResponse]
+
+
+class LectureAssignmentDeleteResponse(BaseModel):
+    ok: bool
+    deleted_task_count: int
+    preserved_completed_count: int
+
+
+class LectureAssignmentDetail(LectureAssignmentResponse):
+    student_name: Optional[str] = None
+    student_grade: Optional[str] = None
+
+
+class LectureAssignmentDetailResponse(BaseModel):
+    assignment: LectureAssignmentDetail
+    daily_tasks: list[DailyTaskResponse]
+    total_lectures_to_assign: int
+    completed_lecture_count: int
+    remaining_lecture_count: int
+    progress_rate: int
 
 
 class StudentHomeworkTaskCard(BaseModel):
