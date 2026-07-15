@@ -747,3 +747,49 @@ class TextbookStudentOnlyRequest(BaseModel):
 
 class StudentTextbookIdsResponse(BaseModel):
     textbook_ids: list[int]
+
+
+class CurriculumListItem(BaseModel):
+    student_curriculum_id: int
+    curriculum_id: int
+    subject: str
+    title: str
+    description: Optional[str] = None
+    in_progress_count: int
+    completed_count: int
+    planned_count: int
+
+
+class CurriculumNodeResponse(BaseModel):
+    id: int
+    title: str
+    node_type: str
+    group_name: str
+    group_order: int
+    description: Optional[str] = None
+    position_x: int
+    position_y: int
+    order_index: int
+    status: str
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    memo: Optional[str] = None
+    link_url: Optional[str] = None
+
+
+class CurriculumGroupResponse(BaseModel):
+    name: str
+    order: int
+    group_number: int
+    nodes: list[CurriculumNodeResponse]
+
+
+class CurriculumEdgeResponse(BaseModel):
+    from_node_id: int
+    to_node_id: int
+    edge_type: str
+
+
+class CurriculumNodesResponse(BaseModel):
+    groups: list[CurriculumGroupResponse]
+    edges: list[CurriculumEdgeResponse]

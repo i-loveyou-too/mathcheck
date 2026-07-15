@@ -37,6 +37,19 @@ function BookIcon() {
   );
 }
 
+function CurriculumIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="6" cy="6" r="2.5" />
+      <circle cx="18" cy="6" r="2.5" />
+      <circle cx="12" cy="18" r="2.5" />
+      <path d="M8.5 6h7" />
+      <path d="M8.2 7.3 10.7 15" />
+      <path d="M15.8 7.3 13.3 15" />
+    </svg>
+  );
+}
+
 function LogoutIcon() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
@@ -58,11 +71,12 @@ export function AdminBottomNav() {
   const isStudents = pathname.startsWith("/admin/students");
   const isDailyTasks = pathname.startsWith("/admin/daily-tasks");
   const isTextbooks = pathname.startsWith("/admin/textbooks-management");
+  const isCurriculums = pathname.startsWith("/admin/curriculums");
 
   return (
     <nav className="fixed bottom-4 left-1/2 z-20 w-[calc(100%-2.5rem)] max-w-[720px] -translate-x-1/2">
       <div className="rounded-[1.8rem] bg-[#0F172A] px-3 py-3 shadow-nav">
-        <div className="grid grid-cols-5 gap-1">
+        <div className="grid grid-cols-6 gap-1">
           <Link
             href="/admin"
             className={cn(
@@ -105,6 +119,17 @@ export function AdminBottomNav() {
           >
             <BookIcon />
             <span>교재</span>
+          </Link>
+
+          <Link
+            href="/admin/curriculums"
+            className={cn(
+              "flex flex-col items-center gap-1.5 rounded-[1.2rem] px-1.5 py-2.5 text-[10px] font-semibold transition-all",
+              isCurriculums ? "bg-white text-[#0F172A]" : "text-white/50 hover:text-white/75"
+            )}
+          >
+            <CurriculumIcon />
+            <span>진도표</span>
           </Link>
 
           <button

@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { AdminBottomNav } from "@/components/admin-bottom-nav";
 import { ApiError, apiFetch } from "@/lib/api";
+import { getStudyDate } from "@/lib/study-date";
 import { getAdmin } from "@/lib/storage";
 import { cn } from "@/lib/utils";
 
@@ -337,7 +338,7 @@ export default function AdminLectureAssignmentDetailPage() {
 
   const { assignment } = detail;
   const sortedTasks = [...detail.daily_tasks].sort((a, b) => (a.task_date ?? "").localeCompare(b.task_date ?? ""));
-  const todayKey = new Date().toISOString().slice(0, 10);
+  const todayKey = getStudyDate();
   const incompleteCount = detail.total_lectures_to_assign - detail.completed_lecture_count;
 
   return (

@@ -13,6 +13,7 @@ import crud
 import models  # noqa: F401 - importing models registers them with SQLAlchemy
 import schemas
 from database import Base, SessionLocal, engine, get_db
+from study_dates import get_study_date
 
 
 def ensure_textbook_key_column():
@@ -533,6 +534,100 @@ def update_student_lecture_task_item_status(
     return crud.serialize_daily_task(db, updated_task)
 
 
+@app.get(
+    "/student/curriculums",
+    response_model=list[schemas.CurriculumListItem],
+    tags=["Student"],
+)
+def student_curriculums(student_id: int, db: Session = Depends(get_db)):
+    student = crud.get_student_by_id(db, student_id)
+    if student is None:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    return crud.list_student_curriculums(db, student_id)
+
+
+@app.get(
+    "/student/curriculums/{student_curriculum_id}",
+    response_model=schemas.CurriculumListItem,
+    tags=["Student"],
+)
+def student_curriculum_detail(student_curriculum_id: int, student_id: int, db: Session = Depends(get_db)):
+    student_curriculum = crud.get_student_curriculum(db, student_curriculum_id)
+    if student_curriculum is None or student_curriculum.student_id != student_id:
+        raise HTTPException(status_code=404, detail="Curriculum not found")
+
+    return crud.get_student_curriculum_summary(db, student_curriculum)
+
+
+@app.get(
+    "/student/curriculums/{student_curriculum_id}/nodes",
+    response_model=schemas.CurriculumNodesResponse,
+    tags=["Student"],
+)
+def student_curriculum_nodes(student_curriculum_id: int, student_id: int, db: Session = Depends(get_db)):
+    student_curriculum = crud.get_student_curriculum(db, student_curriculum_id)
+    if student_curriculum is None or student_curriculum.student_id != student_id:
+        raise HTTPException(status_code=404, detail="Curriculum not found")
+
+    return crud.get_student_curriculum_nodes(db, student_curriculum)
+
+
+@app.get(
+    "/admin/students/{student_id}/curriculums",
+    response_model=list[schemas.CurriculumListItem],
+    tags=["Admin"],
+)
+def admin_student_curriculums(student_id: int, db: Session = Depends(get_db)):
+    student = crud.get_student_by_id(db, student_id)
+    if student is None:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    return crud.list_student_curriculums(db, student_id)
+
+
+@app.get(
+    "/admin/students/{student_id}/curriculums/{student_curriculum_id}",
+    response_model=schemas.CurriculumListItem,
+    tags=["Admin"],
+)
+def admin_student_curriculum_detail(
+    student_id: int,
+    student_curriculum_id: int,
+    db: Session = Depends(get_db),
+):
+    student = crud.get_student_by_id(db, student_id)
+    if student is None:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    student_curriculum = crud.get_student_curriculum(db, student_curriculum_id)
+    if student_curriculum is None or student_curriculum.student_id != student_id:
+        raise HTTPException(status_code=404, detail="Curriculum not found")
+
+    return crud.get_student_curriculum_summary(db, student_curriculum)
+
+
+@app.get(
+    "/admin/students/{student_id}/curriculums/{student_curriculum_id}/nodes",
+    response_model=schemas.CurriculumNodesResponse,
+    tags=["Admin"],
+)
+def admin_student_curriculum_nodes(
+    student_id: int,
+    student_curriculum_id: int,
+    db: Session = Depends(get_db),
+):
+    student = crud.get_student_by_id(db, student_id)
+    if student is None:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    student_curriculum = crud.get_student_curriculum(db, student_curriculum_id)
+    if student_curriculum is None or student_curriculum.student_id != student_id:
+        raise HTTPException(status_code=404, detail="Curriculum not found")
+
+    return crud.get_student_curriculum_nodes(db, student_curriculum)
+
+
 @app.post("/auth/admin-login", response_model=schemas.AdminLoginResponse, tags=["Admin"])
 def admin_login(payload: schemas.AdminLoginRequest, db: Session = Depends(get_db)):
     admin = crud.get_admin_by_username(db, payload.username)
@@ -797,7 +892,7 @@ def admin_student_homework(
     student = crud.get_student_by_id(db, student_id)
     if student is None:
         raise HTTPException(status_code=404, detail="Student not found")
-    target_date = date or crud.date.today()
+    target_date = date or get_study_date()
     return crud.get_admin_student_homework(db, student_id, target_date)
 
 

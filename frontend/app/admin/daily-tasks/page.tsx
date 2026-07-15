@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AdminBottomNav } from "@/components/admin-bottom-nav";
 import { ApiError, apiFetch } from "@/lib/api";
+import { getStudyDate } from "@/lib/study-date";
 import { getAdmin } from "@/lib/storage";
 import { AdminStudentSummary, TextbookSeriesItem } from "@/lib/types";
 
@@ -1200,7 +1201,7 @@ function AutoAssignmentPlanManager({
 
 export default function AdminDailyTasksPage() {
   const router = useRouter();
-  const today = useMemo(() => toLocalDateKey(new Date()), []);
+  const today = useMemo(() => getStudyDate(), []);
   const [students, setStudents] = useState<AdminStudentSummary[]>([]);
   const [catalogTextbooks, setCatalogTextbooks] = useState<TextbookOption[]>([]);
   const [selectedStudentId, setSelectedStudentId] = useState("");

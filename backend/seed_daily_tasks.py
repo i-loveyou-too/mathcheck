@@ -1,8 +1,7 @@
-from datetime import date
-
 from database import Base, SessionLocal, engine
 import crud
 import models  # noqa: F401
+from study_dates import get_study_date
 
 
 DAILY_TASK_SEED_DATA = [
@@ -43,7 +42,7 @@ DAILY_TASK_SEED_DATA = [
 
 
 class DailyTaskSeedPayload:
-    def __init__(self, student_id: int, task_date: date, task_data: dict):
+    def __init__(self, student_id: int, task_date, task_data: dict):
         self.student_id = student_id
         self.task_date = task_date
         for key, value in task_data.items():
@@ -53,7 +52,7 @@ class DailyTaskSeedPayload:
 def seed_daily_tasks():
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
-    task_date = date.today()
+    task_date = get_study_date()
 
     try:
         student = crud.get_student_by_id(db, 1)

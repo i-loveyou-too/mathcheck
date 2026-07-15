@@ -6,6 +6,12 @@ import { ScreenShell } from "@/components/screen-shell";
 import { StudentLogoutButton } from "@/components/student-logout-button";
 import { StudentBottomNav } from "@/components/student-bottom-nav";
 import { apiFetch } from "@/lib/api";
+import {
+  getCurrentStudyWeekStart,
+  getStudyDate,
+  getStudyDateObject,
+  parseDateKey as parseStudyDateKey,
+} from "@/lib/study-date";
 import { clearStudent, getStudent } from "@/lib/storage";
 import { STUDENT_PAGE_TITLES } from "@/lib/student-page-titles";
 import { cn } from "@/lib/utils";
@@ -137,8 +143,7 @@ function isSameLocalWeek(firstDate: Date, secondDate: Date) {
 }
 
 function parseLocalDateKey(dateKey: string) {
-  const [year, month, day] = dateKey.split("-").map(Number);
-  return new Date(year, month - 1, day);
+  return parseStudyDateKey(dateKey);
 }
 
 function getStatusLabel(status: DailyTaskStatus) {
@@ -469,7 +474,10 @@ function LectureTaskItem({
                     ? "border-[#BBF7D0] bg-[#F0FDF4]"
                     : "border-[#E5E7EB] bg-white hover:border-[#C7D2FE]",
                 )}
-                onClick={(event) => void onToggleLectureItem(task, lectureItem, event)}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void onToggleLectureItem(task, lectureItem, event);
+                }}
                 type="button"
               >
                 <span
@@ -565,7 +573,7 @@ function LectureTaskCard({
         "rounded-[24px] border border-[#D9D6FF] bg-white px-5 py-5 shadow-[0_16px_40px_rgba(109,115,255,0.08)] transition",
         task.lecture_assignment_id ? "cursor-pointer hover:border-[#C4B5FD]" : "",
       )}
-      onClick={() => onOpenLecture(task)}
+      onClick={task.lecture_assignment_id ? () => onOpenLecture(task) : undefined}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
@@ -608,7 +616,10 @@ function LectureTaskCard({
                 ? "border-[#E5E7EB] bg-[#F8FAFC] text-[#98A2B3] opacity-65"
                 : "border-[#DDD6FE] bg-white text-[#17213B] shadow-[0_4px_14px_rgba(109,115,255,0.08)] hover:border-[#C4B5FD]",
             )}
-            onClick={(event) => void onToggleLectureItem(task, lectureItem, event)}
+            onClick={(event) => {
+              event.stopPropagation();
+              void onToggleLectureItem(task, lectureItem, event);
+            }}
             type="button"
           >
             <span
@@ -756,9 +767,9 @@ function CompletedHomeworkTaskCard({
 
 export default function StudentTodayPage() {
   const router = useRouter();
-  const today = useMemo(() => startOfLocalDay(new Date()), []);
-  const todayKey = toLocalDateKey(today);
-  const initialWeekStart = useMemo(() => getLocalWeekStart(today), [today]);
+  const todayKey = useMemo(() => getStudyDate(), []);
+  const today = useMemo(() => getStudyDateObject(), []);
+  const initialWeekStart = useMemo(() => parseLocalDateKey(getCurrentStudyWeekStart()), []);
   const [currentWeekStart, setCurrentWeekStart] = useState(initialWeekStart);
   const currentWeekStartKey = toLocalDateKey(currentWeekStart);
   const fallbackWeekDays = useMemo(() => getWeekDays(currentWeekStart), [currentWeekStart]);

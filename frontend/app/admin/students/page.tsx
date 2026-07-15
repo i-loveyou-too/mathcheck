@@ -11,6 +11,7 @@ import {
   AdminStudentCardProgress,
   loadAdminStudentCardProgress,
 } from "@/lib/admin-student-progress";
+import { getStudyDate } from "@/lib/study-date";
 import { getAdmin } from "@/lib/storage";
 import { AdminStudentSummary } from "@/lib/types";
 
@@ -88,7 +89,7 @@ export default function AdminStudentsPage() {
 
     void apiFetch<AdminStudentSummary[]>("/admin/students")
       .then(async (data) => {
-        const todayKey = toLocalDateKey(new Date());
+        const todayKey = getStudyDate();
         const [progressMap, homeworkData] = await Promise.all([
           loadAdminStudentCardProgress(data.map((student) => student.id)),
           apiFetch<{ date: string; students: HomeworkDashboardStudent[] }>(

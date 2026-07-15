@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { ScreenShell } from "@/components/screen-shell";
 import { StudentBottomNav } from "@/components/student-bottom-nav";
 import { apiFetch } from "@/lib/api";
+import { getStudyDate, getStudyDateObject } from "@/lib/study-date";
 import { getStudent } from "@/lib/storage";
 import { STUDENT_PAGE_TITLES } from "@/lib/student-page-titles";
 import { cn } from "@/lib/utils";
@@ -65,8 +66,8 @@ function getMonthGridDays(year: number, month: number, trackerDays: TrackerDay[]
 
 export default function StudentTrackerPage() {
   const router = useRouter();
-  const today = useMemo(() => new Date(), []);
-  const todayKey = toLocalDateKey(today);
+  const today = useMemo(() => getStudyDateObject(), []);
+  const todayKey = useMemo(() => getStudyDate(), []);
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth() + 1);
   const [tracker, setTracker] = useState<AchievementTrackerResponse | null>(null);

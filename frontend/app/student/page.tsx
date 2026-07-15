@@ -8,6 +8,7 @@ import { ScreenShell } from "@/components/screen-shell";
 import { StudentLogoutButton } from "@/components/student-logout-button";
 import { StudentBottomNav } from "@/components/student-bottom-nav";
 import { apiFetch } from "@/lib/api";
+import { getCurrentStudyWeekStart, getStudyDate } from "@/lib/study-date";
 import { clearStudent, getStudent } from "@/lib/storage";
 import { StoredStudent, StudentDashboardProgressSummary } from "@/lib/types";
 
@@ -187,8 +188,7 @@ export default function StudentDashboardPage() {
     setStudent(storedStudent);
 
     const load = async () => {
-      const today = new Date();
-      const weekStart = toLocalDateKey(getLocalWeekStart(today));
+      const weekStart = getCurrentStudyWeekStart();
 
       try {
         const [summaryResult, weeklyResult] = await Promise.allSettled([
@@ -236,7 +236,7 @@ export default function StudentDashboardPage() {
   const questionTasks = summary?.overall.partial ?? 0;
   const ddayInfo = getDdayInfo("2026-09-02");
   const examMessage = examMessages[Math.abs(ddayInfo.daysRemaining) % examMessages.length];
-  const todayKey = toLocalDateKey(new Date());
+  const todayKey = getStudyDate();
   const todayTaskDay = weeklyTasks?.days.find((day) => day.date === todayKey) ?? null;
   const todayTasks = todayTaskDay?.tasks ?? [];
   const todayTaskSummary = todayTaskDay?.summary ?? {

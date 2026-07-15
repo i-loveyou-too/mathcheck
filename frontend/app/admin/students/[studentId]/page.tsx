@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { AdminBottomNav } from "@/components/admin-bottom-nav";
 import { ProgressBar } from "@/components/progress-bar";
 import { apiFetch } from "@/lib/api";
+import { getCurrentStudyWeekStart, getStudyDate } from "@/lib/study-date";
 import { getAdmin } from "@/lib/storage";
 
 type StudentBasicInfo = { name: string; grade: string };
@@ -244,7 +245,7 @@ export default function AdminStudentDetailPage() {
   const [itemProgress, setItemProgress] = useState<ItemProgressSummary | null>(null);
   const [loadingInit, setLoadingInit] = useState(true);
 
-  const [weekStart, setWeekStart] = useState(() => toLocalDateKey(getMondayOf(new Date())));
+  const [weekStart, setWeekStart] = useState(() => getCurrentStudyWeekStart());
   const [weeklyData, setWeeklyData] = useState<WeeklyTasksResponse | null>(null);
   const [loadingWeekly, setLoadingWeekly] = useState(false);
   const [homeworkData, setHomeworkData] = useState<StudentHomeworkResponse | null>(null);
@@ -321,7 +322,7 @@ export default function AdminStudentDetailPage() {
   useEffect(() => {
     if (!params.studentId) return;
 
-    const todayKey = toLocalDateKey(new Date());
+    const todayKey = getStudyDate();
     setLoadingHomework(true);
     setHomeworkError("");
 
@@ -493,7 +494,7 @@ export default function AdminStudentDetailPage() {
                     <div className="mt-5 space-y-4">
                       {weeklyData.days.map((day) => {
                         const hasTasks = day.tasks.length > 0;
-                        const isToday = day.date === toLocalDateKey(new Date());
+                        const isToday = day.date === getStudyDate();
 
                         return (
                           <div

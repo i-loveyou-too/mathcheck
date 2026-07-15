@@ -1,14 +1,24 @@
 import math
 from calendar import monthrange
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, datetime, timedelta
 from types import SimpleNamespace
 from typing import Optional
 
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, selectinload
+from study_dates import (
+    DEFAULT_STUDY_TIMEZONE,
+    get_study_date,
+    get_study_day_bounds,
+    get_study_timezone,
+    to_study_datetime,
+)
 
 from models import (
     Admin,
+    CurriculumEdge,
+    CurriculumNode,
+    CurriculumTemplate,
     HomeworkAssignment,
     LectureAssignment,
     MathDailyTask,
@@ -22,6 +32,8 @@ from models import (
     MathTextbookSubject,
     Progress,
     Student,
+    StudentCurriculum,
+    StudentCurriculumNode,
     Subject,
     Task,
     Unit,
@@ -39,7 +51,7 @@ TEXTBOOK_PROGRESS_CONFIG = {
 ITEM_PROGRESS_STATUSES = {"not_started", "partial", "done"}
 DAILY_TASK_STATUSES = {"todo", "in_progress", "done"}
 STUDENT_PROGRESS_SUMMARY_SUBJECTS = ["수1", "수2", "확률과 통계"]
-KST = timezone(timedelta(hours=9))
+KST = get_study_timezone(DEFAULT_STUDY_TIMEZONE)
 
 # Canonical multi-select subject tags for the newer `subjects` (plural) system.
 # Kept distinct from the legacy single-value `수1`/`수2` used by student routing/pages.
@@ -110,15 +122,11 @@ def now_kst() -> datetime:
 def to_kst_datetime(value: Optional[datetime]) -> Optional[datetime]:
     if value is None:
         return None
-    if value.tzinfo is None:
-        return value.replace(tzinfo=KST)
-    return value.astimezone(KST)
+    return to_study_datetime(value, DEFAULT_STUDY_TIMEZONE)
 
 
 def get_task_completion_window(task_date: date) -> tuple[datetime, datetime]:
-    day_start = datetime.combine(task_date, time.min, tzinfo=KST)
-    deadline = day_start + timedelta(days=1, hours=5)
-    return day_start, deadline
+    return get_study_day_bounds(task_date)
 
 
 def is_completed_within_deadline(
@@ -842,7 +850,7 @@ def get_student_achievement_tracker(
         else 0
     )
 
-    today = today or date.today()
+    today = today or get_study_date()
     streak_end = today
     streak_tasks = (
         db.query(MathDailyTask)
@@ -2985,3 +2993,181 @@ def get_textbooks_for_student_catalog(db: Session, student_id: int) -> dict:
         )
 
     return {"textbooks": result}
+
+
+CURRICULUM_NODE_TYPES = {"textbook", "lecture", "exam", "review", "custom"}
+CURRICULUM_STATUSES = {"planned", "in_progress", "completed", "paused", "skipped"}
+
+
+def get_student_curriculum(db: Session, student_curriculum_id: int) -> Optional[StudentCurriculum]:
+    return (
+        db.query(StudentCurriculum)
+        .options(selectinload(StudentCurriculum.curriculum))
+        .filter(StudentCurriculum.id == student_curriculum_id)
+        .first()
+    )
+
+
+def _curriculum_status_counts(db: Session, student_curriculum_id: int, curriculum_id: int) -> dict:
+    """Per-node status is only recorded when a student has touched a node (row in
+    StudentCurriculumNode); a node with no row is "planned" by default — this mirrors the
+    template/per-student split (curriculum_nodes vs student_curriculum_nodes) rather than
+    requiring a row to be pre-created for every node at enrollment time.
+    """
+    node_ids = [
+        row[0]
+        for row in db.query(CurriculumNode.id)
+        .filter(CurriculumNode.curriculum_id == curriculum_id, CurriculumNode.is_active.is_(True))
+        .all()
+    ]
+    if not node_ids:
+        return {"in_progress_count": 0, "completed_count": 0, "planned_count": 0}
+
+    status_rows = (
+        db.query(StudentCurriculumNode.curriculum_node_id, StudentCurriculumNode.status)
+        .filter(
+            StudentCurriculumNode.student_curriculum_id == student_curriculum_id,
+            StudentCurriculumNode.curriculum_node_id.in_(node_ids),
+        )
+        .all()
+    )
+    status_by_node = dict(status_rows)
+
+    in_progress = completed = planned = 0
+    for node_id in node_ids:
+        status = status_by_node.get(node_id, "planned")
+        if status == "completed":
+            completed += 1
+        elif status == "in_progress":
+            in_progress += 1
+        elif status in ("planned", "paused"):
+            planned += 1
+        # "skipped" nodes are deliberately excluded from all three buckets.
+
+    return {"in_progress_count": in_progress, "completed_count": completed, "planned_count": planned}
+
+
+def list_student_curriculums(db: Session, student_id: int) -> list[dict]:
+    rows = (
+        db.query(StudentCurriculum)
+        .options(selectinload(StudentCurriculum.curriculum))
+        .filter(StudentCurriculum.student_id == student_id)
+        .all()
+    )
+
+    result = []
+    for row in rows:
+        curriculum = row.curriculum
+        if curriculum is None or not curriculum.is_active:
+            continue
+        counts = _curriculum_status_counts(db, row.id, curriculum.id)
+        result.append(
+            {
+                "student_curriculum_id": row.id,
+                "curriculum_id": curriculum.id,
+                "subject": curriculum.subject,
+                "title": curriculum.title,
+                "description": curriculum.description,
+                **counts,
+            }
+        )
+
+    result.sort(key=lambda item: item["curriculum_id"])
+    return result
+
+
+def get_student_curriculum_summary(db: Session, student_curriculum: StudentCurriculum) -> dict:
+    curriculum = student_curriculum.curriculum
+    counts = _curriculum_status_counts(db, student_curriculum.id, curriculum.id)
+    return {
+        "student_curriculum_id": student_curriculum.id,
+        "curriculum_id": curriculum.id,
+        "subject": curriculum.subject,
+        "title": curriculum.title,
+        "description": curriculum.description,
+        **counts,
+    }
+
+
+def get_student_curriculum_nodes(db: Session, student_curriculum: StudentCurriculum) -> dict:
+    curriculum = student_curriculum.curriculum
+
+    nodes = (
+        db.query(CurriculumNode)
+        .filter(CurriculumNode.curriculum_id == curriculum.id, CurriculumNode.is_active.is_(True))
+        .order_by(CurriculumNode.group_order, CurriculumNode.order_index, CurriculumNode.id)
+        .all()
+    )
+    node_ids = [node.id for node in nodes]
+
+    edges = (
+        db.query(CurriculumEdge)
+        .filter(CurriculumEdge.curriculum_id == curriculum.id)
+        .all()
+    )
+
+    status_rows = (
+        db.query(StudentCurriculumNode)
+        .filter(
+            StudentCurriculumNode.student_curriculum_id == student_curriculum.id,
+            StudentCurriculumNode.curriculum_node_id.in_(node_ids),
+        )
+        .all()
+        if node_ids
+        else []
+    )
+    status_by_node = {row.curriculum_node_id: row for row in status_rows}
+
+    textbook_ids = {node.textbook_id for node in nodes if node.textbook_id is not None}
+    textbooks_by_id = (
+        {t.id: t for t in db.query(MathTextbook).filter(MathTextbook.id.in_(textbook_ids)).all()}
+        if textbook_ids
+        else {}
+    )
+
+    groups: dict[str, dict] = {}
+    for node in nodes:
+        status_row = status_by_node.get(node.id)
+        status = status_row.status if status_row is not None else "planned"
+
+        link_url = None
+        if node.node_type == "textbook" and node.textbook_id is not None:
+            textbook = textbooks_by_id.get(node.textbook_id)
+            key = resolve_textbook_key(textbook) if textbook is not None else None
+            if key:
+                link_url = f"/student/textbooks/{key}"
+        elif node.node_type == "lecture" and node.lecture_assignment_id is not None:
+            link_url = f"/student/lectures/{node.lecture_assignment_id}"
+
+        node_dict = {
+            "id": node.id,
+            "title": node.title,
+            "node_type": node.node_type,
+            "group_name": node.group_name,
+            "group_order": node.group_order,
+            "description": node.description,
+            "position_x": node.position_x,
+            "position_y": node.position_y,
+            "order_index": node.order_index,
+            "status": status,
+            "started_at": status_row.started_at if status_row is not None else None,
+            "completed_at": status_row.completed_at if status_row is not None else None,
+            "memo": status_row.memo if status_row is not None else None,
+            "link_url": link_url,
+        }
+
+        group = groups.setdefault(
+            node.group_name, {"name": node.group_name, "order": node.group_order, "nodes": []}
+        )
+        group["nodes"].append(node_dict)
+
+    ordered_groups = sorted(groups.values(), key=lambda g: g["order"])
+    for index, group in enumerate(ordered_groups, start=1):
+        group["group_number"] = index
+
+    serialized_edges = [
+        {"from_node_id": edge.from_node_id, "to_node_id": edge.to_node_id, "edge_type": edge.edge_type}
+        for edge in edges
+    ]
+
+    return {"groups": ordered_groups, "edges": serialized_edges}

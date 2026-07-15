@@ -7,6 +7,7 @@ import { useParams, useRouter } from "next/navigation";
 import { ScreenShell } from "@/components/screen-shell";
 import { StudentBottomNav } from "@/components/student-bottom-nav";
 import { apiFetch } from "@/lib/api";
+import { getStudyDate } from "@/lib/study-date";
 import { getStudent } from "@/lib/storage";
 import { cn } from "@/lib/utils";
 
@@ -113,7 +114,7 @@ function StatTile({ icon, label, value }: { icon: string; label: string; value: 
 export default function StudentLectureDetailPage() {
   const params = useParams<{ assignmentId: string }>();
   const router = useRouter();
-  const today = toLocalDateKey(new Date());
+  const today = getStudyDate();
 
   const [studentId, setStudentId] = useState<number | null>(null);
   const [detail, setDetail] = useState<LectureAssignmentDetailResponse | null>(null);

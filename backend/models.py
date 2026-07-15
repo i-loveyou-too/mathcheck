@@ -363,3 +363,89 @@ class MathDailyTask(Base):
     homework_assignment = relationship("HomeworkAssignment")
     lecture_assignment = relationship("LectureAssignment")
     textbook_section = relationship("MathTextbookSection")
+
+
+class CurriculumTemplate(Base):
+    __tablename__ = "curriculum_templates"
+
+    id = Column(Integer, primary_key=True, index=True)
+    subject = Column(String(50), nullable=False)
+    title = Column(String(200), nullable=False)
+    description = Column(String(300), nullable=True)
+    order_index = Column(Integer, nullable=False, default=0)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    nodes = relationship(
+        "CurriculumNode",
+        back_populates="curriculum",
+        cascade="all, delete-orphan",
+    )
+
+
+class CurriculumNode(Base):
+    __tablename__ = "curriculum_nodes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    curriculum_id = Column(Integer, ForeignKey("curriculum_templates.id"), nullable=False, index=True)
+    title = Column(String(200), nullable=False)
+    node_type = Column(String(20), nullable=False)
+    group_name = Column(String(100), nullable=False)
+    group_order = Column(Integer, nullable=False, default=0)
+    textbook_id = Column(Integer, ForeignKey("math_textbooks.id"), nullable=True)
+    lecture_assignment_id = Column(Integer, ForeignKey("math_lecture_assignments.id"), nullable=True)
+    description = Column(String(300), nullable=True)
+    position_x = Column(Integer, nullable=False, default=0)
+    position_y = Column(Integer, nullable=False, default=0)
+    order_index = Column(Integer, nullable=False, default=0)
+    is_active = Column(Boolean, nullable=False, default=True)
+
+    curriculum = relationship("CurriculumTemplate", back_populates="nodes")
+    textbook = relationship("MathTextbook")
+    lecture_assignment = relationship("LectureAssignment")
+
+
+class CurriculumEdge(Base):
+    __tablename__ = "curriculum_edges"
+
+    id = Column(Integer, primary_key=True, index=True)
+    curriculum_id = Column(Integer, ForeignKey("curriculum_templates.id"), nullable=False, index=True)
+    from_node_id = Column(Integer, ForeignKey("curriculum_nodes.id"), nullable=False)
+    to_node_id = Column(Integer, ForeignKey("curriculum_nodes.id"), nullable=False)
+    edge_type = Column(String(20), nullable=False, default="sequence")
+
+
+class StudentCurriculum(Base):
+    __tablename__ = "student_curriculums"
+    __table_args__ = (
+        UniqueConstraint("student_id", "curriculum_id", name="uq_student_curriculums_student_curriculum"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("math_students.id"), nullable=False, index=True)
+    curriculum_id = Column(Integer, ForeignKey("curriculum_templates.id"), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    student = relationship("Student")
+    curriculum = relationship("CurriculumTemplate")
+
+
+class StudentCurriculumNode(Base):
+    __tablename__ = "student_curriculum_nodes"
+    __table_args__ = (
+        UniqueConstraint(
+            "student_curriculum_id", "curriculum_node_id", name="uq_student_curriculum_nodes_unique"
+        ),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    student_curriculum_id = Column(Integer, ForeignKey("student_curriculums.id"), nullable=False, index=True)
+    curriculum_node_id = Column(Integer, ForeignKey("curriculum_nodes.id"), nullable=False, index=True)
+    status = Column(String(20), nullable=False, default="planned")
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    memo = Column(String(300), nullable=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    student_curriculum = relationship("StudentCurriculum")
+    curriculum_node = relationship("CurriculumNode")

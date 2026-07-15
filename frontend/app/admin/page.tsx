@@ -7,6 +7,7 @@ import { AdminBottomNav } from "@/components/admin-bottom-nav";
 import { ProgressBar } from "@/components/progress-bar";
 import { apiFetch } from "@/lib/api";
 import { AdminStudentCardProgress, loadAdminStudentCardProgress } from "@/lib/admin-student-progress";
+import { getCurrentStudyWeekStart } from "@/lib/study-date";
 import { getAdmin } from "@/lib/storage";
 import { AdminStudentSummary, StudentCardSubjectProgress } from "@/lib/types";
 
@@ -104,7 +105,7 @@ export default function AdminDashboardPage() {
       try {
         const baseStudents = await apiFetch<AdminStudentSummary[]>("/admin/students");
         const progressMap = await loadAdminStudentCardProgress(baseStudents.map((student) => student.id));
-        const weekStart = toLocalDateKey(getMondayOf(new Date()));
+        const weekStart = getCurrentStudyWeekStart();
 
         const weeklyEntries = await Promise.all(
           baseStudents.map(async (student) => {
