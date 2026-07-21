@@ -423,6 +423,7 @@ class HomeworkAssignmentCreateResponse(BaseModel):
 class HomeworkAssignmentListItem(HomeworkAssignmentResponse):
     student_name: Optional[str] = None
     textbook_title: Optional[str] = None
+    last_protected_task_date: Optional[date] = None
 
 
 class HomeworkAssignmentUpdateRequest(BaseModel):
@@ -465,6 +466,7 @@ class HomeworkAssignmentDeleteResponse(BaseModel):
 
 class LectureAssignmentListItem(LectureAssignmentResponse):
     student_name: Optional[str] = None
+    last_protected_task_date: Optional[date] = None
 
 
 class LectureAssignmentUpdateRequest(BaseModel):
@@ -715,6 +717,10 @@ class TextbookUpdateRequest(BaseModel):
     is_published: Optional[bool] = None
     is_active: Optional[bool] = None
     order_index: Optional[int] = None
+    # Only applied for structure_type="none" textbooks (flat 1..N item list) — see
+    # crud.sync_textbook_item_count(). Ignored for section-structured textbooks, where the
+    # section union (via PATCH /admin/textbooks/{id}/sections) governs the item list instead.
+    item_count: Optional[int] = None
 
 
 class TextbookListItem(BaseModel):
@@ -816,6 +822,9 @@ class CurriculumNodeResponse(BaseModel):
     completed_at: Optional[datetime] = None
     memo: Optional[str] = None
     link_url: Optional[str] = None
+    # Additive fields — existing consumers that don't read them are unaffected.
+    is_unlocked: bool = True
+    lecture_unavailable: bool = False
 
 
 class CurriculumGroupResponse(BaseModel):
@@ -834,3 +843,108 @@ class CurriculumEdgeResponse(BaseModel):
 class CurriculumNodesResponse(BaseModel):
     groups: list[CurriculumGroupResponse]
     edges: list[CurriculumEdgeResponse]
+
+
+# ---- Admin curriculum management (create/edit/assign) ----
+
+
+class CurriculumCreateRequest(BaseModel):
+    subject: str
+    title: str
+    description: Optional[str] = None
+    order_index: int = 0
+    # If given, the new template is immediately assigned to this student (the primary admin
+    # flow: student selected first, then "새 커리큘럼 만들기"). Omit to create an unassigned
+    # template for later assignment.
+    student_id: Optional[int] = None
+
+
+class CurriculumUpdateRequest(BaseModel):
+    subject: Optional[str] = None
+    title: Optional[str] = None
+    description: Optional[str] = None
+    order_index: Optional[int] = None
+    is_active: Optional[bool] = None
+
+
+class CurriculumAdminItem(BaseModel):
+    id: int
+    subject: str
+    title: str
+    description: Optional[str] = None
+    order_index: int
+    is_active: bool
+
+
+class CurriculumNodeCreateRequest(BaseModel):
+    title: str
+    node_type: str
+    group_name: str
+    group_order: int = 0
+    order_index: int = 0
+    textbook_id: Optional[int] = None
+    lecture_assignment_id: Optional[int] = None
+    description: Optional[str] = None
+    # Required (and checked against lecture_assignment.student_id) when node_type == "lecture".
+    student_id: Optional[int] = None
+    prerequisite_node_ids: list[int] = []
+
+
+class CurriculumNodeUpdateRequest(BaseModel):
+    title: Optional[str] = None
+    node_type: Optional[str] = None
+    group_name: Optional[str] = None
+    group_order: Optional[int] = None
+    order_index: Optional[int] = None
+    textbook_id: Optional[int] = None
+    lecture_assignment_id: Optional[int] = None
+    description: Optional[str] = None
+    student_id: Optional[int] = None
+    is_active: Optional[bool] = None
+
+
+class CurriculumNodeAdminResponse(BaseModel):
+    id: int
+    title: str
+    node_type: str
+    group_name: str
+    group_order: int
+    order_index: int
+    textbook_id: Optional[int] = None
+    lecture_assignment_id: Optional[int] = None
+    description: Optional[str] = None
+    is_active: bool
+    prerequisite_node_ids: list[int] = []
+
+
+class CurriculumEdgeCreateRequest(BaseModel):
+    from_node_id: int
+    to_node_id: int
+    edge_type: str = "sequence"
+
+
+class CurriculumEdgeAdminResponse(BaseModel):
+    id: int
+    from_node_id: int
+    to_node_id: int
+    edge_type: str
+
+
+class CurriculumAdminDetailResponse(BaseModel):
+    id: int
+    subject: str
+    title: str
+    description: Optional[str] = None
+    order_index: int
+    is_active: bool
+    nodes: list[CurriculumNodeAdminResponse]
+    edges: list[CurriculumEdgeAdminResponse]
+
+
+class StudentCurriculumAssignRequest(BaseModel):
+    curriculum_id: int
+
+
+class StudentCurriculumNodeStatusUpdateRequest(BaseModel):
+    status: str
+    memo: Optional[str] = None

@@ -37,6 +37,23 @@ def ensure_textbook_key_column():
         )
 
 
+def ensure_student_curriculum_is_active_column():
+    inspector = inspect(engine)
+    if not inspector.has_table("student_curriculums"):
+        return
+
+    column_names = {column["name"] for column in inspector.get_columns("student_curriculums")}
+
+    with engine.begin() as connection:
+        if "is_active" not in column_names:
+            connection.execute(
+                text(
+                    "ALTER TABLE student_curriculums "
+                    "ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT TRUE"
+                )
+            )
+
+
 def ensure_daily_task_completed_at_column():
     inspector = inspect(engine)
     if not inspector.has_table("math_daily_tasks"):
@@ -185,6 +202,7 @@ async def lifespan(app: FastAPI):
     # Create tables automatically on startup so the app is easy to run locally.
     Base.metadata.create_all(bind=engine)
     ensure_textbook_key_column()
+    ensure_student_curriculum_is_active_column()
     ensure_daily_task_completed_at_column()
     ensure_textbook_is_student_only_column()
     ensure_textbook_structure_type_column()
@@ -722,7 +740,11 @@ def student_curriculums(student_id: int, db: Session = Depends(get_db)):
 )
 def student_curriculum_detail(student_curriculum_id: int, student_id: int, db: Session = Depends(get_db)):
     student_curriculum = crud.get_student_curriculum(db, student_curriculum_id)
-    if student_curriculum is None or student_curriculum.student_id != student_id:
+    if (
+        student_curriculum is None
+        or student_curriculum.student_id != student_id
+        or not student_curriculum.is_active
+    ):
         raise HTTPException(status_code=404, detail="Curriculum not found")
 
     return crud.get_student_curriculum_summary(db, student_curriculum)
@@ -735,7 +757,11 @@ def student_curriculum_detail(student_curriculum_id: int, student_id: int, db: S
 )
 def student_curriculum_nodes(student_curriculum_id: int, student_id: int, db: Session = Depends(get_db)):
     student_curriculum = crud.get_student_curriculum(db, student_curriculum_id)
-    if student_curriculum is None or student_curriculum.student_id != student_id:
+    if (
+        student_curriculum is None
+        or student_curriculum.student_id != student_id
+        or not student_curriculum.is_active
+    ):
         raise HTTPException(status_code=404, detail="Curriculum not found")
 
     return crud.get_student_curriculum_nodes(db, student_curriculum)
@@ -794,6 +820,257 @@ def admin_student_curriculum_nodes(
         raise HTTPException(status_code=404, detail="Curriculum not found")
 
     return crud.get_student_curriculum_nodes(db, student_curriculum)
+
+
+# ---- Admin curriculum management (templates / nodes / edges / assignment / manual status) ----
+
+
+@app.get(
+    "/admin/curriculums",
+    response_model=list[schemas.CurriculumAdminItem],
+    tags=["Admin"],
+)
+def admin_list_curriculums(db: Session = Depends(get_db)):
+    return crud.list_curriculum_templates(db)
+
+
+@app.post(
+    "/admin/curriculums",
+    response_model=schemas.CurriculumAdminItem,
+    tags=["Admin"],
+)
+def admin_create_curriculum(payload: schemas.CurriculumCreateRequest, db: Session = Depends(get_db)):
+    try:
+        curriculum = crud.create_curriculum_template(db, payload)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {
+        "id": curriculum.id,
+        "subject": curriculum.subject,
+        "title": curriculum.title,
+        "description": curriculum.description,
+        "order_index": curriculum.order_index,
+        "is_active": curriculum.is_active,
+    }
+
+
+@app.get(
+    "/admin/curriculums/{curriculum_id}",
+    response_model=schemas.CurriculumAdminDetailResponse,
+    tags=["Admin"],
+)
+def admin_curriculum_detail(curriculum_id: int, db: Session = Depends(get_db)):
+    result = crud.get_curriculum_template_detail(db, curriculum_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Curriculum not found")
+    return result
+
+
+@app.patch(
+    "/admin/curriculums/{curriculum_id}",
+    response_model=schemas.CurriculumAdminItem,
+    tags=["Admin"],
+)
+def admin_update_curriculum(
+    curriculum_id: int,
+    payload: schemas.CurriculumUpdateRequest,
+    db: Session = Depends(get_db),
+):
+    try:
+        curriculum = crud.update_curriculum_template(db, curriculum_id, payload)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if curriculum is None:
+        raise HTTPException(status_code=404, detail="Curriculum not found")
+    return {
+        "id": curriculum.id,
+        "subject": curriculum.subject,
+        "title": curriculum.title,
+        "description": curriculum.description,
+        "order_index": curriculum.order_index,
+        "is_active": curriculum.is_active,
+    }
+
+
+@app.delete(
+    "/admin/curriculums/{curriculum_id}",
+    response_model=schemas.DeleteResponse,
+    tags=["Admin"],
+)
+def admin_delete_curriculum(curriculum_id: int, db: Session = Depends(get_db)):
+    deleted = crud.delete_curriculum_template(db, curriculum_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Curriculum not found")
+    return {"ok": True}
+
+
+@app.post(
+    "/admin/curriculums/{curriculum_id}/nodes",
+    response_model=schemas.CurriculumNodeAdminResponse,
+    tags=["Admin"],
+)
+def admin_create_curriculum_node(
+    curriculum_id: int,
+    payload: schemas.CurriculumNodeCreateRequest,
+    db: Session = Depends(get_db),
+):
+    try:
+        node = crud.create_curriculum_node(db, curriculum_id, payload)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    detail = crud.get_curriculum_template_detail(db, curriculum_id)
+    node_out = next(n for n in detail["nodes"] if n["id"] == node.id)
+    return node_out
+
+
+@app.patch(
+    "/admin/curriculums/{curriculum_id}/nodes/{node_id}",
+    response_model=schemas.CurriculumNodeAdminResponse,
+    tags=["Admin"],
+)
+def admin_update_curriculum_node(
+    curriculum_id: int,
+    node_id: int,
+    payload: schemas.CurriculumNodeUpdateRequest,
+    db: Session = Depends(get_db),
+):
+    node = crud.get_curriculum_template_detail(db, curriculum_id)
+    if node is None:
+        raise HTTPException(status_code=404, detail="Curriculum not found")
+    try:
+        updated = crud.update_curriculum_node(db, node_id, payload)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if updated is None or updated.curriculum_id != curriculum_id:
+        raise HTTPException(status_code=404, detail="Node not found")
+    detail = crud.get_curriculum_template_detail(db, curriculum_id)
+    node_out = next((n for n in detail["nodes"] if n["id"] == node_id), None)
+    if node_out is None:
+        # Node was soft-deleted by this same update (is_active=False) — return its last known
+        # shape directly instead of pretending it's still in the active list.
+        return {
+            "id": updated.id,
+            "title": updated.title,
+            "node_type": updated.node_type,
+            "group_name": updated.group_name,
+            "group_order": updated.group_order,
+            "order_index": updated.order_index,
+            "textbook_id": updated.textbook_id,
+            "lecture_assignment_id": updated.lecture_assignment_id,
+            "description": updated.description,
+            "is_active": updated.is_active,
+            "prerequisite_node_ids": [],
+        }
+    return node_out
+
+
+@app.delete(
+    "/admin/curriculums/{curriculum_id}/nodes/{node_id}",
+    response_model=schemas.DeleteResponse,
+    tags=["Admin"],
+)
+def admin_delete_curriculum_node(curriculum_id: int, node_id: int, db: Session = Depends(get_db)):
+    node = db.query(models.CurriculumNode).filter(
+        models.CurriculumNode.id == node_id, models.CurriculumNode.curriculum_id == curriculum_id
+    ).first()
+    if node is None:
+        raise HTTPException(status_code=404, detail="Node not found")
+    crud.delete_curriculum_node(db, node_id)
+    return {"ok": True}
+
+
+@app.post(
+    "/admin/curriculums/{curriculum_id}/edges",
+    response_model=schemas.CurriculumEdgeAdminResponse,
+    tags=["Admin"],
+)
+def admin_create_curriculum_edge(
+    curriculum_id: int,
+    payload: schemas.CurriculumEdgeCreateRequest,
+    db: Session = Depends(get_db),
+):
+    try:
+        edge = crud.create_curriculum_edge(db, curriculum_id, payload)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"id": edge.id, "from_node_id": edge.from_node_id, "to_node_id": edge.to_node_id, "edge_type": edge.edge_type}
+
+
+@app.delete(
+    "/admin/curriculums/{curriculum_id}/edges/{edge_id}",
+    response_model=schemas.DeleteResponse,
+    tags=["Admin"],
+)
+def admin_delete_curriculum_edge(curriculum_id: int, edge_id: int, db: Session = Depends(get_db)):
+    edge = db.query(models.CurriculumEdge).filter(
+        models.CurriculumEdge.id == edge_id, models.CurriculumEdge.curriculum_id == curriculum_id
+    ).first()
+    if edge is None:
+        raise HTTPException(status_code=404, detail="Edge not found")
+    crud.delete_curriculum_edge(db, edge_id)
+    return {"ok": True}
+
+
+@app.post(
+    "/admin/students/{student_id}/curriculums",
+    response_model=schemas.CurriculumListItem,
+    tags=["Admin"],
+)
+def admin_assign_curriculum(
+    student_id: int,
+    payload: schemas.StudentCurriculumAssignRequest,
+    db: Session = Depends(get_db),
+):
+    try:
+        student_curriculum = crud.assign_curriculum_to_student(db, student_id, payload.curriculum_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return crud.get_student_curriculum_summary(db, student_curriculum)
+
+
+@app.delete(
+    "/admin/students/{student_id}/curriculums/{student_curriculum_id}",
+    response_model=schemas.DeleteResponse,
+    tags=["Admin"],
+)
+def admin_unassign_curriculum(
+    student_id: int,
+    student_curriculum_id: int,
+    db: Session = Depends(get_db),
+):
+    ok = crud.unassign_curriculum_from_student(db, student_id, student_curriculum_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Curriculum assignment not found")
+    return {"ok": True}
+
+
+@app.patch(
+    "/admin/students/{student_id}/curriculums/{student_curriculum_id}/nodes/{node_id}/status",
+    response_model=schemas.CurriculumNodesResponse,
+    tags=["Admin"],
+)
+def admin_update_curriculum_node_status(
+    student_id: int,
+    student_curriculum_id: int,
+    node_id: int,
+    payload: schemas.StudentCurriculumNodeStatusUpdateRequest,
+    db: Session = Depends(get_db),
+):
+    student_curriculum = crud.get_student_curriculum(db, student_curriculum_id)
+    if student_curriculum is None or student_curriculum.student_id != student_id:
+        raise HTTPException(status_code=404, detail="Curriculum not found")
+
+    node = db.query(models.CurriculumNode).filter(
+        models.CurriculumNode.id == node_id,
+        models.CurriculumNode.curriculum_id == student_curriculum.curriculum_id,
+    ).first()
+    if node is None:
+        raise HTTPException(status_code=404, detail="Node not found")
+
+    try:
+        return crud.update_student_curriculum_node_status(db, student_curriculum, node, payload)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.post("/auth/admin-login", response_model=schemas.AdminLoginResponse, tags=["Admin"])

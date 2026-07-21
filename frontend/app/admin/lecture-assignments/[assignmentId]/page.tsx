@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type WheelEvent } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { AdminBottomNav } from "@/components/admin-bottom-nav";
 import { ApiError, apiFetch } from "@/lib/api";
@@ -107,7 +107,7 @@ type LectureAssignmentEditPayload = {
   subject: string;
   course_title: string;
   total_lectures: number;
-  start_lecture_no: number;
+  start_lecture_no?: number;
   lectures_per_day: number;
   weekdays: LectureWeekday[];
   due_date: string;
@@ -140,12 +140,19 @@ function formatMonthDay(dateStr: string) {
   return `${d.getMonth() + 1}월 ${d.getDate()}일 (${WEEKDAY_LABELS[d.getDay()]})`;
 }
 
-function buildLectureAssignmentPayload(editForm: EditFormState): LectureAssignmentEditPayload {
+function hasProtectedLectureTasks(detail: LectureAssignmentDetailResponse): boolean {
+  return detail.daily_tasks.some((task) => task.status !== "todo");
+}
+
+function buildLectureAssignmentPayload(editForm: EditFormState, isLocked: boolean): LectureAssignmentEditPayload {
   return {
     subject: editForm.subject.trim(),
     course_title: editForm.courseTitle.trim(),
     total_lectures: Number(editForm.totalLectures),
-    start_lecture_no: Number(editForm.startLectureNo),
+    // start_lecture_no is locked (input disabled) once protected tasks exist — the backend
+    // derives the reschedule start number itself from the last completed lecture, so omit it
+    // here rather than resend a value the UI never let the admin change.
+    ...(isLocked ? {} : { start_lecture_no: Number(editForm.startLectureNo) }),
     lectures_per_day: Number(editForm.lecturesPerDay),
     weekdays: [...editForm.weekdays],
     due_date: editForm.dueDate,
@@ -154,10 +161,27 @@ function buildLectureAssignmentPayload(editForm: EditFormState): LectureAssignme
   };
 }
 
+// A number input under the mouse cursor still responds to wheel scroll even without focus
+// intent — blurring on wheel stops the accidental value change and lets the page scroll normally.
+function blurOnWheel(event: WheelEvent<HTMLInputElement>) {
+  event.currentTarget.blur();
+}
+
 function addDaysToDateKey(dateStr: string, days: number) {
   const d = parseDateKey(dateStr);
   d.setDate(d.getDate() + days);
   return `${d.getFullYear()}-${`${d.getMonth() + 1}`.padStart(2, "0")}-${`${d.getDate()}`.padStart(2, "0")}`;
+}
+
+// Never swallow a failed save/preview: log the full status/body to console for debugging and
+// surface the HTTP status alongside the backend's detail message on screen.
+function describeApiError(context: string, err: unknown, fallback: string): string {
+  if (err instanceof ApiError) {
+    console.error(context, { status: err.status, body: err.body, message: err.message });
+    return `[${err.status}] ${err.message}`;
+  }
+  console.error(context, err);
+  return fallback;
 }
 
 function formatMonthDayTime(isoStr: string) {
@@ -283,7 +307,7 @@ export default function AdminLectureAssignmentDetailPage() {
     setEditError("");
     setPreviewLoading(true);
     try {
-      const payload = buildLectureAssignmentPayload(editForm);
+      const payload = buildLectureAssignmentPayload(editForm, hasProtectedLectureTasks(detail));
       const result = await apiFetch<LecturePreviewResponse>(
         `/admin/lecture-assignments/${detail.assignment.id}/reschedule-preview`,
         { method: "POST", body: payload },
@@ -291,7 +315,7 @@ export default function AdminLectureAssignmentDetailPage() {
       setPreviewResult(result);
       setPreviewStale(false);
     } catch (err) {
-      setEditError(err instanceof ApiError ? err.message : "미리보기를 불러오지 못했습니다.");
+      setEditError(describeApiError("[lecture reschedule-preview]", err, "미리보기를 불러오지 못했습니다."));
     } finally {
       setPreviewLoading(false);
     }
@@ -302,7 +326,7 @@ export default function AdminLectureAssignmentDetailPage() {
     setEditError("");
     setSaving(true);
     try {
-      const payload = buildLectureAssignmentPayload(editForm);
+      const payload = buildLectureAssignmentPayload(editForm, hasProtectedLectureTasks(detail));
       const result = await apiFetch<LectureAssignmentMutationResponse>(
         `/admin/lecture-assignments/${detail.assignment.id}`,
         {
@@ -315,7 +339,7 @@ export default function AdminLectureAssignmentDetailPage() {
       setEditForm(null);
       await fetchDetail();
     } catch (err) {
-      setEditError(err instanceof ApiError ? err.message : "저장에 실패했습니다. 다시 시도해주세요.");
+      setEditError(describeApiError(`[lecture PATCH /admin/lecture-assignments/${detail.assignment.id}]`, err, "저장에 실패했습니다. 다시 시도해주세요."));
     } finally {
       setSaving(false);
     }
@@ -367,6 +391,11 @@ export default function AdminLectureAssignmentDetailPage() {
   const sortedTasks = [...detail.daily_tasks].sort((a, b) => (a.task_date ?? "").localeCompare(b.task_date ?? ""));
   const todayKey = getStudyDate();
   const incompleteCount = detail.total_lectures_to_assign - detail.completed_lecture_count;
+  // Once any task is done/in_progress, start_lecture_no is locked server-side (see
+  // _plan_lecture_assignment_update) — lock the input too so a stray scroll-wheel tick or
+  // keypress on the number field can't silently change it and fail the save with a confusing
+  // "이미 시작된 배정의 시작 강의 번호는 변경할 수 없습니다" error.
+  const hasProtectedTasks = hasProtectedLectureTasks(detail);
 
   return (
     <main className="min-h-screen bg-[#F4F6FA]">
@@ -460,17 +489,31 @@ export default function AdminLectureAssignmentDetailPage() {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="mb-2 block text-xs font-bold text-[#667085]">총 강의 수</label>
-                    <input className={inputCls} min="1" onChange={(e) => updateEditForm({ totalLectures: e.target.value })} type="number" value={editForm.totalLectures} />
+                    <input className={inputCls} min="1" onChange={(e) => updateEditForm({ totalLectures: e.target.value })} onWheel={blurOnWheel} type="number" value={editForm.totalLectures} />
                   </div>
                   <div>
                     <label className="mb-2 block text-xs font-bold text-[#667085]">시작 강의 번호</label>
-                    <input className={inputCls} min="1" onChange={(e) => updateEditForm({ startLectureNo: e.target.value })} type="number" value={editForm.startLectureNo} />
+                    <input
+                      className={hasProtectedTasks ? `${inputCls} cursor-not-allowed opacity-60` : inputCls}
+                      disabled={hasProtectedTasks}
+                      min="1"
+                      onChange={(e) => updateEditForm({ startLectureNo: e.target.value })}
+                      onWheel={blurOnWheel}
+                      readOnly={hasProtectedTasks}
+                      type="number"
+                      value={editForm.startLectureNo}
+                    />
+                    {hasProtectedTasks ? (
+                      <p className="mt-1.5 text-[11px] font-bold text-[#98A2B3]">
+                        완료/진행 중인 강의가 있어 변경할 수 없습니다. 이어서 배정할 번호는 자동으로 계산됩니다.
+                      </p>
+                    ) : null}
                   </div>
                 </div>
 
                 <div>
                   <label className="mb-2 block text-xs font-bold text-[#667085]">하루 수강 강의 수</label>
-                  <input className={inputCls} min="1" onChange={(e) => updateEditForm({ lecturesPerDay: e.target.value })} type="number" value={editForm.lecturesPerDay} />
+                  <input className={inputCls} min="1" onChange={(e) => updateEditForm({ lecturesPerDay: e.target.value })} onWheel={blurOnWheel} type="number" value={editForm.lecturesPerDay} />
                 </div>
 
                 <div>

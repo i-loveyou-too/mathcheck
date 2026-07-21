@@ -81,7 +81,10 @@ class LectureAssignmentUpdateTests(TestCase):
         self.db.close()
         self.engine.dispose()
 
-    def test_started_assignment_allows_due_date_change_when_start_date_is_unchanged(self):
+    def test_started_assignment_allows_due_date_change_while_start_date_stays_fixed(self):
+        # LectureAssignmentUpdateRequest has no start_date field at all — assignment.start_date
+        # is immutable and preserved automatically (see _plan_lecture_assignment_update); this
+        # only submits an unchanged start_lecture_no, which is the actual protected field.
         payload = schemas.LectureAssignmentUpdateRequest(
             subject="수학",
             course_title="개념완성",
@@ -89,7 +92,6 @@ class LectureAssignmentUpdateTests(TestCase):
             start_lecture_no=1,
             lectures_per_day=2,
             weekdays=["mon", "wed", "fri"],
-            start_date=date(2026, 7, 10),
             due_date=date(2026, 7, 22),
             memo="수정 메모",
         )
@@ -136,24 +138,29 @@ class LectureAssignmentUpdateTests(TestCase):
         self.assertEqual(result["assignment"]["lectures_per_day"], 3)
         self.assertEqual(result["assignment"]["weekdays"], ["mon", "wed", "fri"])
 
-    def test_started_assignment_rejects_actual_start_date_change(self):
+    def test_started_assignment_rejects_start_lecture_no_change(self):
+        # start_lecture_no is the field _plan_lecture_assignment_update actually protects once
+        # any task is done/in_progress — see the "이미 시작된 배정의 시작 강의 번호는 변경할 수
+        # 없습니다." guard. (There is no start_date field to protect anymore; start_date is
+        # simply never part of this request at all.)
         payload = schemas.LectureAssignmentUpdateRequest(
-            start_date=date(2026, 7, 11),
+            start_lecture_no=5,
             due_date=date(2026, 7, 22),
         )
 
-        with self.assertRaisesRegex(ValueError, "이미 시작된 배정의 시작일은 변경할 수 없습니다."):
+        with self.assertRaisesRegex(ValueError, "이미 시작된 배정의 시작 강의 번호는 변경할 수 없습니다."):
             crud.update_lecture_assignment(self.db, self.assignment, payload)
 
-    def test_preview_payload_can_be_saved_without_start_date_shift(self):
+    def test_update_omitting_start_lecture_no_preserves_original_start_date(self):
+        # The admin UI locks (and never sends) start_lecture_no once the assignment has
+        # protected tasks — omitting it here must not be treated as "start_lecture_no=None" and
+        # must leave assignment.start_date completely untouched.
         payload = schemas.LectureAssignmentUpdateRequest(
             subject="수학",
             course_title="개념완성",
             total_lectures=10,
-            start_lecture_no=1,
             lectures_per_day=3,
             weekdays=["mon", "tue", "thu"],
-            start_date=date(2026, 7, 10),
             due_date=date(2026, 7, 24),
             memo="동일 시작일",
         )
@@ -170,38 +177,29 @@ class LectureAssignmentUpdateTests(TestCase):
         result = crud.update_lecture_assignment(self.db, self.assignment, payload)
 
         self.assertTrue(preview["possible"])
-        self.assertEqual(payload.start_date, date(2026, 7, 10))
         self.assertEqual(result["assignment"]["start_date"], date(2026, 7, 10))
         self.assertEqual(result["assignment"]["lectures_per_day"], 3)
 
-    def test_logs_show_matching_start_dates_for_preview_and_save(self):
-        form_start_date = "2026-07-10"
-        preview_payload = schemas.LectureAssignmentPreviewRequest(
-            total_lectures=10,
-            start_lecture_no=1,
-            lectures_per_day=2,
-            weekdays=["mon", "wed", "fri"],
-            start_date=date.fromisoformat(form_start_date),
-            due_date=date(2026, 7, 22),
-        )
+    def test_update_plan_logs_protected_tasks_and_shifted_preview(self):
+        # update_lecture_assignment logs its plan (protected task count, requested update keys)
+        # and then re-runs preview_lecture_assignment internally with the remaining lecture's
+        # shifted start_lecture_no/start_date (last protected lecture + 1 / last protected date
+        # + 1 day) — this is the actual current log contract, replacing the old start_date-diff
+        # log format that predates the reschedule_start_date design.
         patch_payload = schemas.LectureAssignmentUpdateRequest(
             subject="수학",
             course_title="개념완성",
             total_lectures=10,
-            start_lecture_no=1,
             lectures_per_day=2,
             weekdays=["mon", "wed", "fri"],
-            start_date=date.fromisoformat(form_start_date),
             due_date=date(2026, 7, 22),
             memo="로그 확인",
         )
 
         with self.assertLogs("crud", level=logging.INFO) as captured:
-            crud.preview_lecture_assignment(preview_payload)
             crud.update_lecture_assignment(self.db, self.assignment, patch_payload)
 
         combined = "\n".join(captured.output)
-        self.assertIn("lecture assignment preview compare: start_date=2026-07-10", combined)
-        self.assertIn("existing_start_date=2026-07-10", combined)
-        self.assertIn("requested_start_date=2026-07-10", combined)
-        self.assertIn("payload_start_date=2026-07-10", combined)
+        self.assertIn("lecture assignment update plan: assignment_id=1 protected_tasks=1", combined)
+        self.assertIn("lecture assignment preview compare: start_date=2026-07-11", combined)
+        self.assertIn("start_lecture_no=3", combined)

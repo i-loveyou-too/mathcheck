@@ -441,6 +441,7 @@ class StudentCurriculum(Base):
     id = Column(Integer, primary_key=True, index=True)
     student_id = Column(Integer, ForeignKey("math_students.id"), nullable=False, index=True)
     curriculum_id = Column(Integer, ForeignKey("curriculum_templates.id"), nullable=False, index=True)
+    is_active = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     student = relationship("Student")

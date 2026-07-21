@@ -1768,10 +1768,16 @@ def get_lecture_assignment_by_id(db: Session, assignment_id: int) -> Optional[Le
     return db.query(LectureAssignment).filter(LectureAssignment.id == assignment_id).first()
 
 
-def serialize_homework_assignment_list_item(assignment: HomeworkAssignment) -> dict:
+def serialize_homework_assignment_list_item(db: Session, assignment: HomeworkAssignment) -> dict:
     base = serialize_homework_assignment(assignment)
     base["student_name"] = assignment.student.name if assignment.student else None
     base["textbook_title"] = assignment.textbook.full_title if assignment.textbook else None
+    # The last date already carrying a protected (done/in_progress) task — the frontend uses
+    # this (not assignment.start_date) to default the "재배정 시작일" field, so it never
+    # pre-fills a date update_homework_assignment() will reject (<= this date). Computed via
+    # the exact same _split_homework_tasks_by_completion() the PATCH validation itself uses.
+    protected_tasks, _ = _split_homework_tasks_by_completion(db, assignment.id)
+    base["last_protected_task_date"] = max((t.task_date for t in protected_tasks), default=None)
     return base
 
 
@@ -1783,7 +1789,7 @@ def list_homework_assignments(db: Session, student_id: Optional[int] = None) -> 
     if student_id is not None:
         query = query.filter(HomeworkAssignment.student_id == student_id)
     assignments = query.order_by(HomeworkAssignment.created_at.desc()).all()
-    return [serialize_homework_assignment_list_item(a) for a in assignments]
+    return [serialize_homework_assignment_list_item(db, a) for a in assignments]
 
 
 def _split_homework_tasks_by_completion(
@@ -2069,9 +2075,13 @@ def delete_homework_assignment(db: Session, assignment: HomeworkAssignment) -> d
     }
 
 
-def serialize_lecture_assignment_list_item(assignment: LectureAssignment) -> dict:
+def serialize_lecture_assignment_list_item(db: Session, assignment: LectureAssignment) -> dict:
     base = serialize_lecture_assignment(assignment)
     base["student_name"] = assignment.student.name if assignment.student else None
+    # See serialize_homework_assignment_list_item()'s comment — same rationale, computed via
+    # the exact same _split_lecture_tasks_by_completion() the PATCH validation itself uses.
+    protected_tasks, _ = _split_lecture_tasks_by_completion(db, assignment.id)
+    base["last_protected_task_date"] = max((t.task_date for t in protected_tasks), default=None)
     return base
 
 
@@ -2080,7 +2090,7 @@ def list_lecture_assignments(db: Session, student_id: Optional[int] = None) -> l
     if student_id is not None:
         query = query.filter(LectureAssignment.student_id == student_id)
     assignments = query.order_by(LectureAssignment.created_at.desc()).all()
-    return [serialize_lecture_assignment_list_item(a) for a in assignments]
+    return [serialize_lecture_assignment_list_item(db, a) for a in assignments]
 
 
 def _split_lecture_tasks_by_completion(
@@ -2979,6 +2989,63 @@ def create_textbook_with_items(db: Session, payload) -> MathTextbook:
     return textbook
 
 
+def sync_textbook_item_count(db: Session, textbook: MathTextbook, new_item_count: int) -> None:
+    """Grows or shrinks a flat (structure_type="none") textbook's MathTextbookItem rows to
+    match new_item_count, by item_number — never touches items within the overlap range.
+
+    Growing only adds the missing tail numbers (existing items and their
+    MathStudentItemProgress rows are left completely alone). Shrinking only removes the tail
+    numbers beyond new_item_count, and only after confirming none of them carry student
+    progress — MathTextbookItem.progress_entries cascades on delete, so deleting an item with
+    real progress would silently destroy that student's completion record. If any of the
+    to-be-removed items have progress, the whole call raises (nothing is deleted) so the
+    caller can surface a clear error instead of partially applying the change.
+    """
+    existing_items = (
+        db.query(MathTextbookItem)
+        .filter(MathTextbookItem.textbook_id == textbook.id)
+        .order_by(MathTextbookItem.item_number)
+        .all()
+    )
+    max_item_number = max((item.item_number for item in existing_items), default=0)
+
+    if new_item_count == max_item_number:
+        return
+
+    if new_item_count > max_item_number:
+        for item_number in range(max_item_number + 1, new_item_count + 1):
+            db.add(
+                MathTextbookItem(
+                    textbook_id=textbook.id,
+                    item_number=item_number,
+                    title=f"{item_number}번",
+                    item_type="problem",
+                    order_index=item_number,
+                    is_active=True,
+                )
+            )
+        return
+
+    items_to_remove = [item for item in existing_items if item.item_number > new_item_count]
+    if not items_to_remove:
+        return
+
+    item_ids_to_remove = [item.id for item in items_to_remove]
+    progress_count = (
+        db.query(func.count(MathStudentItemProgress.id))
+        .filter(MathStudentItemProgress.item_id.in_(item_ids_to_remove))
+        .scalar()
+        or 0
+    )
+    if progress_count > 0:
+        raise ValueError(
+            f"{new_item_count + 1}번 이후 문항에 학생 체크 기록이 있어 문항 수를 줄일 수 없습니다."
+        )
+
+    for item in items_to_remove:
+        db.delete(item)
+
+
 def update_textbook(db: Session, textbook_id: int, payload) -> Optional[MathTextbook]:
     textbook = db.query(MathTextbook).filter(MathTextbook.id == textbook_id).first()
     if textbook is None:
@@ -3016,6 +3083,7 @@ def update_textbook(db: Session, textbook_id: int, payload) -> Optional[MathText
                 raise ValueError(f"이미 존재하는 교재 키입니다: {textbook_key}")
 
     subjects_input = update_data.pop("subjects", None)
+    item_count = update_data.pop("item_count", None)
 
     for field in [
         "subject",
@@ -3035,6 +3103,13 @@ def update_textbook(db: Session, textbook_id: int, payload) -> Optional[MathText
         canonical_subjects = set_textbook_subjects(db, textbook.id, subjects_input)
         if "subject" not in update_data and canonical_subjects:
             textbook.subject = canonical_subject_to_legacy(canonical_subjects[0])
+
+    # Sections (when present) are the source of truth for the item list — item_count is a
+    # read-only derived value on that path (see compute_item_numbers_from_sections /
+    # replace_textbook_sections), so a stray item_count in this request is ignored rather than
+    # fighting the section union.
+    if item_count is not None and (textbook.structure_type or "none") == "none":
+        sync_textbook_item_count(db, textbook, item_count)
 
     db.commit()
     db.refresh(textbook)
@@ -3315,21 +3390,114 @@ def get_student_curriculum(db: Session, student_curriculum_id: int) -> Optional[
     )
 
 
-def _curriculum_status_counts(db: Session, student_curriculum_id: int, curriculum_id: int) -> dict:
+def _textbook_node_progress(db: Session, student_id: int, textbook_id: int) -> str:
+    """planned/in_progress/completed for a textbook node — computed live from
+    MathStudentItemProgress, never trusted from StudentCurriculumNode.status. "in_progress"
+    fires as soon as any item is done or partial (not a percentage threshold), matching how
+    the rest of the app treats "started but not finished".
+    """
+    item_ids = [
+        row[0]
+        for row in db.query(MathTextbookItem.id).filter(
+            MathTextbookItem.textbook_id == textbook_id, MathTextbookItem.is_active.is_(True)
+        )
+    ]
+    if not item_ids:
+        return "planned"
+
+    rows = (
+        db.query(MathStudentItemProgress.status)
+        .filter(
+            MathStudentItemProgress.student_id == student_id,
+            MathStudentItemProgress.item_id.in_(item_ids),
+        )
+        .all()
+    )
+    done = sum(1 for (status,) in rows if status == "done")
+    touched = sum(1 for (status,) in rows if status in ("done", "partial"))
+
+    if done >= len(item_ids):
+        return "completed"
+    if touched > 0:
+        return "in_progress"
+    return "planned"
+
+
+def _lecture_node_progress(db: Session, lecture_assignment_id: Optional[int]) -> dict:
+    """planned/in_progress/completed for a lecture node, computed live from the linked
+    LectureAssignment's actual completion records — never trusted from StudentCurriculumNode.
+    status. lecture_unavailable=True (status falls back to "planned") whenever the node has no
+    linked assignment, or the linked assignment was cancelled, so a deleted/cancelled lecture
+    assignment can never break the roadmap — it just shows as "연결된 인강 없음" instead.
+    """
+    if lecture_assignment_id is None:
+        return {"status": "planned", "lecture_unavailable": True}
+
+    assignment = (
+        db.query(LectureAssignment).filter(LectureAssignment.id == lecture_assignment_id).first()
+    )
+    if assignment is None or assignment.status != "active":
+        return {"status": "planned", "lecture_unavailable": True}
+
+    detail = get_lecture_assignment_detail(db, assignment)
+    total = detail["total_lectures_to_assign"]
+    completed = detail["completed_lecture_count"]
+
+    if total <= 0:
+        status = "planned"
+    elif completed >= total:
+        status = "completed"
+    elif completed > 0:
+        status = "in_progress"
+    else:
+        status = "planned"
+    return {"status": status, "lecture_unavailable": False}
+
+
+def _resolve_node_status(
+    db: Session, node: CurriculumNode, student_id: int, stored_status: Optional[str]
+) -> dict:
+    """{"status", "lecture_unavailable"} — the effective, displayed status for one curriculum
+    node for one student. "paused"/"skipped" are manual overrides and always win regardless of
+    node_type, since progress-based computation can't express them. Otherwise textbook/lecture
+    nodes are always computed live from real progress and any stored planned/in_progress/
+    completed value is ignored — StudentCurriculumNode.status only drives exam/custom nodes
+    (and paused/skipped for any node type).
+    """
+    if stored_status in ("paused", "skipped"):
+        return {"status": stored_status, "lecture_unavailable": False}
+
+    if node.node_type == "textbook":
+        if node.textbook_id is None:
+            return {"status": stored_status or "planned", "lecture_unavailable": False}
+        return {
+            "status": _textbook_node_progress(db, student_id, node.textbook_id),
+            "lecture_unavailable": False,
+        }
+
+    if node.node_type == "lecture":
+        return _lecture_node_progress(db, node.lecture_assignment_id)
+
+    return {"status": stored_status or "planned", "lecture_unavailable": False}
+
+
+def _curriculum_status_counts(
+    db: Session, student_curriculum_id: int, curriculum_id: int, student_id: int
+) -> dict:
     """Per-node status is only recorded when a student has touched a node (row in
     StudentCurriculumNode); a node with no row is "planned" by default — this mirrors the
     template/per-student split (curriculum_nodes vs student_curriculum_nodes) rather than
     requiring a row to be pre-created for every node at enrollment time.
     """
-    node_ids = [
-        row[0]
-        for row in db.query(CurriculumNode.id)
+    nodes = (
+        db.query(CurriculumNode)
         .filter(CurriculumNode.curriculum_id == curriculum_id, CurriculumNode.is_active.is_(True))
         .all()
-    ]
-    if not node_ids:
+    )
+    if not nodes:
         return {"in_progress_count": 0, "completed_count": 0, "planned_count": 0}
 
+    node_ids = [n.id for n in nodes]
     status_rows = (
         db.query(StudentCurriculumNode.curriculum_node_id, StudentCurriculumNode.status)
         .filter(
@@ -3338,11 +3506,11 @@ def _curriculum_status_counts(db: Session, student_curriculum_id: int, curriculu
         )
         .all()
     )
-    status_by_node = dict(status_rows)
+    stored_by_node = dict(status_rows)
 
     in_progress = completed = planned = 0
-    for node_id in node_ids:
-        status = status_by_node.get(node_id, "planned")
+    for node in nodes:
+        status = _resolve_node_status(db, node, student_id, stored_by_node.get(node.id))["status"]
         if status == "completed":
             completed += 1
         elif status == "in_progress":
@@ -3358,7 +3526,7 @@ def list_student_curriculums(db: Session, student_id: int) -> list[dict]:
     rows = (
         db.query(StudentCurriculum)
         .options(selectinload(StudentCurriculum.curriculum))
-        .filter(StudentCurriculum.student_id == student_id)
+        .filter(StudentCurriculum.student_id == student_id, StudentCurriculum.is_active.is_(True))
         .all()
     )
 
@@ -3367,7 +3535,7 @@ def list_student_curriculums(db: Session, student_id: int) -> list[dict]:
         curriculum = row.curriculum
         if curriculum is None or not curriculum.is_active:
             continue
-        counts = _curriculum_status_counts(db, row.id, curriculum.id)
+        counts = _curriculum_status_counts(db, row.id, curriculum.id, student_id)
         result.append(
             {
                 "student_curriculum_id": row.id,
@@ -3385,7 +3553,9 @@ def list_student_curriculums(db: Session, student_id: int) -> list[dict]:
 
 def get_student_curriculum_summary(db: Session, student_curriculum: StudentCurriculum) -> dict:
     curriculum = student_curriculum.curriculum
-    counts = _curriculum_status_counts(db, student_curriculum.id, curriculum.id)
+    counts = _curriculum_status_counts(
+        db, student_curriculum.id, curriculum.id, student_curriculum.student_id
+    )
     return {
         "student_curriculum_id": student_curriculum.id,
         "curriculum_id": curriculum.id,
@@ -3398,6 +3568,7 @@ def get_student_curriculum_summary(db: Session, student_curriculum: StudentCurri
 
 def get_student_curriculum_nodes(db: Session, student_curriculum: StudentCurriculum) -> dict:
     curriculum = student_curriculum.curriculum
+    student_id = student_curriculum.student_id
 
     nodes = (
         db.query(CurriculumNode)
@@ -3406,12 +3577,19 @@ def get_student_curriculum_nodes(db: Session, student_curriculum: StudentCurricu
         .all()
     )
     node_ids = [node.id for node in nodes]
+    active_node_ids = set(node_ids)
 
     edges = (
         db.query(CurriculumEdge)
         .filter(CurriculumEdge.curriculum_id == curriculum.id)
         .all()
     )
+    # Prerequisite gating only considers edges between two still-active nodes — an edge
+    # dangling off a soft-deleted node can't block anything.
+    prereq_map: dict[int, list[int]] = {}
+    for edge in edges:
+        if edge.from_node_id in active_node_ids and edge.to_node_id in active_node_ids:
+            prereq_map.setdefault(edge.to_node_id, []).append(edge.from_node_id)
 
     status_rows = (
         db.query(StudentCurriculumNode)
@@ -3432,10 +3610,19 @@ def get_student_curriculum_nodes(db: Session, student_curriculum: StudentCurricu
         else {}
     )
 
+    resolved_by_node = {
+        node.id: _resolve_node_status(
+            db, node, student_id, status_by_node[node.id].status if node.id in status_by_node else None
+        )
+        for node in nodes
+    }
+
     groups: dict[str, dict] = {}
     for node in nodes:
         status_row = status_by_node.get(node.id)
-        status = status_row.status if status_row is not None else "planned"
+        resolved = resolved_by_node[node.id]
+        prereq_ids = prereq_map.get(node.id, [])
+        is_unlocked = all(resolved_by_node[pid]["status"] == "completed" for pid in prereq_ids)
 
         link_url = None
         if node.node_type == "textbook" and node.textbook_id is not None:
@@ -3456,11 +3643,13 @@ def get_student_curriculum_nodes(db: Session, student_curriculum: StudentCurricu
             "position_x": node.position_x,
             "position_y": node.position_y,
             "order_index": node.order_index,
-            "status": status,
+            "status": resolved["status"],
             "started_at": status_row.started_at if status_row is not None else None,
             "completed_at": status_row.completed_at if status_row is not None else None,
             "memo": status_row.memo if status_row is not None else None,
             "link_url": link_url,
+            "is_unlocked": is_unlocked,
+            "lecture_unavailable": resolved.get("lecture_unavailable", False),
         }
 
         group = groups.setdefault(
@@ -3478,3 +3667,510 @@ def get_student_curriculum_nodes(db: Session, student_curriculum: StudentCurricu
     ]
 
     return {"groups": ordered_groups, "edges": serialized_edges}
+
+
+def update_student_curriculum_node_status(
+    db: Session, student_curriculum: StudentCurriculum, node: CurriculumNode, payload
+) -> dict:
+    """Manual status override — the only write path for exam/custom node status, and the only
+    way to mark any node paused/skipped. Setting in_progress/completed is gated on every
+    still-active prerequisite already resolving to "completed" (see _resolve_node_status), so
+    a later stage can't be manually marked done while an earlier one is still open.
+    """
+    if payload.status not in CURRICULUM_STATUSES:
+        raise ValueError(f"알 수 없는 status입니다: {payload.status}")
+
+    if payload.status in ("in_progress", "completed"):
+        prereq_edges = (
+            db.query(CurriculumEdge)
+            .filter(
+                CurriculumEdge.curriculum_id == student_curriculum.curriculum_id,
+                CurriculumEdge.to_node_id == node.id,
+            )
+            .all()
+        )
+        prereq_node_ids = [e.from_node_id for e in prereq_edges]
+        if prereq_node_ids:
+            prereq_nodes = (
+                db.query(CurriculumNode)
+                .filter(CurriculumNode.id.in_(prereq_node_ids), CurriculumNode.is_active.is_(True))
+                .all()
+            )
+            prereq_status_rows = (
+                db.query(StudentCurriculumNode)
+                .filter(
+                    StudentCurriculumNode.student_curriculum_id == student_curriculum.id,
+                    StudentCurriculumNode.curriculum_node_id.in_([p.id for p in prereq_nodes]),
+                )
+                .all()
+            )
+            stored_by_node = {r.curriculum_node_id: r.status for r in prereq_status_rows}
+            for prereq_node in prereq_nodes:
+                resolved = _resolve_node_status(
+                    db, prereq_node, student_curriculum.student_id, stored_by_node.get(prereq_node.id)
+                )
+                if resolved["status"] != "completed":
+                    raise ValueError(
+                        f"선행 단계('{prereq_node.title}')가 완료되지 않아 진행할 수 없습니다."
+                    )
+
+    existing = (
+        db.query(StudentCurriculumNode)
+        .filter(
+            StudentCurriculumNode.student_curriculum_id == student_curriculum.id,
+            StudentCurriculumNode.curriculum_node_id == node.id,
+        )
+        .first()
+    )
+    now = now_kst()
+    fields: dict = {}
+    if payload.memo is not None:
+        fields["memo"] = payload.memo
+    if payload.status == "completed":
+        fields["completed_at"] = now
+    if payload.status == "in_progress" and (existing is None or existing.started_at is None):
+        fields["started_at"] = now
+
+    if existing is not None:
+        existing.status = payload.status
+        for key, value in fields.items():
+            setattr(existing, key, value)
+    else:
+        db.add(
+            StudentCurriculumNode(
+                student_curriculum_id=student_curriculum.id,
+                curriculum_node_id=node.id,
+                status=payload.status,
+                **fields,
+            )
+        )
+    db.commit()
+
+    return get_student_curriculum_nodes(db, student_curriculum)
+
+
+# ---- Admin curriculum management (templates / nodes / edges / assignment) ----
+
+
+def list_curriculum_templates(db: Session) -> list[dict]:
+    rows = (
+        db.query(CurriculumTemplate)
+        .order_by(CurriculumTemplate.order_index, CurriculumTemplate.id)
+        .all()
+    )
+    return [
+        {
+            "id": c.id,
+            "subject": c.subject,
+            "title": c.title,
+            "description": c.description,
+            "order_index": c.order_index,
+            "is_active": c.is_active,
+        }
+        for c in rows
+    ]
+
+
+def create_curriculum_template(db: Session, payload) -> CurriculumTemplate:
+    if not payload.subject.strip():
+        raise ValueError("subject must not be empty.")
+    if not payload.title.strip():
+        raise ValueError("title must not be empty.")
+    if payload.student_id is not None and get_student_by_id(db, payload.student_id) is None:
+        raise ValueError("학생을 찾을 수 없습니다.")
+
+    curriculum = CurriculumTemplate(
+        subject=payload.subject.strip(),
+        title=payload.title.strip(),
+        description=(payload.description or "").strip() or None,
+        order_index=payload.order_index,
+    )
+    db.add(curriculum)
+    db.flush()
+
+    if payload.student_id is not None:
+        db.add(StudentCurriculum(student_id=payload.student_id, curriculum_id=curriculum.id))
+
+    db.commit()
+    db.refresh(curriculum)
+    return curriculum
+
+
+def update_curriculum_template(db: Session, curriculum_id: int, payload) -> Optional[CurriculumTemplate]:
+    curriculum = db.query(CurriculumTemplate).filter(CurriculumTemplate.id == curriculum_id).first()
+    if curriculum is None:
+        return None
+
+    update_data = payload.model_dump(exclude_unset=True)
+    if "subject" in update_data and not (update_data["subject"] or "").strip():
+        raise ValueError("subject must not be empty.")
+    if "title" in update_data and not (update_data["title"] or "").strip():
+        raise ValueError("title must not be empty.")
+
+    for field in ["subject", "title", "description", "order_index", "is_active"]:
+        if field in update_data:
+            value = update_data[field]
+            if field in ("subject", "title") and value is not None:
+                value = value.strip()
+            if field == "description" and value is not None:
+                value = value.strip() or None
+            setattr(curriculum, field, value)
+
+    db.commit()
+    db.refresh(curriculum)
+    return curriculum
+
+
+def delete_curriculum_template(db: Session, curriculum_id: int) -> bool:
+    """Soft delete only — is_active=False. list_student_curriculums() already skips inactive
+    templates, so this immediately (and reversibly) hides it from every assigned student
+    without touching StudentCurriculum/StudentCurriculumNode history.
+    """
+    curriculum = db.query(CurriculumTemplate).filter(CurriculumTemplate.id == curriculum_id).first()
+    if curriculum is None:
+        return False
+    curriculum.is_active = False
+    db.commit()
+    return True
+
+
+def get_curriculum_template_detail(db: Session, curriculum_id: int) -> Optional[dict]:
+    curriculum = db.query(CurriculumTemplate).filter(CurriculumTemplate.id == curriculum_id).first()
+    if curriculum is None:
+        return None
+
+    nodes = (
+        db.query(CurriculumNode)
+        .filter(CurriculumNode.curriculum_id == curriculum_id, CurriculumNode.is_active.is_(True))
+        .order_by(CurriculumNode.group_order, CurriculumNode.order_index, CurriculumNode.id)
+        .all()
+    )
+    node_ids = {n.id for n in nodes}
+    edges = db.query(CurriculumEdge).filter(CurriculumEdge.curriculum_id == curriculum_id).all()
+
+    prereq_map: dict[int, list[int]] = {}
+    for e in edges:
+        if e.from_node_id in node_ids and e.to_node_id in node_ids:
+            prereq_map.setdefault(e.to_node_id, []).append(e.from_node_id)
+
+    return {
+        "id": curriculum.id,
+        "subject": curriculum.subject,
+        "title": curriculum.title,
+        "description": curriculum.description,
+        "order_index": curriculum.order_index,
+        "is_active": curriculum.is_active,
+        "nodes": [
+            {
+                "id": n.id,
+                "title": n.title,
+                "node_type": n.node_type,
+                "group_name": n.group_name,
+                "group_order": n.group_order,
+                "order_index": n.order_index,
+                "textbook_id": n.textbook_id,
+                "lecture_assignment_id": n.lecture_assignment_id,
+                "description": n.description,
+                "is_active": n.is_active,
+                "prerequisite_node_ids": prereq_map.get(n.id, []),
+            }
+            for n in nodes
+        ],
+        "edges": [
+            {"id": e.id, "from_node_id": e.from_node_id, "to_node_id": e.to_node_id, "edge_type": e.edge_type}
+            for e in edges
+        ],
+    }
+
+
+def _validate_lecture_node_ownership(
+    db: Session, lecture_assignment_id: Optional[int], student_id: Optional[int]
+) -> None:
+    """A lecture node's progress/link is derived directly from one specific student's
+    LectureAssignment row (curriculum templates are edited per-student in this app, not shared
+    across students — see the analysis in the curriculum-MVP report), so the assignment must
+    belong to whichever student the admin is currently editing the curriculum for.
+    """
+    if lecture_assignment_id is None:
+        return
+    if student_id is None:
+        raise ValueError("인강 노드를 연결하려면 학생을 먼저 선택해야 합니다.")
+    assignment = (
+        db.query(LectureAssignment).filter(LectureAssignment.id == lecture_assignment_id).first()
+    )
+    if assignment is None:
+        raise ValueError("해당 인강 배정을 찾을 수 없습니다.")
+    if assignment.student_id != student_id:
+        raise ValueError("선택한 학생의 배정이 아닌 인강은 연결할 수 없습니다.")
+
+
+def create_curriculum_node(db: Session, curriculum_id: int, payload) -> CurriculumNode:
+    curriculum = db.query(CurriculumTemplate).filter(CurriculumTemplate.id == curriculum_id).first()
+    if curriculum is None:
+        raise ValueError("커리큘럼을 찾을 수 없습니다.")
+    if not payload.title.strip():
+        raise ValueError("title must not be empty.")
+    if payload.node_type not in CURRICULUM_NODE_TYPES:
+        raise ValueError(f"알 수 없는 node_type입니다: {payload.node_type}")
+    if payload.textbook_id is not None:
+        if db.query(MathTextbook).filter(MathTextbook.id == payload.textbook_id).first() is None:
+            raise ValueError("해당 교재를 찾을 수 없습니다.")
+    _validate_lecture_node_ownership(db, payload.lecture_assignment_id, payload.student_id)
+
+    node = CurriculumNode(
+        curriculum_id=curriculum_id,
+        title=payload.title.strip(),
+        node_type=payload.node_type,
+        group_name=payload.group_name.strip(),
+        group_order=payload.group_order,
+        order_index=payload.order_index,
+        textbook_id=payload.textbook_id,
+        lecture_assignment_id=payload.lecture_assignment_id,
+        description=(payload.description or "").strip() or None,
+    )
+    db.add(node)
+    db.flush()
+
+    # A brand-new node has no outgoing edges yet, so attaching prerequisites here can never
+    # close a cycle — no cycle check needed (unlike create_curriculum_edge()).
+    for prereq_id in payload.prerequisite_node_ids:
+        if prereq_id == node.id:
+            continue
+        prereq_node = (
+            db.query(CurriculumNode)
+            .filter(CurriculumNode.id == prereq_id, CurriculumNode.curriculum_id == curriculum_id)
+            .first()
+        )
+        if prereq_node is None:
+            raise ValueError(f"선행 노드({prereq_id})를 찾을 수 없습니다.")
+        db.add(CurriculumEdge(curriculum_id=curriculum_id, from_node_id=prereq_id, to_node_id=node.id))
+
+    db.commit()
+    db.refresh(node)
+    return node
+
+
+def update_curriculum_node(db: Session, node_id: int, payload) -> Optional[CurriculumNode]:
+    node = db.query(CurriculumNode).filter(CurriculumNode.id == node_id).first()
+    if node is None:
+        return None
+
+    update_data = payload.model_dump(exclude_unset=True)
+    student_id = update_data.pop("student_id", None)
+
+    if "title" in update_data and not (update_data["title"] or "").strip():
+        raise ValueError("title must not be empty.")
+    if "node_type" in update_data and update_data["node_type"] not in CURRICULUM_NODE_TYPES:
+        raise ValueError(f"알 수 없는 node_type입니다: {update_data['node_type']}")
+    if update_data.get("textbook_id") is not None:
+        if db.query(MathTextbook).filter(MathTextbook.id == update_data["textbook_id"]).first() is None:
+            raise ValueError("해당 교재를 찾을 수 없습니다.")
+    if "lecture_assignment_id" in update_data:
+        _validate_lecture_node_ownership(db, update_data["lecture_assignment_id"], student_id)
+
+    for field in [
+        "title",
+        "node_type",
+        "group_name",
+        "group_order",
+        "order_index",
+        "textbook_id",
+        "lecture_assignment_id",
+        "description",
+        "is_active",
+    ]:
+        if field in update_data:
+            value = update_data[field]
+            if field in ("title", "group_name") and value is not None:
+                value = value.strip()
+            if field == "description" and value is not None:
+                value = value.strip() or None
+            setattr(node, field, value)
+
+    db.commit()
+    db.refresh(node)
+    return node
+
+
+def delete_curriculum_node(db: Session, node_id: int) -> bool:
+    """Soft delete (is_active=False) — StudentCurriculumNode history for this node is kept
+    (never deleted), it just stops being read (every query already filters
+    CurriculumNode.is_active). Edges to/from the node are hard-deleted since they're pure graph
+    structure with no student data, keeping the edge table free of dangling references for
+    future cycle checks.
+    """
+    node = db.query(CurriculumNode).filter(CurriculumNode.id == node_id).first()
+    if node is None:
+        return False
+
+    db.query(CurriculumEdge).filter(
+        or_(CurriculumEdge.from_node_id == node_id, CurriculumEdge.to_node_id == node_id)
+    ).delete(synchronize_session=False)
+
+    node.is_active = False
+    db.commit()
+    return True
+
+
+def _would_create_cycle(db: Session, curriculum_id: int, from_node_id: int, to_node_id: int) -> bool:
+    """True if adding from_node_id -> to_node_id would close a cycle, i.e. from_node_id is
+    already reachable by following existing edges forward from to_node_id.
+    """
+    if from_node_id == to_node_id:
+        return True
+
+    edges = db.query(CurriculumEdge).filter(CurriculumEdge.curriculum_id == curriculum_id).all()
+    adjacency: dict[int, list[int]] = {}
+    for e in edges:
+        adjacency.setdefault(e.from_node_id, []).append(e.to_node_id)
+
+    stack = [to_node_id]
+    visited: set[int] = set()
+    while stack:
+        current = stack.pop()
+        if current == from_node_id:
+            return True
+        if current in visited:
+            continue
+        visited.add(current)
+        stack.extend(adjacency.get(current, []))
+    return False
+
+
+def create_curriculum_edge(db: Session, curriculum_id: int, payload) -> CurriculumEdge:
+    curriculum = db.query(CurriculumTemplate).filter(CurriculumTemplate.id == curriculum_id).first()
+    if curriculum is None:
+        raise ValueError("커리큘럼을 찾을 수 없습니다.")
+    if payload.from_node_id == payload.to_node_id:
+        raise ValueError("같은 노드를 선행 관계로 연결할 수 없습니다.")
+
+    from_node = (
+        db.query(CurriculumNode)
+        .filter(
+            CurriculumNode.id == payload.from_node_id,
+            CurriculumNode.curriculum_id == curriculum_id,
+            CurriculumNode.is_active.is_(True),
+        )
+        .first()
+    )
+    to_node = (
+        db.query(CurriculumNode)
+        .filter(
+            CurriculumNode.id == payload.to_node_id,
+            CurriculumNode.curriculum_id == curriculum_id,
+            CurriculumNode.is_active.is_(True),
+        )
+        .first()
+    )
+    if from_node is None or to_node is None:
+        raise ValueError("두 노드 모두 같은 커리큘럼에 속한 활성 노드여야 합니다.")
+
+    existing = (
+        db.query(CurriculumEdge)
+        .filter(
+            CurriculumEdge.curriculum_id == curriculum_id,
+            CurriculumEdge.from_node_id == payload.from_node_id,
+            CurriculumEdge.to_node_id == payload.to_node_id,
+        )
+        .first()
+    )
+    if existing is not None:
+        raise ValueError("이미 존재하는 선행 관계입니다.")
+
+    if _would_create_cycle(db, curriculum_id, payload.from_node_id, payload.to_node_id):
+        raise ValueError("이 선행 관계를 추가하면 순환 구조가 발생합니다.")
+
+    edge = CurriculumEdge(
+        curriculum_id=curriculum_id,
+        from_node_id=payload.from_node_id,
+        to_node_id=payload.to_node_id,
+        edge_type=payload.edge_type,
+    )
+    db.add(edge)
+    db.commit()
+    db.refresh(edge)
+    return edge
+
+
+def delete_curriculum_edge(db: Session, edge_id: int) -> bool:
+    edge = db.query(CurriculumEdge).filter(CurriculumEdge.id == edge_id).first()
+    if edge is None:
+        return False
+    db.delete(edge)
+    db.commit()
+    return True
+
+
+def assign_curriculum_to_student(db: Session, student_id: int, curriculum_id: int) -> StudentCurriculum:
+    if get_student_by_id(db, student_id) is None:
+        raise ValueError("학생을 찾을 수 없습니다.")
+    curriculum = db.query(CurriculumTemplate).filter(CurriculumTemplate.id == curriculum_id).first()
+    if curriculum is None:
+        raise ValueError("커리큘럼을 찾을 수 없습니다.")
+
+    existing = (
+        db.query(StudentCurriculum)
+        .filter(StudentCurriculum.student_id == student_id, StudentCurriculum.curriculum_id == curriculum_id)
+        .first()
+    )
+    if existing is not None and existing.is_active:
+        raise ValueError("이미 배정된 커리큘럼입니다.")
+
+    if existing is not None:
+        existing.is_active = True
+        student_curriculum = existing
+    else:
+        student_curriculum = StudentCurriculum(student_id=student_id, curriculum_id=curriculum_id)
+        db.add(student_curriculum)
+        db.flush()
+
+    node_ids = [
+        row[0]
+        for row in db.query(CurriculumNode.id).filter(
+            CurriculumNode.curriculum_id == curriculum_id, CurriculumNode.is_active.is_(True)
+        )
+    ]
+    existing_node_ids = (
+        {
+            row[0]
+            for row in db.query(StudentCurriculumNode.curriculum_node_id).filter(
+                StudentCurriculumNode.student_curriculum_id == student_curriculum.id,
+                StudentCurriculumNode.curriculum_node_id.in_(node_ids),
+            )
+        }
+        if node_ids
+        else set()
+    )
+
+    # Every node gets a "planned" row up front — never touches a row that already exists, so
+    # re-assigning after an unassign preserves whatever history was already recorded.
+    for node_id in node_ids:
+        if node_id not in existing_node_ids:
+            db.add(
+                StudentCurriculumNode(
+                    student_curriculum_id=student_curriculum.id,
+                    curriculum_node_id=node_id,
+                    status="planned",
+                )
+            )
+
+    db.commit()
+    db.refresh(student_curriculum)
+    return student_curriculum
+
+
+def unassign_curriculum_from_student(db: Session, student_id: int, student_curriculum_id: int) -> bool:
+    """Soft unassign (is_active=False) — StudentCurriculumNode rows (status/started_at/
+    completed_at/memo history) are never touched, so re-assigning the same curriculum later
+    restores exactly where the student left off instead of resetting to "planned".
+    """
+    student_curriculum = (
+        db.query(StudentCurriculum)
+        .filter(StudentCurriculum.id == student_curriculum_id, StudentCurriculum.student_id == student_id)
+        .first()
+    )
+    if student_curriculum is None:
+        return False
+    student_curriculum.is_active = False
+    db.commit()
+    return True

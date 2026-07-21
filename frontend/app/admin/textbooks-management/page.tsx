@@ -635,7 +635,17 @@ export default function TextbooksManagementPage() {
 
   const handleDeleteTextbook = async () => {
     if (!selectedId || !detail) return;
-    const confirmed = window.confirm("이 교재를 삭제하시겠습니까?");
+    // Deleting a textbook only sets is_active=False (see crud.delete_textbook_soft) — it
+    // never removes the row. But is_active is also part of the student visibility rule
+    // (get_visible_textbook_ids / is_textbook_visible_to_student), so "삭제" instantly hides
+    // the book from every student it's currently assigned to, with no separate undo path in
+    // this UI. Warn with the actual assigned-student count so this isn't a silent surprise.
+    const activeAssignmentCount = assignments?.assignments.filter((a) => a.is_active).length ?? 0;
+    const confirmMessage =
+      activeAssignmentCount > 0
+        ? `이 교재는 현재 ${activeAssignmentCount}명의 학생에게 배정되어 있습니다. 삭제하면 해당 학생들의 화면에서도 즉시 사라집니다. 그래도 삭제하시겠습니까?`
+        : "이 교재를 삭제하시겠습니까?";
+    const confirmed = window.confirm(confirmMessage);
     if (!confirmed) return;
 
     setSubmitting(true);
@@ -758,7 +768,7 @@ export default function TextbooksManagementPage() {
     }
 
     const itemCount = parseInt(form.itemCount, 10);
-    if (formMode !== "edit" && (!form.itemCount || isNaN(itemCount) || itemCount < 1)) {
+    if (!form.itemCount || isNaN(itemCount) || itemCount < 1) {
       setError("문항 수는 1 이상으로 입력해주세요.");
       return;
     }
@@ -787,6 +797,7 @@ export default function TextbooksManagementPage() {
             is_published: form.isPublished,
             is_active: form.isActive,
             order_index: detail?.order_index ?? 0,
+            item_count: itemCount,
           },
         });
         setDetail(updatedDetail);
@@ -1211,7 +1222,10 @@ export default function TextbooksManagementPage() {
                         [
                           { key: "isCheckable", label: "문항 체크 여부" },
                           { key: "isPublished", label: "학생 화면 표시" },
-                          { key: "isActive", label: "숙제 배정 사용" },
+                          // is_active also gates get_visible_textbook_ids/is_textbook_visible_to_student —
+                          // turning it off hides the book from every assigned student too, not just
+                          // future homework auto-assignment, so the label says so explicitly.
+                          { key: "isActive", label: "숙제 배정 사용 (끄면 학생 화면에서도 숨겨짐)" },
                         ] as { key: keyof FormState; label: string }[]
                       ).map(({ key, label }) => (
                         <label

@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState, type WheelEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AdminBottomNav } from "@/components/admin-bottom-nav";
@@ -466,6 +466,7 @@ type HomeworkAssignmentListItem = {
   created_by: string | null;
   student_name: string | null;
   textbook_title: string | null;
+  last_protected_task_date: string | null;
 };
 
 type HomeworkAssignmentMutationResponse = {
@@ -488,6 +489,7 @@ type LectureAssignmentListItem = {
   status: string;
   created_at: string;
   student_name: string | null;
+  last_protected_task_date: string | null;
 };
 
 type LectureAssignmentMutationResponse = {
@@ -509,6 +511,7 @@ type HomeworkEditFormState = {
   rescheduleStartDate: string;
   dueDate: string;
   memo: string;
+  isLocked: boolean;
 };
 
 type LectureEditFormState = {
@@ -521,6 +524,7 @@ type LectureEditFormState = {
   rescheduleStartDate: string;
   dueDate: string;
   memo: string;
+  isLocked: boolean;
 };
 
 type HomeworkRangePreviewItem = { date: string; start_value: number; end_value: number; count: number };
@@ -535,6 +539,34 @@ type HomeworkRangePreviewResponse = {
 const WEEKDAY_KOR: Record<LectureWeekday, string> = {
   mon: "월", tue: "화", wed: "수", thu: "목", fri: "금", sat: "토", sun: "일",
 };
+
+// Default the "재배정 시작일" field to the day after the last protected (done/in_progress)
+// task — never to assignment.start_date directly. Once a student has completed even the
+// first task, start_date IS that protected task's date, so defaulting to start_date sends a
+// reschedule_start_date the backend immediately rejects (must be strictly after the last
+// protected date). last_protected_task_date comes from the list API, computed with the exact
+// same completion-splitting logic the PATCH validation itself uses.
+function defaultRescheduleStartDate(lastProtectedTaskDate: string | null, assignmentStartDate: string) {
+  if (!lastProtectedTaskDate) return assignmentStartDate;
+  return toLocalDateKey(addDays(new Date(`${lastProtectedTaskDate}T00:00:00`), 1));
+}
+
+// Never swallow a failed save/preview: log the full status/body to console for debugging and
+// surface the HTTP status alongside the backend's detail message on screen.
+function describeAssignmentApiError(context: string, err: unknown, fallback: string): string {
+  if (err instanceof ApiError) {
+    console.error(context, { status: err.status, body: err.body, message: err.message });
+    return `[${err.status}] ${err.message}`;
+  }
+  console.error(context, err);
+  return fallback;
+}
+
+// A number input under the mouse cursor still responds to wheel scroll even without focus
+// intent — blurring on wheel stops the accidental value change and lets the page scroll normally.
+function blurOnWheel(event: WheelEvent<HTMLInputElement>) {
+  event.currentTarget.blur();
+}
 
 function AutoAssignmentPlanManager({
   selectedStudentId,
@@ -629,9 +661,10 @@ function AutoAssignmentPlanManager({
       rangeType: assignment.range_type,
       startValue: assignment.start_value !== null ? String(assignment.start_value) : "",
       endValue: assignment.end_value !== null ? String(assignment.end_value) : "",
-      rescheduleStartDate: assignment.start_date,
+      rescheduleStartDate: defaultRescheduleStartDate(assignment.last_protected_task_date, assignment.start_date),
       dueDate: assignment.due_date,
       memo: assignment.memo ?? "",
+      isLocked: Boolean(assignment.last_protected_task_date),
     });
     setHomeworkEditError("");
     setHomeworkEditPreview(null);
@@ -661,7 +694,10 @@ function AutoAssignmentPlanManager({
   const buildHomeworkEditPayload = (form: HomeworkEditFormState) => ({
     textbook_id: Number(form.textbookId),
     range_type: form.rangeType,
-    start_value: form.startValue ? Number(form.startValue) : null,
+    // start_value is locked (input disabled) once protected tasks exist — the backend derives
+    // the reschedule start value itself from the last completed value, so omit it here rather
+    // than resend a value the UI never let the admin change.
+    ...(form.isLocked ? {} : { start_value: form.startValue ? Number(form.startValue) : null }),
     end_value: form.rangeType === "section" ? null : (form.endValue ? Number(form.endValue) : null),
     due_date: form.dueDate,
     memo: form.memo.trim() || null,
@@ -680,7 +716,7 @@ function AutoAssignmentPlanManager({
       setHomeworkEditPreview(result);
       setHomeworkEditPreviewStale(false);
     } catch (err) {
-      setHomeworkEditError(err instanceof ApiError ? err.message : "미리보기를 불러오지 못했습니다.");
+      setHomeworkEditError(describeAssignmentApiError("[homework reschedule-preview]", err, "미리보기를 불러오지 못했습니다."));
     } finally {
       setHomeworkEditPreviewLoading(false);
     }
@@ -701,7 +737,7 @@ function AutoAssignmentPlanManager({
       await fetchHomeworkList();
       onMutated();
     } catch (err) {
-      setHomeworkEditError(err instanceof ApiError ? err.message : "저장에 실패했습니다. 다시 시도해주세요.");
+      setHomeworkEditError(describeAssignmentApiError(`[homework PATCH /admin/homework-assignments/${assignmentId}]`, err, "저장에 실패했습니다. 다시 시도해주세요."));
     } finally {
       setSavingHomeworkEdit(false);
     }
@@ -744,9 +780,10 @@ function AutoAssignmentPlanManager({
       startLectureNo: String(assignment.start_lecture_no),
       lecturesPerDay: String(assignment.lectures_per_day),
       weekdays: assignment.weekdays,
-      rescheduleStartDate: assignment.start_date,
+      rescheduleStartDate: defaultRescheduleStartDate(assignment.last_protected_task_date, assignment.start_date),
       dueDate: assignment.due_date,
       memo: assignment.memo ?? "",
+      isLocked: Boolean(assignment.last_protected_task_date),
     });
     setLectureEditError("");
     setLectureEditPreview(null);
@@ -773,7 +810,10 @@ function AutoAssignmentPlanManager({
     subject: form.subject.trim(),
     course_title: form.courseTitle.trim(),
     total_lectures: Number(form.totalLectures),
-    start_lecture_no: Number(form.startLectureNo),
+    // start_lecture_no is locked (input disabled) once protected tasks exist — the backend
+    // derives the reschedule start number itself from the last completed lecture, so omit it
+    // here rather than resend a value the UI never let the admin change.
+    ...(form.isLocked ? {} : { start_lecture_no: Number(form.startLectureNo) }),
     lectures_per_day: Number(form.lecturesPerDay),
     weekdays: form.weekdays,
     due_date: form.dueDate,
@@ -793,7 +833,7 @@ function AutoAssignmentPlanManager({
       setLectureEditPreview(result);
       setLectureEditPreviewStale(false);
     } catch (err) {
-      setLectureEditError(err instanceof ApiError ? err.message : "미리보기를 불러오지 못했습니다.");
+      setLectureEditError(describeAssignmentApiError("[lecture reschedule-preview]", err, "미리보기를 불러오지 못했습니다."));
     } finally {
       setLectureEditPreviewLoading(false);
     }
@@ -814,7 +854,7 @@ function AutoAssignmentPlanManager({
       await fetchLectureList();
       onMutated();
     } catch (err) {
-      setLectureEditError(err instanceof ApiError ? err.message : "저장에 실패했습니다. 다시 시도해주세요.");
+      setLectureEditError(describeAssignmentApiError(`[lecture PATCH /admin/lecture-assignments/${assignmentId}]`, err, "저장에 실패했습니다. 다시 시도해주세요."));
     } finally {
       setSavingLectureEdit(false);
     }
@@ -943,11 +983,22 @@ function AutoAssignmentPlanManager({
                       <div className="grid grid-cols-2 gap-2">
                         <div>
                           <label className="mb-1.5 block text-xs font-bold text-[#667085]">시작 값</label>
-                          <input className={inputCls} onChange={(event) => updateHomeworkEditForm({ startValue: event.target.value })} type="number" value={homeworkEditForm.startValue} />
+                          <input
+                            className={assignment.last_protected_task_date ? `${inputCls} cursor-not-allowed opacity-60` : inputCls}
+                            disabled={Boolean(assignment.last_protected_task_date)}
+                            onChange={(event) => updateHomeworkEditForm({ startValue: event.target.value })}
+                            onWheel={blurOnWheel}
+                            readOnly={Boolean(assignment.last_protected_task_date)}
+                            type="number"
+                            value={homeworkEditForm.startValue}
+                          />
+                          {assignment.last_protected_task_date ? (
+                            <p className="mt-1.5 text-[11px] font-bold text-[#98A2B3]">완료/진행 중인 기록이 있어 변경할 수 없습니다.</p>
+                          ) : null}
                         </div>
                         <div>
                           <label className="mb-1.5 block text-xs font-bold text-[#667085]">끝 값</label>
-                          <input className={inputCls} onChange={(event) => updateHomeworkEditForm({ endValue: event.target.value })} type="number" value={homeworkEditForm.endValue} />
+                          <input className={inputCls} onChange={(event) => updateHomeworkEditForm({ endValue: event.target.value })} onWheel={blurOnWheel} type="number" value={homeworkEditForm.endValue} />
                         </div>
                       </div>
                     )}
@@ -1091,17 +1142,31 @@ function AutoAssignmentPlanManager({
                     <div className="grid grid-cols-2 gap-2">
                       <div>
                         <label className="mb-1.5 block text-xs font-bold text-[#667085]">총 강의 수</label>
-                        <input className={inputCls} min="1" onChange={(event) => updateLectureEditForm({ totalLectures: event.target.value })} type="number" value={lectureEditForm.totalLectures} />
+                        <input className={inputCls} min="1" onChange={(event) => updateLectureEditForm({ totalLectures: event.target.value })} onWheel={blurOnWheel} type="number" value={lectureEditForm.totalLectures} />
                       </div>
                       <div>
                         <label className="mb-1.5 block text-xs font-bold text-[#667085]">시작 강의 번호</label>
-                        <input className={inputCls} min="1" onChange={(event) => updateLectureEditForm({ startLectureNo: event.target.value })} type="number" value={lectureEditForm.startLectureNo} />
+                        <input
+                          className={assignment.last_protected_task_date ? `${inputCls} cursor-not-allowed opacity-60` : inputCls}
+                          disabled={Boolean(assignment.last_protected_task_date)}
+                          min="1"
+                          onChange={(event) => updateLectureEditForm({ startLectureNo: event.target.value })}
+                          onWheel={blurOnWheel}
+                          readOnly={Boolean(assignment.last_protected_task_date)}
+                          type="number"
+                          value={lectureEditForm.startLectureNo}
+                        />
+                        {assignment.last_protected_task_date ? (
+                          <p className="mt-1.5 text-[11px] font-bold text-[#98A2B3]">
+                            완료/진행 중인 강의가 있어 변경할 수 없습니다.
+                          </p>
+                        ) : null}
                       </div>
                     </div>
 
                     <div>
                       <label className="mb-1.5 block text-xs font-bold text-[#667085]">하루 수강 강의 수</label>
-                      <input className={inputCls} min="1" onChange={(event) => updateLectureEditForm({ lecturesPerDay: event.target.value })} type="number" value={lectureEditForm.lecturesPerDay} />
+                      <input className={inputCls} min="1" onChange={(event) => updateLectureEditForm({ lecturesPerDay: event.target.value })} onWheel={blurOnWheel} type="number" value={lectureEditForm.lecturesPerDay} />
                     </div>
 
                     <div>
