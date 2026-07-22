@@ -16,3 +16,6 @@ __pycache__
 storage/sprint-study/
 storage/sprint-proofs/
 storage/*.xlsx
+
+aimon_test_mvp_before_sprint_migrations.backup
+backups/
