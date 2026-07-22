@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import models  # noqa: F401
+import os
 from database import SessionLocal
 from student_auth import normalize_phone
 
@@ -56,6 +57,9 @@ def upsert_test_student(db, data: dict) -> str:
 
 
 def run() -> None:
+    if os.getenv("ALLOW_TEST_ACCOUNT_SEED", "").strip().lower() not in {"1", "true", "yes"}:
+        raise SystemExit("Set ALLOW_TEST_ACCOUNT_SEED=true to create or update test accounts.")
+
     db = SessionLocal()
     try:
         messages = [upsert_test_admin(db)]
