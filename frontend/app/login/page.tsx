@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
@@ -13,6 +13,15 @@ export default function LoginPage() {
   const [phone, setPhone] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    void apiFetch<StudentLoginResponse>("/student/auth/me")
+      .then((student) => {
+        saveStudent(student);
+        router.replace("/student");
+      })
+      .catch(() => null);
+  }, [router]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();

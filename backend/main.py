@@ -1,17 +1,27 @@
 import os
 from contextlib import asynccontextmanager
+import json
 from datetime import date
 from typing import Optional
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse
 from sqlalchemy import inspect, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 import crud
+import lessons
+import mock_exam
 import models  # noqa: F401 - importing models registers them with SQLAlchemy
 import schemas
+import sprint
+import sprint_compliance
+import sprint_goals
+import student_auth
+import vocabulary
 from database import Base, SessionLocal, engine, get_db
 from study_dates import get_study_date
 
@@ -199,27 +209,35 @@ def ensure_student_lecture_progress_table():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Create tables automatically on startup so the app is easy to run locally.
-    Base.metadata.create_all(bind=engine)
-    ensure_textbook_key_column()
-    ensure_student_curriculum_is_active_column()
-    ensure_daily_task_completed_at_column()
-    ensure_textbook_is_student_only_column()
-    ensure_textbook_structure_type_column()
-    ensure_daily_task_homework_columns()
-    ensure_daily_task_lecture_columns()
-    ensure_student_lecture_progress_table()
-    db = SessionLocal()
-    try:
-        crud.sync_textbook_keys(db)
-        crud.backfill_textbook_subjects(db)
-        crud.repair_textbook_subject_tags(db)
-    finally:
-        db.close()
+    if os.getenv("ALLOW_SCHEMA_CREATE_ALL", "").strip().lower() in {"1", "true", "yes"}:
+        if "localhost" not in str(engine.url) and "127.0.0.1" not in str(engine.url):
+            raise RuntimeError("ALLOW_SCHEMA_CREATE_ALL is not allowed for a non-local database URL.")
+        Base.metadata.create_all(bind=engine)
+        ensure_textbook_key_column()
+        ensure_student_curriculum_is_active_column()
+        ensure_daily_task_completed_at_column()
+        ensure_textbook_is_student_only_column()
+        ensure_textbook_structure_type_column()
+        ensure_daily_task_homework_columns()
+        ensure_daily_task_lecture_columns()
+        ensure_student_lecture_progress_table()
+        db = SessionLocal()
+        try:
+            crud.sync_textbook_keys(db)
+            crud.backfill_textbook_subjects(db)
+            crud.repair_textbook_subject_tags(db)
+        finally:
+            db.close()
     yield
 
 
 app = FastAPI(title="Math Progress API", lifespan=lifespan)
+app.include_router(vocabulary.router)
+app.include_router(sprint.router)
+app.include_router(sprint_compliance.router)
+app.include_router(mock_exam.router)
+app.include_router(sprint_goals.router)
+app.include_router(lessons.router)
 
 allowed_origins = [
     "https://aimon.teamzsoft.com",
@@ -256,17 +274,118 @@ app.add_middleware(
 )
 
 
+def extract_student_id_from_json(value: object) -> int | None:
+    if isinstance(value, dict):
+        raw = value.get("student_id")
+        try:
+            return int(raw) if raw is not None else None
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
+def student_id_from_query(value: str | None) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid student_id.")
+
+
+def student_id_from_path(path: str) -> int | None:
+    parts = [part for part in path.split("/") if part]
+    if len(parts) >= 2 and parts[0] == "students":
+        try:
+            return int(parts[1])
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid student_id.")
+    return None
+
+
+def find_student_for_phone(db: Session, phone: str):
+    exact = crud.get_student_by_phone(db, phone)
+    if exact is not None:
+        return exact
+    normalized = student_auth.normalize_phone(phone)
+    exact_normalized = crud.get_student_by_phone(db, normalized)
+    if exact_normalized is not None:
+        return exact_normalized
+    for student in db.query(models.Student).all():
+        if student_auth.normalize_phone(student.phone) == normalized:
+            return student
+    return None
+
+
+class StudentSessionMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+        if request.method == "OPTIONS":
+            return await call_next(request)
+        is_student_path = (
+            path.startswith("/student/")
+            or path.startswith("/students/")
+            or path.startswith("/units/")
+            or path.startswith("/progress/")
+        )
+        if not is_student_path or path.startswith("/student/auth/"):
+            return await call_next(request)
+
+        db = SessionLocal()
+        try:
+            student = student_auth.get_current_student_from_cookie(db, request)
+            path_student_id = student_id_from_path(path)
+            if path_student_id is not None and path_student_id != student.id:
+                return JSONResponse({"detail": "Cannot access another student's data."}, status_code=403)
+            query_student_id = student_id_from_query(request.query_params.get("student_id"))
+            if query_student_id is not None and query_student_id != student.id:
+                return JSONResponse({"detail": "Cannot access another student's data."}, status_code=403)
+
+            body = await request.body()
+            if body and request.headers.get("content-type", "").startswith("application/json"):
+                try:
+                    body_student_id = extract_student_id_from_json(json.loads(body.decode("utf-8")))
+                except json.JSONDecodeError:
+                    body_student_id = None
+                if body_student_id is not None and body_student_id != student.id:
+                    return JSONResponse({"detail": "Cannot access another student's data."}, status_code=403)
+
+            async def receive():
+                return {"type": "http.request", "body": body, "more_body": False}
+
+            request._receive = receive
+        except HTTPException as exc:
+            return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+        finally:
+            db.close()
+        return await call_next(request)
+
+
+app.add_middleware(StudentSessionMiddleware)
+
+
 @app.get("/")
 def root():
     return {"message": "Math progress backend is running"}
 
 
 @app.post("/auth/student-login", response_model=schemas.StudentLoginResponse, tags=["Student"])
-def student_login(payload: schemas.StudentLoginRequest, db: Session = Depends(get_db)):
-    student = crud.get_student_by_phone(db, payload.phone)
+def student_login(payload: schemas.StudentLoginRequest, response: Response, db: Session = Depends(get_db)):
+    student = find_student_for_phone(db, payload.phone)
     if student is None:
         raise HTTPException(status_code=404, detail="Student not found")
-    return student
+    return student_auth.issue_student_session(db, response, student)
+
+
+@app.get("/student/auth/me", response_model=schemas.StudentLoginResponse, tags=["Student"])
+def student_auth_me(request: Request, db: Session = Depends(get_db)):
+    return student_auth.student_public_dict(student_auth.get_current_student_from_cookie(db, request))
+
+
+@app.post("/student/auth/logout", tags=["Student"])
+def student_auth_logout(request: Request, response: Response, db: Session = Depends(get_db)):
+    student_auth.revoke_current_student_session(db, request, response)
+    return {"ok": True}
 
 
 @app.get("/subjects", response_model=list[schemas.SubjectWithUnits], tags=["Student"])

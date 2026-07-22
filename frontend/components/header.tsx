@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { StudentLogoutButton } from "@/components/student-logout-button";
+import { apiFetch } from "@/lib/api";
 import { clearAdmin, clearStudent } from "@/lib/storage";
 
 type HeaderProps = {
@@ -15,8 +16,9 @@ type HeaderProps = {
 export function Header({ title, subtitle, backHref, logoutType }: HeaderProps) {
   const router = useRouter();
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     if (logoutType === "student") {
+      await apiFetch("/student/auth/logout", { method: "POST" }).catch(() => null);
       clearStudent();
       router.push("/login");
       return;

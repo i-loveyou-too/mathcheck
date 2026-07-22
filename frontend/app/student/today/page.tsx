@@ -1075,7 +1075,8 @@ export default function StudentTodayPage() {
     setSelectedDateKey(todayKey);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await apiFetch("/student/auth/logout", { method: "POST" }).catch(() => null);
     clearStudent();
     router.push("/login");
   };

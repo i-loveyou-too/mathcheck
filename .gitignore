@@ -13,3 +13,6 @@ __pycache__
 *.pyc
 *.log
 .DS_Store
+storage/sprint-study/
+storage/sprint-proofs/
+storage/*.xlsx

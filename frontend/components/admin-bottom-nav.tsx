@@ -5,140 +5,37 @@ import { usePathname, useRouter } from "next/navigation";
 import { clearAdmin } from "@/lib/storage";
 import { cn } from "@/lib/utils";
 
-function GridIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M3 3h8v8H3V3zm0 10h8v8H3v-8zm10-10h8v8h-8V3zm0 10h8v8h-8v-8z" />
-    </svg>
-  );
-}
-
-function PeopleIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5C14 14.17 10.33 13 8 13zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-3.67-3.5-7-3.5z" />
-    </svg>
-  );
-}
-
-function TaskIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M19 3h-4.18C14.4 1.84 13.3 1 12 1S9.6 1.84 9.18 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zM9.3 16.3 6.7 13.7l1.4-1.4 1.2 1.2 3.6-3.6 1.4 1.4-5 5zM18 15h-4v-2h4v2zm0-4h-4V9h4v2z" />
-    </svg>
-  );
-}
-
-function BookIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M18 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zM6 4h5v8l-2.5-1.5L6 12V4z" />
-    </svg>
-  );
-}
-
-function CurriculumIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <circle cx="6" cy="6" r="2.5" />
-      <circle cx="18" cy="6" r="2.5" />
-      <circle cx="12" cy="18" r="2.5" />
-      <path d="M8.5 6h7" />
-      <path d="M8.2 7.3 10.7 15" />
-      <path d="M15.8 7.3 13.3 15" />
-    </svg>
-  );
-}
-
-function LogoutIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z" />
-    </svg>
-  );
-}
+const items = [
+  ["/admin", "대시보드", "M4 4h6v6H4V4Zm10 0h6v6h-6V4ZM4 14h6v6H4v-6Zm10 0h6v6h-6v-6Z"],
+  ["/admin/students", "학생", "M8 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm8 0a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM8 13c-4 0-7 2-7 5v2h14v-2c0-3-3-5-7-5Zm8 0c-.5 0-1 .1-1.5.2 1.5 1 2.5 2.6 2.5 4.8v2h6v-2c0-3-3-5-7-5Z"],
+  ["/admin/daily-tasks", "숙제", "M19 3h-4a3 3 0 0 0-6 0H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2ZM9 17l-3-3 1.5-1.5L9 14l4-4 1.5 1.5L9 17Z"],
+  ["/admin/textbooks-management", "교재", "M18 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2ZM6 4h5v8l-2.5-1.5L6 12V4Z"],
+  ["/admin/curriculums", "진도맵", "M6 3a3 3 0 1 0 0 6 3 3 0 0 0 0-6Zm12 0a3 3 0 1 0 0 6 3 3 0 0 0 0-6Zm-6 12a3 3 0 1 0 0 6 3 3 0 0 0 0-6ZM8.5 8l2.5 7m4.5-7L13 15"],
+  ["/admin/vocabulary-banks", "워드뱅크", "M4 4h16v3H4V4Zm0 5h16v11H4V9Zm3 3v2h4v-2H7Zm0 4v2h7v-2H7Zm8-4v2h2v-2h-2Z"],
+  ["/admin/vocabulary-challenges", "영단어", "M5 3h14v18H5V3Zm3 4v2h8V7H8Zm0 4v2h5v-2H8Zm0 4v2h7v-2H8Z"],
+  ["/admin/sprints", "SPRINT", "M13 2 4.5 12.5 11 13l-1 9 8.5-10.5L12 11l1-9Z"],
+  ["/admin/lesson-schedules", "수업일정", "M19 3h-1V1h-2v2H8V1H6v2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2Zm0 16H5V9h14v10Z"],
+] as const;
 
 export function AdminBottomNav() {
   const pathname = usePathname();
   const router = useRouter();
-
-  const handleLogout = () => {
-    clearAdmin();
-    router.push("/admin/login");
-  };
-
-  const isDashboard = pathname === "/admin";
-  const isStudents = pathname.startsWith("/admin/students");
-  const isDailyTasks = pathname.startsWith("/admin/daily-tasks");
-  const isTextbooks = pathname.startsWith("/admin/textbooks-management");
-  const isCurriculums = pathname.startsWith("/admin/curriculums");
-
   return (
-    <nav className="fixed bottom-4 left-1/2 z-20 w-[calc(100%-2.5rem)] max-w-[720px] -translate-x-1/2">
-      <div className="rounded-[1.8rem] bg-[#0F172A] px-3 py-3 shadow-nav">
-        <div className="grid grid-cols-6 gap-1">
-          <Link
-            href="/admin"
-            className={cn(
-              "flex flex-col items-center gap-1.5 rounded-[1.2rem] px-1.5 py-2.5 text-[10px] font-semibold transition-all",
-              isDashboard ? "bg-white text-[#0F172A]" : "text-white/50 hover:text-white/75"
-            )}
-          >
-            <GridIcon />
-            <span>대시보드</span>
-          </Link>
-
-          <Link
-            href="/admin/students"
-            className={cn(
-              "flex flex-col items-center gap-1.5 rounded-[1.2rem] px-1.5 py-2.5 text-[10px] font-semibold transition-all",
-              isStudents ? "bg-white text-[#0F172A]" : "text-white/50 hover:text-white/75"
-            )}
-          >
-            <PeopleIcon />
-            <span>학생 목록</span>
-          </Link>
-
-          <Link
-            href="/admin/daily-tasks"
-            className={cn(
-              "flex flex-col items-center gap-1.5 rounded-[1.2rem] px-1.5 py-2.5 text-[10px] font-semibold transition-all",
-              isDailyTasks ? "bg-white text-[#0F172A]" : "text-white/50 hover:text-white/75"
-            )}
-          >
-            <TaskIcon />
-            <span>숙제</span>
-          </Link>
-
-          <Link
-            href="/admin/textbooks-management"
-            className={cn(
-              "flex flex-col items-center gap-1.5 rounded-[1.2rem] px-1.5 py-2.5 text-[10px] font-semibold transition-all",
-              isTextbooks ? "bg-white text-[#0F172A]" : "text-white/50 hover:text-white/75"
-            )}
-          >
-            <BookIcon />
-            <span>교재</span>
-          </Link>
-
-          <Link
-            href="/admin/curriculums"
-            className={cn(
-              "flex flex-col items-center gap-1.5 rounded-[1.2rem] px-1.5 py-2.5 text-[10px] font-semibold transition-all",
-              isCurriculums ? "bg-white text-[#0F172A]" : "text-white/50 hover:text-white/75"
-            )}
-          >
-            <CurriculumIcon />
-            <span>진도표</span>
-          </Link>
-
-          <button
-            onClick={handleLogout}
-            type="button"
-            className="flex flex-col items-center gap-1.5 rounded-[1.2rem] px-1.5 py-2.5 text-[10px] font-semibold text-white/50 transition-all hover:text-white/75"
-          >
-            <LogoutIcon />
-            <span>나가기</span>
+    <nav className="fixed bottom-4 left-1/2 z-20 w-[calc(100%-1.5rem)] max-w-[980px] -translate-x-1/2 px-2">
+      <div className="rounded-[1.8rem] bg-[#0F172A] px-2 py-3 shadow-nav">
+        <div className="grid grid-cols-10 gap-1">
+          {items.map(([href, label, path]) => {
+            const active = href === "/admin" ? pathname === href : pathname.startsWith(href);
+            return (
+              <Link key={href} href={href} className={cn("flex flex-col items-center gap-1.5 rounded-[1.1rem] px-1 py-2.5 text-[9px] font-semibold", active ? "bg-white text-[#0F172A]" : "text-white/50")}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d={path} /></svg>
+                <span>{label}</span>
+              </Link>
+            );
+          })}
+          <button type="button" onClick={() => { clearAdmin(); router.push("/admin/login"); }} className="flex flex-col items-center gap-1.5 rounded-[1.1rem] px-1 py-2.5 text-[9px] font-semibold text-white/50">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17 7l-1.5 1.5L18 11H8v2h10l-2.5 2.5L17 17l5-5-5-5ZM4 5h8V3H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h8v-2H4V5Z" /></svg>
+            <span>로그아웃</span>
           </button>
         </div>
       </div>

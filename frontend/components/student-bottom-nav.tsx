@@ -4,86 +4,37 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 
-function HomeIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" />
-    </svg>
-  );
-}
-
-function BookIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M18 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 4h5v8l-2.5-1.5L6 12V4z" />
-    </svg>
-  );
-}
-
-function CheckListIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9.3 16.3 6 13l1.4-1.4 1.9 1.9 4.3-4.3L15 10.6l-5.7 5.7zm8.7-.8h-2v-2h2v2zm0-4h-2v-2h2v2z" />
-    </svg>
-  );
-}
-
-function ChartIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M5 9.2h3V19H5V9.2zM10.6 5h2.8v14h-2.8V5zM16.2 13h2.8v6h-2.8v-6z" />
-    </svg>
-  );
-}
-
-function CurriculumPathIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-      <circle cx="5" cy="18" r="2.2" fill="currentColor" stroke="none" />
-      <circle cx="12" cy="7" r="2.2" fill="currentColor" stroke="none" />
-      <circle cx="19" cy="18" r="2.2" fill="currentColor" stroke="none" />
-      <path d="M6.8 16.6 10.3 9M13.7 9l3.5 7.6" />
-    </svg>
-  );
-}
+const icons = {
+  home: <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" />,
+  today: <path d="M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2ZM9.3 16.3 6 13l1.4-1.4 1.9 1.9 4.3-4.3L15 10.6l-5.7 5.7Z" />,
+  book: <path d="M18 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2ZM6 4h5v8l-2.5-1.5L6 12V4Z" />,
+  path: <path d="M5 16a3 3 0 1 0 0 6 3 3 0 0 0 0-6Zm14 0a3 3 0 1 0 0 6 3 3 0 0 0 0-6ZM12 4a3 3 0 1 0 0 6 3 3 0 0 0 0-6ZM6.5 16.4l4-7m3 0 4 7" />,
+  chart: <path d="M5 9h3v10H5V9Zm5.5-4h3v14h-3V5Zm5.5 8h3v6h-3v-6Z" />,
+};
 
 export function StudentBottomNav() {
   const pathname = usePathname();
-
-  const isHome = pathname === "/student";
-  const isToday = pathname === "/student/today";
-  const isSubjectArea =
-    pathname.startsWith("/student/subjects") ||
-    pathname.startsWith("/student/textbooks") ||
-    pathname.startsWith("/student/units");
-  const isCurriculum = pathname.startsWith("/student/curriculum");
-  const isTracker = pathname === "/student/tracker";
+  if (pathname.startsWith("/student/sprint")) return null;
 
   const items = [
-    { href: "/student", label: "홈", Icon: HomeIcon, active: isHome },
-    { href: "/student/today", label: "오늘미션", Icon: CheckListIcon, active: isToday },
-    { href: "/student/subjects", label: "교재진도", Icon: BookIcon, active: isSubjectArea },
-    { href: "/student/curriculum", label: "진도표", Icon: CurriculumPathIcon, active: isCurriculum },
-    { href: "/student/tracker", label: "갓생챌린지", Icon: ChartIcon, active: isTracker },
-  ];
+    { href: "/student", label: "홈", icon: "home", active: pathname === "/student" },
+    { href: "/student/today", label: "오늘미션", icon: "today", active: pathname === "/student/today" },
+    { href: "/student/subjects", label: "교재진도", icon: "book", active: /\/(subjects|textbooks|units)/.test(pathname) },
+    { href: "/student/curriculum", label: "진도맵", icon: "path", active: pathname.startsWith("/student/curriculum") },
+    { href: "/student/tracker", label: "갓생", icon: "chart", active: pathname === "/student/tracker" },
+  ] as const;
 
   return (
-    <nav className="fixed bottom-4 left-1/2 z-20 w-[calc(100%-2.5rem)] max-w-[430px] -translate-x-1/2">
-      <div className="rounded-[1.8rem] bg-[#0F172A] px-3 py-3 shadow-nav">
+    <nav className="fixed bottom-4 left-1/2 z-20 w-[calc(100%-1.5rem)] max-w-[430px] -translate-x-1/2 px-2">
+      <div className="rounded-[1.8rem] bg-[#0F172A] px-2 py-3 shadow-nav">
         <div className="grid grid-cols-5 gap-1">
-          {items.map((item, idx) => (
-            <Link
-              key={idx}
-              href={item.href}
-              className={cn(
-                "flex flex-col items-center gap-1.5 rounded-[1.2rem] px-1.5 py-2.5 text-[10px] font-semibold transition-all",
-                item.active
-                  ? "bg-white text-[#0F172A]"
-                  : "text-white/50 hover:text-white/75"
-              )}
-            >
-              <item.Icon />
-              <span>{item.label}</span>
+          {items.map((item) => (
+            <Link key={item.href} href={item.href} className={cn(
+              "flex min-w-0 flex-col items-center gap-1.5 rounded-[1.15rem] px-0.5 py-2.5 text-[9px] font-semibold transition-all",
+              item.active ? "bg-white text-[#0F172A]" : "text-white/50 hover:text-white/75",
+            )}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">{icons[item.icon]}</svg>
+              <span className="truncate">{item.label}</span>
             </Link>
           ))}
         </div>

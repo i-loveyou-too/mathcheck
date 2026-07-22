@@ -248,7 +248,8 @@ export default function StudentDashboardPage() {
   const todayRemaining = todayTasks.filter((task) => task.status !== "done").length;
   const remainingTasks = todayTasks.filter((task) => task.status !== "done");
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await apiFetch("/student/auth/logout", { method: "POST" }).catch(() => null);
     clearStudent();
     router.push("/login");
   };
@@ -266,6 +267,26 @@ export default function StudentDashboardPage() {
         </div>
 
         <StudentLogoutButton onClick={handleLogout} />
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <Link
+          href="/student/sprint"
+          className="relative overflow-hidden rounded-[24px] bg-[#1B1533] px-4 py-4 text-white shadow-[0_14px_30px_rgba(27,21,51,0.28)] transition hover:-translate-y-0.5"
+        >
+          <div className="pointer-events-none absolute -right-6 -top-6 h-20 w-20 rounded-full bg-[#FF6B4A]/30 blur-2xl" />
+          <p className="relative text-[10px] font-black tracking-[0.2em] text-[#FFB199]">SPRINT</p>
+          <p className="relative mt-2 text-base font-black leading-tight">집중 학습<br />관리</p>
+          <p className="relative mt-1 text-[11px] font-semibold text-white/55">두 번째 메인 서비스 →</p>
+        </Link>
+        <Link
+          href="/student/lessons"
+          className="relative overflow-hidden rounded-[24px] bg-white px-4 py-4 shadow-card transition hover:-translate-y-0.5"
+        >
+          <p className="text-[10px] font-black tracking-[0.15em] text-[#0E9F6E]">LESSONS</p>
+          <p className="mt-2 text-base font-black leading-tight text-[#17213B]">수업 일정</p>
+          <p className="mt-1 text-[11px] font-semibold text-[#98A2B3]">다음 수업 확인 →</p>
+        </Link>
       </div>
 
       <section className="relative overflow-hidden rounded-[30px] bg-[#121C3D] px-5 py-4 text-white shadow-[0_22px_52px_rgba(15,23,42,0.24)]">
