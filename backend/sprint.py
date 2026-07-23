@@ -871,6 +871,12 @@ def subject_goal_home_summary_safe(db: Session, program: models.SprintProgram) -
     return sprint_goals.subject_goal_home_summary(db, program)
 
 
+def worksheet_summary_safe(db: Session, program: models.SprintProgram, student_id: int) -> dict:
+    """sprint_worksheets.py는 sprint.py를 import하지 않으므로 순환참조 없이 지역 import로 재사용한다."""
+    import sprint_worksheets
+    return sprint_worksheets.worksheet_home_summary(db, program, student_id)
+
+
 def vocabulary_home_summary(db: Session, student_id: int, today: date) -> dict:
     import vocabulary
 
@@ -1425,6 +1431,7 @@ def student_sprint_dashboard(
         "vocabulary_summary": vocabulary_home_summary(db, student_id, today),
         "progress_summary": subject_goal_home_summary_safe(db, program),
         "mock_exam_summary": mock_exam_home_summary_safe(db, program, student_id),
+        "worksheet_summary": worksheet_summary_safe(db, program, student_id),
         "weekly_summary": sprint_weekly_summary(db, program, today),
         "upcoming": program_dict(db, upcoming, today) if upcoming else None,
         "past_count": past_count,

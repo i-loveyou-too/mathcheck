@@ -782,6 +782,11 @@ class SprintProgram(Base):
         back_populates="program",
         cascade="all, delete-orphan",
     )
+    worksheet_assignments = relationship(
+        "SprintWorksheetAssignment",
+        back_populates="program",
+        cascade="all, delete-orphan",
+    )
 
 
 class SprintGoal(Base):
@@ -1014,6 +1019,93 @@ class SprintDailyProofImage(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     submission = relationship("SprintDailyProofSubmission", back_populates="images")
+
+
+class SprintWorksheetAssignment(Base):
+    """관리자가 배정하는 문제지(PDF). 학생은 다운로드 후 풀이를 제출한다."""
+
+    __tablename__ = "sprint_worksheet_assignments"
+    __table_args__ = (
+        Index("ix_sprint_worksheet_assignments_program_student", "sprint_program_id", "student_id"),
+        Index("ix_sprint_worksheet_assignments_student_active", "student_id", "is_active"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    sprint_program_id = Column(Integer, ForeignKey("sprint_programs.id", ondelete="CASCADE"), nullable=False, index=True)
+    student_id = Column(Integer, ForeignKey("math_students.id"), nullable=False, index=True)
+    title = Column(String(200), nullable=False)
+    subject = Column(String(50), nullable=True)
+    assigned_date = Column(Date, nullable=False, index=True)
+    due_date = Column(Date, nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True, index=True)
+    storage_key = Column(String(500), nullable=False)
+    original_filename = Column(String(255), nullable=True)
+    mime_type = Column(String(100), nullable=False)
+    size_bytes = Column(Integer, nullable=False)
+    created_by_admin_id = Column(Integer, ForeignKey("math_admins.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    program = relationship("SprintProgram", back_populates="worksheet_assignments")
+    student = relationship("Student")
+    submission = relationship(
+        "SprintWorksheetSubmission",
+        back_populates="assignment",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+
+
+class SprintWorksheetSubmission(Base):
+    """학생이 제출하는 풀이(PDF 1개 또는 사진 여러 장). 배정당 1건, 반려 시 같은 건을 재작성한다."""
+
+    __tablename__ = "sprint_worksheet_submissions"
+    __table_args__ = (
+        UniqueConstraint("assignment_id", name="uq_sprint_worksheet_submission_assignment"),
+        Index("ix_sprint_worksheet_submissions_student_status", "student_id", "status"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    assignment_id = Column(Integer, ForeignKey("sprint_worksheet_assignments.id", ondelete="CASCADE"), nullable=False, index=True)
+    student_id = Column(Integer, ForeignKey("math_students.id"), nullable=False, index=True)
+    submission_method = Column(String(20), nullable=True)
+    status = Column(String(20), nullable=False, default="draft", index=True)
+    submitted_at = Column(DateTime(timezone=True), nullable=True)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    reviewed_by = Column(Integer, ForeignKey("math_admins.id"), nullable=True)
+    review_note = Column(String(500), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    assignment = relationship("SprintWorksheetAssignment", back_populates="submission")
+    student = relationship("Student")
+    files = relationship(
+        "SprintWorksheetSubmissionFile",
+        back_populates="submission",
+        cascade="all, delete-orphan",
+        order_by="SprintWorksheetSubmissionFile.order_index, SprintWorksheetSubmissionFile.id",
+    )
+
+
+class SprintWorksheetSubmissionFile(Base):
+    __tablename__ = "sprint_worksheet_submission_files"
+    __table_args__ = (
+        Index("ix_sprint_worksheet_submission_files_submission", "submission_id"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    submission_id = Column(Integer, ForeignKey("sprint_worksheet_submissions.id", ondelete="CASCADE"), nullable=False, index=True)
+    file_kind = Column(String(10), nullable=False)
+    storage_key = Column(String(500), nullable=False)
+    original_filename = Column(String(255), nullable=True)
+    mime_type = Column(String(100), nullable=False)
+    size_bytes = Column(Integer, nullable=False)
+    width = Column(Integer, nullable=True)
+    height = Column(Integer, nullable=True)
+    order_index = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    submission = relationship("SprintWorksheetSubmission", back_populates="files")
 
 
 # ---------------------------------------------------------------------------

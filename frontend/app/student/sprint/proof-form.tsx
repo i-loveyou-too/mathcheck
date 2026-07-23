@@ -39,6 +39,12 @@ type Current = {
   timing_status: string;
   submission: Submission | null;
 };
+// SPRINT DAY/진행률/스트라이크와의 연결 표시용 — 기존 대시보드 조회 API를 읽기 전용으로 재사용한다.
+type SprintContext = {
+  dayNumber: number | null;
+  strikeEffective: number;
+  strikeThreshold: number;
+};
 
 const labels = {
   planner: { title: "플래너 제출", proof: "planner" as ProofType, hint: "오늘 학습 계획이 보이도록 찍어주세요." },
@@ -59,13 +65,15 @@ function statusLabel(submission: Submission | null, timing: string) {
 function NoActiveSprint({ router }: { router: ReturnType<typeof useRouter> }) {
   return (
     <ScreenShell withBottomNav>
-      <div className="mt-10 rounded-[28px] bg-white p-8 text-center shadow-card">
-        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-[#FFEDE7] text-2xl">🏃</div>
-        <h2 className="mt-5 text-xl font-black text-[#17213B]">참여 중인 SPRINT가 없습니다</h2>
-        <p className="mt-2 text-sm text-[#7A859F]">활성화된 SPRINT가 있을 때만 인증을 제출할 수 있어요.</p>
-        <div className="mt-6 flex flex-col gap-2">
-          <button onClick={() => router.push("/student/sprint")} className="h-12 rounded-2xl bg-[#FF6B4A] text-sm font-black text-white">SPRINT 홈으로 돌아가기</button>
-          <button onClick={() => router.push("/student")} className="h-12 rounded-2xl bg-[#F0F2F8] text-sm font-black text-[#17213B]">오늘도 해냄으로 전환</button>
+      <div className="-mx-5 -mt-7 min-h-screen bg-[radial-gradient(circle_at_50%_-5%,#D9F6FF_0,#EEF9FF_34%,#F8FBFF_68%)] px-5 pb-36 pt-10">
+        <div className="mt-10 rounded-[28px] bg-white/95 p-8 text-center shadow-[0_18px_36px_rgba(49,89,130,0.16)] ring-1 ring-[#DCEBFA]">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#EAF5FF] text-2xl">🏃</div>
+          <h2 className="mt-5 break-keep text-xl font-black text-[#10213D]">참여 중인 SPRINT가 없습니다</h2>
+          <p className="mt-2 break-keep text-sm text-[#6E7F99]">활성화된 SPRINT가 있을 때만 인증을 제출할 수 있어요.</p>
+          <div className="mt-6 flex flex-col gap-2">
+            <button onClick={() => router.push("/student/sprint")} className="h-12 break-keep rounded-2xl bg-[#2874E8] text-sm font-black text-white">SPRINT 홈으로 돌아가기</button>
+            <button onClick={() => router.push("/student")} className="h-12 break-keep rounded-2xl bg-[#EAF5FF] text-sm font-black text-[#2874E8]">오늘도 해냄으로 전환</button>
+          </div>
         </div>
       </div>
     </ScreenShell>
@@ -85,6 +93,7 @@ export function ProofForm({ proofType }: { proofType: ProofType }) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  const [sprintContext, setSprintContext] = useState<SprintContext | null>(null);
 
   const load = async (id: number, targetDate = learningDate) => {
     const result = await apiFetch<Current>(`/student/sprint/proofs/current?student_id=${id}&proof_type=${meta.proof}&learning_date=${targetDate}`);
@@ -107,6 +116,19 @@ export function ProofForm({ proofType }: { proofType: ProofType }) {
       }
       setError(reason instanceof Error ? reason.message : "인증 정보를 불러오지 못했습니다.");
     });
+    // DAY/진행률/스트라이크 연결 표시는 순수 장식용이라 실패해도 조용히 무시한다 (제출 흐름과 무관).
+    void apiFetch<{ program: { day_info: { day_number: number } } | null; strike_summary?: { effective: number; threshold: number } }>(
+      `/student/sprint/dashboard?student_id=${student.id}&study_date=${getStudyDate()}`,
+    )
+      .then((dashboard) => {
+        if (!dashboard.program) return;
+        setSprintContext({
+          dayNumber: dashboard.program.day_info?.day_number ?? null,
+          strikeEffective: dashboard.strike_summary?.effective ?? 0,
+          strikeThreshold: dashboard.strike_summary?.threshold ?? 3,
+        });
+      })
+      .catch(() => null);
   }, [router]);
 
   useEffect(() => {
@@ -243,102 +265,117 @@ export function ProofForm({ proofType }: { proofType: ProofType }) {
     }
   };
 
+  const currentStatus = statusLabel(data?.submission ?? null, data?.timing_status ?? "not_due");
+  const isDone = data?.submission?.workflow_status === "approved";
+
   return (
     <ScreenShell withBottomNav>
-      <div className="flex items-center justify-between pt-2">
-        <div>
-          <p className="text-sm font-black tracking-[0.18em] text-[#FF6B4A]">SPRINT PROOF</p>
-          <h1 className="mt-1 text-2xl font-black text-[#17213B]">{meta.title}</h1>
-        </div>
-        <button onClick={() => router.push("/student/sprint")} className="rounded-full bg-white px-3 py-2 text-xs font-black text-[#5C63FF] shadow-sm">SPRINT</button>
-      </div>
-
-      {error && <p className="rounded-2xl bg-red-50 px-4 py-3 text-sm font-bold text-red-600">{error}</p>}
-      {notice && <p className="rounded-2xl bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700">{notice}</p>}
-
-      <section className="rounded-[28px] bg-[#17213B] p-5 text-white shadow-card">
-        <p className="text-xs font-bold text-white/55">오늘 마감</p>
-        <div className="mt-2 flex items-end justify-between">
-          <h2 className="text-3xl font-black">{data?.deadline_time ?? "미설정"}</h2>
-          <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-black">{statusLabel(data?.submission ?? null, data?.timing_status ?? "not_due")}</span>
-        </div>
-        <p className="mt-3 text-sm text-white/60">{meta.hint}</p>
-      </section>
-
-      <section className="rounded-[28px] bg-white p-5 shadow-card">
-        <label className="text-xs font-black text-[#7A859F]">학습일<input type="date" value={learningDate} onChange={(event) => { setLearningDate(event.target.value); setPendingFiles([]); if (studentId) void load(studentId, event.target.value); }} className="mt-1.5 h-12 w-full rounded-2xl border border-[#E5EAF1] px-4 text-[#17213B]" /></label>
-        <textarea disabled={locked} value={memo} onChange={(event) => setMemo(event.target.value)} rows={3} className="mt-4 w-full resize-none rounded-2xl border border-[#E5EAF1] p-3 text-sm outline-none disabled:bg-gray-100" placeholder="메모" />
-        {reviewComment && (
-          <div className={`mt-3 rounded-2xl border px-4 py-3 ${commentClassName}`}>
-            <p className="text-xs font-black">{commentTitle}</p>
-            <p className="mt-1 whitespace-pre-wrap text-sm font-bold">{reviewComment}</p>
-          </div>
-        )}
-        <button disabled={busy || locked} onClick={() => void saveDraft()} className="mt-4 h-12 w-full rounded-2xl bg-[#F0F2F8] text-sm font-black text-[#17213B] disabled:opacity-40">임시저장</button>
-      </section>
-
-      <section className="rounded-[28px] bg-white p-5 shadow-card">
+      <div className="-mx-5 -mt-7 min-h-screen bg-[radial-gradient(circle_at_50%_-5%,#D9F6FF_0,#EEF9FF_34%,#F8FBFF_68%)] px-5 pb-36 pt-10">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-black text-[#17213B]">사진</h2>
-          <span className="text-xs font-bold text-[#98A2B3]">{uploadedCount + pendingFiles.length} / {MAX_IMAGES}장</span>
+          <Link href="/student/sprint" className="break-keep text-sm font-black text-[#2874E8]">← SPRINT 홈</Link>
+          {sprintContext?.dayNumber != null && (
+            <span className="shrink-0 break-keep rounded-full bg-white/80 px-3 py-1.5 text-xs font-black text-[#2874E8] ring-1 ring-[#DCEBFA]">DAY {sprintContext.dayNumber}</span>
+          )}
         </div>
 
-        {uploadedCount > 0 && (
-          <div className="mt-3 grid grid-cols-3 gap-2">
-            {data!.submission!.images.map((image) => (
-              <div key={image.id} className="relative aspect-square overflow-hidden rounded-2xl">
-                <img src={imageUrl(image.id)} alt="proof" className="h-full w-full object-cover" />
-                {!locked && (
-                  <button onClick={() => void deleteUploadedImage(image.id)} disabled={busy} className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-xs font-black text-white">✕</button>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
+        <div className="mt-4 flex items-center justify-between gap-3">
+          <h1 className="break-keep text-3xl font-black tracking-[-0.05em] text-[#10213D]">{meta.title}</h1>
+          {isDone && <span className="shrink-0 break-keep rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-600">완료 · 진행률 반영됨</span>}
+        </div>
 
-        {pendingFiles.length > 0 && (
-          <div className="mt-3">
-            <p className="mb-1.5 text-xs font-bold text-[#98A2B3]">업로드 대기 중</p>
-            <div className="grid grid-cols-3 gap-2">
-              {previewUrls.map((url, index) => (
-                <div key={url} className="relative aspect-square overflow-hidden rounded-2xl ring-2 ring-[#FF6B4A]/40">
-                  <img src={url} alt="preview" className="h-full w-full object-cover" />
-                  <button onClick={() => removePendingFile(index)} disabled={busy} className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-xs font-black text-white">✕</button>
+        {error && <p className="mt-4 break-keep rounded-2xl bg-red-50 px-4 py-3 text-sm font-bold text-red-600">{error}</p>}
+        {notice && <p className="mt-4 break-keep rounded-2xl bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700">{notice}</p>}
+
+        <section className="mt-6 rounded-[28px] bg-white/95 p-5 shadow-[0_18px_36px_rgba(49,89,130,0.18)] ring-1 ring-[#DCEBFA]">
+          <p className="text-xs font-bold text-[#6E7F99]">오늘 마감</p>
+          <div className="mt-2 flex items-end justify-between gap-3">
+            <h2 className="text-3xl font-black text-[#10213D]">{data?.deadline_time ?? "미설정"}</h2>
+            <span className="shrink-0 break-keep rounded-full bg-[#EAF5FF] px-3 py-1.5 text-xs font-black text-[#2874E8]">{currentStatus}</span>
+          </div>
+          <p className="mt-3 break-keep text-sm text-[#6E7F99]">{meta.hint}</p>
+          {sprintContext && (
+            <div className="mt-4 flex items-center justify-between border-t border-[#EAF0FA] pt-3 text-xs font-bold text-[#8CA0BD]">
+              <span className="break-keep">이 인증을 완료하면 SPRINT 진행률이 올라가요.</span>
+              <span className="shrink-0 break-keep text-[#E5533C]">스트라이크 {sprintContext.strikeEffective}/{sprintContext.strikeThreshold}</span>
+            </div>
+          )}
+        </section>
+
+        <section className="mt-4 rounded-[28px] bg-white/95 p-5 shadow-[0_12px_28px_rgba(71,104,143,0.14)] ring-1 ring-[#DFEAF6]">
+          <label className="break-keep text-xs font-black text-[#6E7F99]">학습일<input type="date" value={learningDate} onChange={(event) => { setLearningDate(event.target.value); setPendingFiles([]); if (studentId) void load(studentId, event.target.value); }} className="mt-1.5 h-12 w-full rounded-2xl border border-[#DFEAF6] px-4 text-[#10213D]" /></label>
+          <textarea disabled={locked} value={memo} onChange={(event) => setMemo(event.target.value)} rows={3} className="mt-4 w-full resize-none rounded-2xl border border-[#DFEAF6] p-3 text-sm text-[#10213D] outline-none disabled:bg-[#F5F8FC]" placeholder="메모" />
+          {reviewComment && (
+            <div className={`mt-3 rounded-2xl border px-4 py-3 ${commentClassName}`}>
+              <p className="break-keep text-xs font-black">{commentTitle}</p>
+              <p className="mt-1 whitespace-pre-wrap break-keep text-sm font-bold">{reviewComment}</p>
+            </div>
+          )}
+          <button disabled={busy || locked} onClick={() => void saveDraft()} className="mt-4 h-12 w-full break-keep rounded-2xl bg-[#EAF5FF] text-sm font-black text-[#2874E8] disabled:opacity-40">임시저장</button>
+        </section>
+
+        <section className="mt-4 rounded-[28px] bg-white/95 p-5 shadow-[0_12px_28px_rgba(71,104,143,0.14)] ring-1 ring-[#DFEAF6]">
+          <div className="flex items-center justify-between">
+            <h2 className="break-keep text-lg font-black text-[#10213D]">사진</h2>
+            <span className="shrink-0 break-keep text-xs font-bold text-[#8CA0BD]">{uploadedCount + pendingFiles.length} / {MAX_IMAGES}장</span>
+          </div>
+
+          {uploadedCount > 0 && (
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              {data!.submission!.images.map((image) => (
+                <div key={image.id} className="relative aspect-square overflow-hidden rounded-2xl">
+                  <img src={imageUrl(image.id)} alt="proof" className="h-full w-full object-cover" />
+                  {!locked && (
+                    <button onClick={() => void deleteUploadedImage(image.id)} disabled={busy} className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-xs font-black text-white">✕</button>
+                  )}
                 </div>
               ))}
             </div>
-          </div>
-        )}
+          )}
 
-        {!locked && canAddMore && (
-          <input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={(event) => { addPendingFiles(event.target.files); event.target.value = ""; }} className="mt-4 block w-full text-sm" />
-        )}
-        {!locked && pendingFiles.length > 0 && (
-          <button disabled={busy} onClick={() => void uploadPendingPhotos()} className="mt-3 h-11 w-full rounded-2xl bg-[#17213B] text-sm font-black text-white disabled:opacity-40">{busy ? "업로드 중..." : "사진 올리기"}</button>
-        )}
-        {!locked && !canAddMore && <p className="mt-3 text-xs font-bold text-[#98A2B3]">최대 {MAX_IMAGES}장까지 올릴 수 있어요.</p>}
-
-        <button disabled={busy || locked || uploadedCount === 0} onClick={() => void finalSubmit()} className="mt-4 h-12 w-full rounded-2xl bg-[#FF6B4A] text-sm font-black text-white disabled:opacity-40">
-          {locked ? statusLabel(data?.submission ?? null, data?.timing_status ?? "not_due") : "최종 제출"}
-        </button>
-      </section>
-
-      {data?.submission && data.submission.attempts.length > 0 && (
-        <section className="rounded-[28px] bg-white p-5 shadow-card">
-          <h2 className="text-lg font-black text-[#17213B]">제출 이력</h2>
-          <div className="mt-3 space-y-2">
-            {data.submission.attempts.slice().reverse().map((attempt) => (
-              <div key={attempt.id} className="flex items-center justify-between rounded-xl border border-[#EEF1F7] px-3 py-2">
-                <div>
-                  <p className="text-sm font-black text-[#17213B]">{attempt.attempt_no}회차 · {new Date(attempt.submitted_at).toLocaleString("ko-KR")}</p>
-                  <p className="mt-0.5 text-xs font-bold text-[#7A859F]">{timingLabels[attempt.timing_status] ?? attempt.timing_status}{attempt.review_note ? ` · ${attempt.review_note}` : ""}</p>
-                </div>
-                <span className="shrink-0 rounded-md bg-[#F1F3FF] px-2 py-1 text-[10px] font-black text-[#5C63FF]">{reviewLabels[attempt.review_status] ?? attempt.review_status}</span>
+          {pendingFiles.length > 0 && (
+            <div className="mt-3">
+              <p className="mb-1.5 break-keep text-xs font-bold text-[#8CA0BD]">업로드 대기 중</p>
+              <div className="grid grid-cols-3 gap-2">
+                {previewUrls.map((url, index) => (
+                  <div key={url} className="relative aspect-square overflow-hidden rounded-2xl ring-2 ring-[#2874E8]/40">
+                    <img src={url} alt="preview" className="h-full w-full object-cover" />
+                    <button onClick={() => removePendingFile(index)} disabled={busy} className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-xs font-black text-white">✕</button>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </div>
+          )}
+
+          {!locked && canAddMore && (
+            <input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={(event) => { addPendingFiles(event.target.files); event.target.value = ""; }} className="mt-4 block w-full text-sm" />
+          )}
+          {!locked && pendingFiles.length > 0 && (
+            <button disabled={busy} onClick={() => void uploadPendingPhotos()} className="mt-3 h-11 w-full break-keep rounded-2xl bg-[#10213D] text-sm font-black text-white disabled:opacity-40">{busy ? "업로드 중..." : "사진 올리기"}</button>
+          )}
+          {!locked && !canAddMore && <p className="mt-3 break-keep text-xs font-bold text-[#8CA0BD]">최대 {MAX_IMAGES}장까지 올릴 수 있어요.</p>}
+
+          <button disabled={busy || locked || uploadedCount === 0} onClick={() => void finalSubmit()} className="mt-4 h-12 w-full break-keep rounded-2xl bg-[#2874E8] text-sm font-black text-white disabled:opacity-40">
+            {locked ? currentStatus : "최종 제출"}
+          </button>
         </section>
-      )}
+
+        {data?.submission && data.submission.attempts.length > 0 && (
+          <section className="mt-4 rounded-[28px] bg-white/95 p-5 shadow-[0_12px_28px_rgba(71,104,143,0.14)] ring-1 ring-[#DFEAF6]">
+            <h2 className="break-keep text-lg font-black text-[#10213D]">제출 이력</h2>
+            <div className="mt-3 space-y-2">
+              {data.submission.attempts.slice().reverse().map((attempt) => (
+                <div key={attempt.id} className="flex items-center justify-between gap-2 rounded-xl border border-[#EAF0FA] px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="break-keep text-sm font-black text-[#10213D]">{attempt.attempt_no}회차 · {new Date(attempt.submitted_at).toLocaleString("ko-KR")}</p>
+                    <p className="mt-0.5 break-keep text-xs font-bold text-[#6E7F99]">{timingLabels[attempt.timing_status] ?? attempt.timing_status}{attempt.review_note ? ` · ${attempt.review_note}` : ""}</p>
+                  </div>
+                  <span className="shrink-0 break-keep rounded-md bg-[#EAF5FF] px-2 py-1 text-[10px] font-black text-[#2874E8]">{reviewLabels[attempt.review_status] ?? attempt.review_status}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+      </div>
     </ScreenShell>
   );
 }

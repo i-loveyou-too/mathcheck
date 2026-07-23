@@ -151,6 +151,7 @@ export default function AdminSprintDetailPage() {
         <Link href={`/admin/sprints/${id}/proofs`} className="rounded-xl bg-white px-3 py-2 text-xs font-black text-[#5C63FF] shadow-sm">플래너·착석 인증 관리</Link>
         <Link href={`/admin/sprints/${id}/study-time`} className="rounded-xl bg-white px-3 py-2 text-xs font-black text-[#5C63FF] shadow-sm">공부시간 인증 검수</Link>
         <Link href={`/admin/sprints/${id}/mock-exams`} className="rounded-xl bg-white px-3 py-2 text-xs font-black text-[#5C63FF] shadow-sm">모의고사 관리</Link>
+        <Link href={`/admin/sprints/${id}/worksheets`} className="rounded-xl bg-white px-3 py-2 text-xs font-black text-[#5C63FF] shadow-sm">문제지 관리</Link>
         <Link href={`/admin/sprints/${id}/goals`} className="rounded-xl bg-white px-3 py-2 text-xs font-black text-[#5C63FF] shadow-sm">과목별 목표 관리</Link>
       </div>
       {error && <p className="mt-4 rounded-2xl bg-red-50 px-4 py-3 text-sm font-bold text-red-600">{error}</p>}

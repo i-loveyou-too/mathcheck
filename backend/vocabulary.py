@@ -818,6 +818,60 @@ def unresolved_review_questions(db: Session, challenge: models.VocabularyChallen
     return db.query(models.VocabularyWord).filter(models.VocabularyWord.id.in_(ids)).all(), "direct"
 
 
+def reconcile_existing_word_bank_draft_session(
+    db: Session,
+    challenge: models.VocabularyChallenge,
+    session: models.VocabularyTestSession,
+    study_date: date,
+    session_type: str,
+) -> None:
+    if (
+        session_type != "main"
+        or session.status != "draft"
+        or challenge.source_type != "word_bank"
+        or not challenge.word_bank_id
+    ):
+        return
+
+    expected_words = select_bank_words(db, challenge, study_date)
+    expected_count = len(expected_words)
+    if expected_count <= 0:
+        return
+
+    questions = db.query(models.VocabularyTestQuestion).filter_by(session_id=session.id).all()
+    if len(questions) >= expected_count:
+        session.total_count = len(questions)
+        return
+
+    existing_bank_word_ids = {
+        question.bank_word_id for question in questions if question.bank_word_id is not None
+    }
+    next_order = max((question.order_index for question in questions), default=0) + 1
+    added = 0
+    for word in expected_words:
+        if word.id in existing_bank_word_ids:
+            continue
+        db.add(models.VocabularyTestQuestion(
+            session_id=session.id,
+            word_id=None,
+            bank_word_id=word.id,
+            word_source_type="word_bank",
+            order_index=next_order,
+            english_snapshot=word.english,
+            accepted_answers_snapshot=list(word.accepted_meanings),
+        ))
+        existing_bank_word_ids.add(word.id)
+        next_order += 1
+        added += 1
+        if len(questions) + added >= expected_count:
+            break
+
+    if added:
+        session.total_count = len(questions) + added
+        db.commit()
+        db.refresh(session)
+
+
 def create_session(db: Session, challenge: models.VocabularyChallenge, study_date: date, session_type: str):
     existing = db.query(models.VocabularyTestSession).filter_by(
         challenge_id=challenge.id,
@@ -826,6 +880,7 @@ def create_session(db: Session, challenge: models.VocabularyChallenge, study_dat
         session_type=session_type,
     ).first()
     if existing:
+        reconcile_existing_word_bank_draft_session(db, challenge, existing, study_date, session_type)
         return existing
 
     if session_type == "review":

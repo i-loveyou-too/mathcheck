@@ -24,6 +24,13 @@ type Series = {
 const statusLabels: Record<string, string> = { scheduled: "예정", open: "응시 가능", closed: "마감" };
 const today = new Date().toISOString().slice(0, 10);
 
+type ProgramSettings = {
+  mock_exam_weekday: number | null;
+  mock_exam_start_time: string | null;
+  mock_exam_submission_deadline_time: string | null;
+  first_mock_exam_date: string | null;
+};
+
 export default function AdminSprintMockExamsPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
@@ -33,6 +40,8 @@ export default function AdminSprintMockExamsPage() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [saving, setSaving] = useState(false);
+  const [programSettings, setProgramSettings] = useState<ProgramSettings | null>(null);
+  const [bridgeDismissed, setBridgeDismissed] = useState(false);
   const [form, setForm] = useState({
     title: "SPRINT 모의고사", recurrence_weekday: "6", first_exam_date: today,
     submission_deadline_time: "23:00", generation_mode: "until_sprint_end", total_rounds: "8",
@@ -46,7 +55,21 @@ export default function AdminSprintMockExamsPage() {
   useEffect(() => {
     if (!getAdmin()) { router.push("/admin/login"); return; }
     void load().catch((reason) => setError(reason instanceof Error ? reason.message : "목록을 불러오지 못했습니다."));
+    void apiFetch<ProgramSettings>(`/admin/sprints/${programId}`).then(setProgramSettings).catch(() => null);
   }, [programId, router]);
+
+  const applyProgramSettings = () => {
+    if (!programSettings) return;
+    setForm((prev) => ({
+      ...prev,
+      recurrence_weekday: programSettings.mock_exam_weekday != null ? String(programSettings.mock_exam_weekday) : prev.recurrence_weekday,
+      first_exam_date: programSettings.first_mock_exam_date ?? prev.first_exam_date,
+      submission_deadline_time: programSettings.mock_exam_submission_deadline_time ?? prev.submission_deadline_time,
+    }));
+    setBridgeDismissed(true);
+  };
+
+  const showBridge = !bridgeDismissed && seriesList.length === 0 && programSettings?.mock_exam_weekday != null;
 
   const toggleExpand = async (seriesId: number) => {
     if (expanded[seriesId]) {
@@ -142,6 +165,21 @@ export default function AdminSprintMockExamsPage() {
 
         {error && <p className="mt-5 rounded-2xl bg-red-50 px-4 py-3 text-sm font-bold text-red-600">{error}</p>}
         {notice && <p className="mt-5 rounded-2xl bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700">{notice}</p>}
+
+        {showBridge && (
+          <div className="mt-5 rounded-2xl bg-[#EAF5FF] px-5 py-4">
+            <p className="text-sm font-black text-[#10213D]">
+              SPRINT 프로그램 생성 시 설정한 모의고사 요일({weekdays[programSettings!.mock_exam_weekday!]}요일)이 있지만, 아직 시리즈가 생성되지 않았습니다.
+            </p>
+            <p className="mt-1 text-xs font-bold text-[#2874E8]">
+              첫 시험일 {programSettings?.first_mock_exam_date ?? "미설정"} · 제출 마감 {programSettings?.mock_exam_submission_deadline_time ?? "미설정"}
+            </p>
+            <div className="mt-3 flex gap-2">
+              <button onClick={applyProgramSettings} className="rounded-xl bg-[#2874E8] px-4 py-2 text-xs font-black text-white">이 설정으로 시리즈 생성 폼 채우기</button>
+              <button onClick={() => setBridgeDismissed(true)} className="rounded-xl bg-white px-4 py-2 text-xs font-black text-[#6E7F99]">닫기</button>
+            </div>
+          </div>
+        )}
 
         <div className="mt-6 grid gap-5 lg:grid-cols-[380px_1fr]">
           <form onSubmit={createSeries} className="h-fit rounded-[24px] bg-white p-6 shadow-card">

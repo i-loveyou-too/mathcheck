@@ -298,6 +298,26 @@ class VocabularyTests(TestCase):
         self.assertIn("ANSWER KEY", answer_key)
         self.assertIn("DAY 1 ~ DAY 6", paper)
 
+    def test_existing_word_bank_draft_session_expands_after_day_count_change(self):
+        ebs = self.import_preview_bank("2027_EBS_VOCA_1800.xlsx")
+        challenge = self.make_bank_challenge(ebs, self.other_student.id, "EBS resize")
+        challenge.bank_days_per_learning_day = 2
+        self.db.commit()
+
+        session = create_session(self.db, challenge, date(2026, 7, 1), "main")
+        self.assertEqual(session.total_count, 60)
+
+        challenge.bank_days_per_learning_day = 3
+        self.db.commit()
+        resized = create_session(self.db, challenge, date(2026, 7, 1), "main")
+
+        self.assertEqual(resized.id, session.id)
+        self.assertEqual(resized.total_count, 90)
+        self.assertEqual(
+            self.db.query(models.VocabularyTestQuestion).filter_by(session_id=session.id).count(),
+            90,
+        )
+
     def test_word_master_descending_three_bank_days(self):
         bank = models.VocabularyBank(title="WM Desc", total_words=2000, total_days=50, words_per_day=40, default_daily_test_question_count=100)
         self.db.add(bank)

@@ -80,6 +80,14 @@ type SubjectGoalSummary = {
   next_goal: SubjectGoalNext | null;
   path: string;
 };
+type WorksheetSummary = {
+  available: boolean;
+  assigned_count: number;
+  pending_action_count: number;
+  in_review_count: number;
+  approved_count: number;
+  path: string;
+};
 type Dashboard = {
   today: string;
   program: Program | null;
@@ -94,6 +102,7 @@ type Dashboard = {
   vocabulary_summary?: VocabularySummary;
   mock_exam_summary?: MockExamSummary;
   progress_summary?: SubjectGoalSummary;
+  worksheet_summary?: WorksheetSummary;
   weekly_summary?: WeeklySummary;
 };
 
@@ -141,9 +150,10 @@ function percent(value: number | null | undefined) {
   return Math.max(0, Math.min(100, Math.round(value)));
 }
 
-function Icon({ name }: { name: "bell" | "seat" | "planner" | "timer" | "book" | "goals" | "exam" | "clock" | "target" }) {
+function Icon({ name }: { name: "bell" | "seat" | "planner" | "timer" | "book" | "goals" | "exam" | "clock" | "target" | "doc" }) {
   const paths = {
     bell: <path d="M12 22a2.7 2.7 0 0 0 2.6-2h-5.2A2.7 2.7 0 0 0 12 22Zm8-6.2-2-2.2V9a6 6 0 0 0-4.7-5.9 1.4 1.4 0 0 0-2.6 0A6 6 0 0 0 6 9v4.6l-2 2.2V18h16v-2.2Z" />,
+    doc: <path d="M6 2h8l4 4v16H6V2Zm7 1.5V7h3.5L13 3.5ZM8 11h8v2H8v-2Zm0 4h8v2H8v-2Zm0-8h4v2H8V7Z" />,
     seat: <path d="M8 4h8v8H8V4Zm-2 9h12v2H6v-2Zm1 3h2l-1 5H6l1-5Zm8 0h2l1 5h-2l-1-5Z" />,
     planner: <path d="M7 3h11a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7V3Zm-3 3h2v12H4V6Zm5 2h7v2H9V8Zm0 4h7v2H9v-2Zm0 4h5v2H9v-2Z" />,
     timer: <path d="M10 2h4v2h-4V2Zm1 11V7h2v7h5v2h-7v-3Zm1 9a8 8 0 1 1 0-16 8 8 0 0 1 0 16Z" />,
@@ -183,17 +193,17 @@ function ProofCard({ title, icon, proof }: { title: string; icon: "seat" | "plan
   const tone = status.includes("반려") || status.includes("지각") || status.includes("확정") ? "text-[#E25050] bg-[#FFF0F0]" : status.includes("검토") ? "text-[#E18A00] bg-[#FFF6E2]" : status.includes("승인") ? "text-[#17895E] bg-[#EAF8F1]" : "text-[#2874E8] bg-[#EDF5FF]";
   const cta = status.includes("승인") || status.includes("검토") ? "제출 완료" : status.includes("반려") ? "재제출하기" : "사진 제출하기";
   const card = (
-    <div className="h-full rounded-[22px] bg-white/95 p-5 shadow-[0_12px_28px_rgba(71,104,143,0.14)] ring-1 ring-[#DFEAF6]">
+    <div className="h-full min-w-0 rounded-[22px] bg-white/95 p-5 shadow-[0_12px_28px_rgba(71,104,143,0.14)] ring-1 ring-[#DFEAF6]">
       <div className="flex items-start gap-4">
         <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#EAF5FF] text-[#2E8AEA]"><Icon name={icon} /></div>
-        <div className="min-w-0">
-          <p className="font-black text-[#10213D]">{title}</p>
-          <p className="mt-1 text-sm font-semibold text-[#40516D]">{proof?.deadline_time ? `${proof.deadline_time}까지` : unavailable ? "기능 준비 중" : "마감 없음"}</p>
+        <div className="min-w-0 flex-1">
+          <p className="break-keep font-black text-[#10213D]">{title}</p>
+          <p className="mt-1 break-keep text-sm font-semibold text-[#40516D]">{proof?.deadline_time ? `${proof.deadline_time}까지` : unavailable ? "기능 준비 중" : "마감 없음"}</p>
         </div>
       </div>
       <div className="my-4 h-px bg-[#E9F0F8]" />
-      <span className={`inline-flex rounded-full px-4 py-1.5 text-sm font-black ${tone}`}>{status}</span>
-      <div className="mt-4 rounded-2xl border border-[#A9CBFA] px-4 py-3 text-center text-sm font-black text-[#2874E8]">{unavailable ? "준비 중" : cta}</div>
+      <span className={`inline-flex break-keep rounded-full px-4 py-1.5 text-sm font-black ${tone}`}>{status}</span>
+      <div className="mt-4 break-keep rounded-2xl border border-[#A9CBFA] px-4 py-3 text-center text-sm font-black text-[#2874E8]">{unavailable ? "준비 중" : cta}</div>
     </div>
   );
   return unavailable ? <div>{card}</div> : <Link href={proof.path}>{card}</Link>;
@@ -236,17 +246,17 @@ export default function StudentSprintPage() {
   return (
     <ScreenShell withBottomNav>
       <div className="-mx-5 -mt-7 min-h-screen bg-[radial-gradient(circle_at_50%_-5%,#D9F6FF_0,#EEF9FF_34%,#F8FBFF_68%)] px-5 pb-10 pt-9">
-        <header className="mb-7 flex items-start justify-between">
-          <div>
+        <header className="mb-7 flex items-start justify-between gap-3">
+          <div className="min-w-0">
             <h1 className="text-[3.2rem] font-black leading-none tracking-[-0.08em] text-[#2E74E8] drop-shadow-[0_8px_16px_rgba(47,116,232,0.18)]">SPRINT</h1>
-            <p className="mt-2 text-lg font-bold tracking-[-0.04em] text-[#244A80]">오늘의 기록이 목표를 완성해요</p>
+            <p className="mt-2 break-keep text-lg font-bold tracking-[-0.04em] text-[#244A80]">오늘의 기록이 목표를 완성해요</p>
           </div>
-          <div className="flex flex-col items-end gap-4">
+          <div className="flex shrink-0 flex-col items-end gap-4">
             <div className="relative text-[#436AA2]" aria-label="알림">
               <Icon name="bell" />
               <span className="absolute right-0 top-0 h-3 w-3 rounded-full bg-[#F25E72]" />
             </div>
-            <Link href="/student" className="rounded-full bg-white px-4 py-3 text-sm font-black text-[#285EB8] shadow-[0_8px_20px_rgba(60,94,140,0.18)]">↔ 오늘도 해냄으로 전환</Link>
+            <Link href="/student" className="whitespace-nowrap break-keep rounded-full bg-white px-4 py-3 text-sm font-black text-[#285EB8] shadow-[0_8px_20px_rgba(60,94,140,0.18)]">↔ 오늘도 해냄으로 전환</Link>
           </div>
         </header>
 
@@ -257,18 +267,18 @@ export default function StudentSprintPage() {
         ) : (
           <>
             <section className="relative mb-8 overflow-hidden rounded-[24px] bg-white/95 p-5 shadow-[0_18px_36px_rgba(49,89,130,0.18)] ring-1 ring-[#DCEBFA]">
-              <div className="grid grid-cols-[1.35fr_1fr_1fr] gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-[1.35fr_1fr_1fr]">
                 <div>
-                  <p className="text-3xl font-black tracking-[-0.05em] text-[#2E74E8]">DAY {program.day_info.day_number || "-"}</p>
-                  <p className="mt-2 text-lg font-bold text-[#183050]">{program.day_info.status === "scheduled" ? `시작까지 ${program.day_info.days_remaining}일` : program.day_info.status === "completed" ? "SPRINT 종료" : `종료까지 ${program.day_info.days_remaining}일 남았어요!`}</p>
+                  <p className="text-3xl font-black tracking-[-0.05em] text-[#2E74E8] break-keep">DAY {program.day_info.day_number || "-"}</p>
+                  <p className="mt-2 text-lg font-bold text-[#183050] break-keep">{program.day_info.status === "scheduled" ? `시작까지 ${program.day_info.days_remaining}일` : program.day_info.status === "completed" ? "SPRINT 종료" : `종료까지 ${program.day_info.days_remaining}일 남았어요!`}</p>
                 </div>
-                <div className="border-l border-[#E3EDF8] pl-4">
-                  <p className="text-sm font-bold text-[#29415F]">전체 진행률</p>
+                <div className="sm:border-l sm:border-[#E3EDF8] sm:pl-4">
+                  <p className="text-sm font-bold text-[#29415F] break-keep">전체 진행률</p>
                   <p className="mt-3 text-2xl font-black text-[#10213D]">{progress === null ? "-" : `${progress}%`}</p>
                   <div className="mt-3 h-2 rounded-full bg-[#DDE4EF]"><div className="h-full rounded-full bg-[#2874E8]" style={{ width: `${progress ?? 0}%` }} /></div>
                 </div>
                 <div>
-                  <p className="text-sm font-bold text-[#29415F]">스트라이크</p>
+                  <p className="text-sm font-bold text-[#29415F] break-keep">스트라이크</p>
                   <p className="mt-3 text-2xl font-black text-[#10213D]">{data.strike_summary?.effective ?? 0} / {data.strike_summary?.threshold ?? "-"}</p>
                   <div className="mt-3 grid grid-cols-3 gap-1.5">
                     {Array.from({ length: data.strike_summary?.threshold ?? 3 }).slice(0, 3).map((_, index) => <span key={index} className={`h-2 rounded-full ${index < (data.strike_summary?.effective ?? 0) ? "bg-[#FF6648]" : "bg-[#DDE4EF]"}`} />)}
@@ -286,53 +296,53 @@ export default function StudentSprintPage() {
 
             <section className="mb-8">
               <SectionHeader title="오늘의 인증" href="/student/sprint/proofs" />
-              <div className="grid gap-4 md:grid-cols-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
                 <ProofCard title="착석 인증" icon="seat" proof={data.proof_summaries?.seat_check} />
                 <ProofCard title="플래너 인증" icon="planner" proof={data.proof_summaries?.planner} />
-                <Link href="/student/sprint/study-time" className="rounded-[22px] bg-white/95 p-5 shadow-[0_12px_28px_rgba(71,104,143,0.14)] ring-1 ring-[#DFEAF6]">
+                <Link href="/student/sprint/study-time" className="min-w-0 rounded-[22px] bg-white/95 p-5 shadow-[0_12px_28px_rgba(71,104,143,0.14)] ring-1 ring-[#DFEAF6]">
                   <div className="flex items-start gap-4">
                     <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#EAF5FF] text-[#2E8AEA]"><Icon name="timer" /></div>
-                    <div><p className="font-black text-[#10213D]">공부시간</p><p className="mt-1 text-sm font-semibold text-[#40516D]">목표 {studyGoal ? minutesText(studyGoal) : "미설정"}</p></div>
+                    <div className="min-w-0 flex-1"><p className="break-keep font-black text-[#10213D]">공부시간</p><p className="mt-1 break-keep text-sm font-semibold text-[#40516D]">목표 {studyGoal ? minutesText(studyGoal) : "미설정"}</p></div>
                   </div>
                   <div className="my-4 h-px bg-[#E9F0F8]" />
                   <p className="text-center text-xl font-black text-[#2874E8]">{minutesText(studyStats?.today_approved_minutes ?? 0)}</p>
                   <div className="mt-3 h-2.5 rounded-full bg-[#DDE4EF]"><div className="h-full rounded-full bg-[#2874E8]" style={{ width: `${studyProgress ?? 0}%` }} /></div>
-                  <div className="mt-4 rounded-2xl border border-[#A9CBFA] px-4 py-3 text-center text-sm font-black text-[#2874E8]">{studyStatus === "pending" ? "검토 대기" : studyStatus === "approved" ? "기록 보기" : "인증하기"}</div>
+                  <div className="mt-4 break-keep rounded-2xl border border-[#A9CBFA] px-4 py-3 text-center text-sm font-black text-[#2874E8]">{studyStatus === "pending" ? "검토 대기" : studyStatus === "approved" ? "기록 보기" : "인증하기"}</div>
                 </Link>
               </div>
             </section>
 
             <section className="mb-8">
               <SectionHeader title="오늘의 학습" href="/student/sprint/vocabulary" />
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
                 {vocabulary?.available ? (
-                  <Link href={sprintVocabularyPath} className="rounded-[22px] bg-white/95 p-5 shadow-[0_12px_28px_rgba(71,104,143,0.14)] ring-1 ring-[#DFEAF6]">
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="flex items-center gap-4"><div className="flex h-14 w-14 items-center justify-center rounded-full bg-[#EAF5FF] text-[#2E8AEA]"><Icon name="book" /></div><div><p className="font-black text-[#10213D]">영단어 챌린지</p><p className="mt-1 text-sm font-semibold text-[#40516D]">DAY {vocabulary.day_number} · {vocabulary.question_count ?? "-"}문항</p></div></div>
-                      {vocabulary.latest_score !== null && vocabulary.latest_score !== undefined ? <div className="flex h-16 w-16 items-center justify-center rounded-full border-[7px] border-[#2E7BEA] text-lg font-black text-[#2874E8]">{vocabulary.latest_score}점</div> : null}
+                  <Link href={sprintVocabularyPath} className="min-w-0 rounded-[22px] bg-white/95 p-5 shadow-[0_12px_28px_rgba(71,104,143,0.14)] ring-1 ring-[#DFEAF6]">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex min-w-0 flex-1 items-center gap-4"><div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#EAF5FF] text-[#2E8AEA]"><Icon name="book" /></div><div className="min-w-0 flex-1"><p className="break-keep font-black text-[#10213D]">영단어 챌린지</p><p className="mt-1 break-keep text-sm font-semibold text-[#40516D]">DAY {vocabulary.day_number} · {vocabulary.question_count ?? "-"}문항</p></div></div>
+                      {vocabulary.latest_score !== null && vocabulary.latest_score !== undefined ? <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full border-[7px] border-[#2E7BEA] text-lg font-black text-[#2874E8]">{vocabulary.latest_score}점</div> : null}
                     </div>
-                    <div className="mt-5 rounded-2xl bg-[#2874E8] px-4 py-3 text-center font-black text-white">{vocabulary.status === "draft" ? "이어하기" : vocabulary.status === "submitted" ? "결과 보기" : "시험 시작"}</div>
+                    <div className="mt-5 break-keep rounded-2xl bg-[#2874E8] px-4 py-3 text-center font-black text-white">{vocabulary.status === "draft" ? "이어하기" : vocabulary.status === "submitted" ? "결과 보기" : "시험 시작"}</div>
                   </Link>
                 ) : (
-                  <div className="rounded-[22px] bg-white/80 p-5 shadow-[0_12px_28px_rgba(71,104,143,0.10)] ring-1 ring-[#DFEAF6]"><p className="font-black text-[#10213D]">영단어 챌린지</p><p className="mt-2 text-sm font-bold text-[#8CA0BD]">오늘 연결된 챌린지가 없어요.</p></div>
+                  <div className="min-w-0 rounded-[22px] bg-white/80 p-5 shadow-[0_12px_28px_rgba(71,104,143,0.10)] ring-1 ring-[#DFEAF6]"><p className="break-keep font-black text-[#10213D]">영단어 챌린지</p><p className="mt-2 break-keep text-sm font-bold text-[#8CA0BD]">오늘 연결된 챌린지가 없어요.</p></div>
                 )}
                 {(() => {
                   const progress = data.progress_summary;
                   if (!progress?.available || progress.total === 0) {
                     return (
-                      <div className="rounded-[22px] bg-white/80 p-5 shadow-[0_12px_28px_rgba(71,104,143,0.10)] ring-1 ring-[#DFEAF6]">
-                        <div className="flex items-center gap-4"><div className="flex h-14 w-14 items-center justify-center rounded-full bg-[#EAF5FF] text-[#2E8AEA]"><Icon name="goals" /></div><div><p className="font-black text-[#10213D]">SPRINT 진도표</p><p className="mt-1 text-sm font-semibold text-[#8CA0BD]">등록된 목표가 없습니다</p></div></div>
-                        <p className="mt-3 text-xs font-semibold text-[#8CA0BD]">관리자가 목표를 등록하면 여기에 표시됩니다.</p>
+                      <div className="min-w-0 rounded-[22px] bg-white/80 p-5 shadow-[0_12px_28px_rgba(71,104,143,0.10)] ring-1 ring-[#DFEAF6]">
+                        <div className="flex min-w-0 items-center gap-4"><div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#EAF5FF] text-[#2E8AEA]"><Icon name="goals" /></div><div className="min-w-0 flex-1"><p className="break-keep font-black text-[#10213D]">SPRINT 진도표</p><p className="mt-1 break-keep text-sm font-semibold text-[#8CA0BD]">등록된 목표가 없습니다</p></div></div>
+                        <p className="mt-3 break-keep text-xs font-semibold text-[#8CA0BD]">관리자가 목표를 등록하면 여기에 표시됩니다.</p>
                       </div>
                     );
                   }
                   return (
-                    <Link href="/student/sprint/progress" className="rounded-[22px] bg-white/95 p-5 shadow-[0_12px_28px_rgba(71,104,143,0.14)] ring-1 ring-[#DFEAF6]">
-                      <div className="flex items-center gap-4"><div className="flex h-14 w-14 items-center justify-center rounded-full bg-[#EAF5FF] text-[#2E8AEA]"><Icon name="goals" /></div><div><p className="font-black text-[#10213D]">SPRINT 진도표</p><p className="mt-1 text-sm font-semibold text-[#8CA0BD]">{progress.completed} / {progress.total} 완료 · {progress.completion_rate}%</p></div></div>
+                    <Link href="/student/sprint/progress" className="min-w-0 rounded-[22px] bg-white/95 p-5 shadow-[0_12px_28px_rgba(71,104,143,0.14)] ring-1 ring-[#DFEAF6]">
+                      <div className="flex min-w-0 items-center gap-4"><div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#EAF5FF] text-[#2E8AEA]"><Icon name="goals" /></div><div className="min-w-0 flex-1"><p className="break-keep font-black text-[#10213D]">SPRINT 진도표</p><p className="mt-1 break-keep text-sm font-semibold text-[#8CA0BD]">{progress.completed} / {progress.total} 완료 · {progress.completion_rate}%</p></div></div>
                       {progress.next_goal && (
-                        <p className="mt-3 truncate text-xs font-bold text-[#2874E8]">다음 목표: {progress.next_goal.title} · {progress.next_goal.target_date}까지</p>
+                        <p className="mt-3 truncate break-keep text-xs font-bold text-[#2874E8]">다음 목표: {progress.next_goal.title} · {progress.next_goal.target_date}까지</p>
                       )}
-                      <div className="mt-4 w-full rounded-2xl border border-[#A9CBFA] px-4 py-3 text-center font-black text-[#2874E8]">목표 보기</div>
+                      <div className="mt-4 w-full break-keep rounded-2xl border border-[#A9CBFA] px-4 py-3 text-center font-black text-[#2874E8]">목표 보기</div>
                     </Link>
                   );
                 })()}
@@ -345,35 +355,62 @@ export default function StudentSprintPage() {
                 const mockExam = data.mock_exam_summary;
                 if (!mockExam?.available) {
                   return (
-                    <div className="rounded-[22px] bg-white/85 p-5 shadow-[0_12px_28px_rgba(71,104,143,0.12)] ring-1 ring-[#DFEAF6]">
-                      <div className="flex items-center gap-4"><div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#EAF5FF] text-[#2E8AEA]"><Icon name="exam" /></div><div><p className="text-sm font-black text-[#2874E8]">준비 중</p><p className="mt-1 text-lg font-black text-[#10213D]">모의고사 기능이 아직 연결되지 않았어요.</p></div></div>
+                    <div className="min-w-0 rounded-[22px] bg-white/85 p-5 shadow-[0_12px_28px_rgba(71,104,143,0.12)] ring-1 ring-[#DFEAF6]">
+                      <div className="flex min-w-0 items-center gap-4"><div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-[#EAF5FF] text-[#2E8AEA]"><Icon name="exam" /></div><div className="min-w-0 flex-1"><p className="break-keep text-sm font-black text-[#2874E8]">준비 중</p><p className="mt-1 break-keep text-lg font-black text-[#10213D]">모의고사 기능이 아직 연결되지 않았어요.</p></div></div>
                     </div>
                   );
                 }
                 if (mockExam.status === "none" || !mockExam.exam) {
                   return (
-                    <div className="rounded-[22px] bg-white/85 p-5 shadow-[0_12px_28px_rgba(71,104,143,0.12)] ring-1 ring-[#DFEAF6]">
-                      <div className="flex items-center gap-4"><div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#EAF5FF] text-[#2E8AEA]"><Icon name="exam" /></div><div><p className="text-sm font-black text-[#2874E8]">예정 없음</p><p className="mt-1 text-lg font-black text-[#10213D]">예정된 모의고사가 없어요.</p></div></div>
+                    <div className="min-w-0 rounded-[22px] bg-white/85 p-5 shadow-[0_12px_28px_rgba(71,104,143,0.12)] ring-1 ring-[#DFEAF6]">
+                      <div className="flex min-w-0 items-center gap-4"><div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-[#EAF5FF] text-[#2E8AEA]"><Icon name="exam" /></div><div className="min-w-0 flex-1"><p className="break-keep text-sm font-black text-[#2874E8]">예정 없음</p><p className="mt-1 break-keep text-lg font-black text-[#10213D]">예정된 모의고사가 없어요.</p></div></div>
                     </div>
                   );
                 }
                 const exam = mockExam.exam;
                 const submissionLabel = mockExam.submission_status === "graded" || mockExam.submission_status === "confirmed" ? "성적 확인" : mockExam.submission_status === "draft" ? "작성 중" : mockExam.submission_status === "submitted" ? "채점 대기" : "응시 전";
                 return (
-                  <Link href={mockExam.path} className="block rounded-[22px] bg-white/95 p-5 shadow-[0_12px_28px_rgba(71,104,143,0.14)] ring-1 ring-[#DFEAF6]">
-                    <div className="flex items-center gap-4">
-                      <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#EAF5FF] text-[#2E8AEA]"><Icon name="exam" /></div>
+                  <Link href={mockExam.path} className="block min-w-0 rounded-[22px] bg-white/95 p-5 shadow-[0_12px_28px_rgba(71,104,143,0.14)] ring-1 ring-[#DFEAF6]">
+                    <div className="flex min-w-0 items-center gap-4">
+                      <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-[#EAF5FF] text-[#2E8AEA]"><Icon name="exam" /></div>
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <p className="text-sm font-black text-[#2874E8]">{exam.round_no}회차 SPRINT 모의고사</p>
-                          {exam.is_date_overridden && <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-black text-amber-700">일정 변경</span>}
+                        <div className="flex min-w-0 flex-wrap items-center gap-2">
+                          <p className="break-keep text-sm font-black text-[#2874E8]">{exam.round_no}회차 SPRINT 모의고사</p>
+                          {exam.is_date_overridden && <span className="shrink-0 break-keep rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-black text-amber-700">일정 변경</span>}
                         </div>
-                        <p className="mt-1 text-lg font-black text-[#10213D]">{exam.exam_date} ({exam.weekday_label})</p>
-                        <p className="mt-1 text-sm font-semibold text-[#6E7F99]">{exam.question_count}문항 · {submissionLabel}</p>
+                        <p className="mt-1 break-keep text-lg font-black text-[#10213D]">{exam.exam_date} ({exam.weekday_label})</p>
+                        <p className="mt-1 break-keep text-sm font-semibold text-[#6E7F99]">{exam.question_count}문항 · {submissionLabel}</p>
                       </div>
                       {mockExam.days_remaining !== undefined && mockExam.days_remaining >= 0 && (
                         <div className="shrink-0 text-lg font-black text-[#2874E8]">{mockExam.days_remaining === 0 ? "D-DAY" : `D-${mockExam.days_remaining}`}</div>
                       )}
+                    </div>
+                  </Link>
+                );
+              })()}
+            </section>
+
+            <section className="mb-8">
+              <SectionHeader title="SPRINT 문제지" href="/student/sprint/worksheets" />
+              {(() => {
+                const worksheet = data.worksheet_summary;
+                if (!worksheet?.available || worksheet.assigned_count === 0) {
+                  return (
+                    <div className="min-w-0 rounded-[22px] bg-white/85 p-5 shadow-[0_12px_28px_rgba(71,104,143,0.12)] ring-1 ring-[#DFEAF6]">
+                      <div className="flex min-w-0 items-center gap-4"><div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-[#EAF5FF] text-[#2E8AEA]"><Icon name="doc" /></div><div className="min-w-0 flex-1"><p className="break-keep text-sm font-black text-[#2874E8]">배정 없음</p><p className="mt-1 break-keep text-lg font-black text-[#10213D]">배정된 문제지가 아직 없어요.</p></div></div>
+                    </div>
+                  );
+                }
+                const cta = worksheet.pending_action_count > 0 ? `제출 필요 ${worksheet.pending_action_count}건` : worksheet.in_review_count > 0 ? "검토 대기 중" : "모두 완료";
+                return (
+                  <Link href={worksheet.path} className="block min-w-0 rounded-[22px] bg-white/95 p-5 shadow-[0_12px_28px_rgba(71,104,143,0.14)] ring-1 ring-[#DFEAF6]">
+                    <div className="flex min-w-0 items-center gap-4">
+                      <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-[#EAF5FF] text-[#2E8AEA]"><Icon name="doc" /></div>
+                      <div className="min-w-0 flex-1">
+                        <p className="break-keep text-sm font-black text-[#2874E8]">배정 {worksheet.assigned_count}건</p>
+                        <p className="mt-1 break-keep text-lg font-black text-[#10213D]">{cta}</p>
+                        <p className="mt-1 break-keep text-sm font-semibold text-[#6E7F99]">검토 중 {worksheet.in_review_count} · 승인 {worksheet.approved_count}</p>
+                      </div>
                     </div>
                   </Link>
                 );
@@ -392,8 +429,8 @@ export default function StudentSprintPage() {
                 ].map(([label, value, icon]) => (
                   <div key={label} className="border-b border-r border-[#DFEAF6] p-4 text-center last:border-r-0 sm:border-b-0">
                     <div className="mx-auto mb-2 flex h-9 w-9 items-center justify-center text-[#2E8AEA]"><Icon name={icon as "clock"} /></div>
-                    <p className="text-xs font-bold text-[#29415F]">{label}</p>
-                    <p className="mt-2 text-xl font-black text-[#10213D]">{value}</p>
+                    <p className="break-keep text-xs font-bold text-[#29415F]">{label}</p>
+                    <p className="mt-2 break-keep text-xl font-black text-[#10213D]">{value}</p>
                   </div>
                 ))}
               </div>

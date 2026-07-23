@@ -228,7 +228,17 @@ export default function AdminSprintsPage() {
 
           <section className="space-y-3">
             <div className="flex gap-2">{(["all", "scheduled", "active", "completed"] as const).map((key) => <button key={key} onClick={() => setFilter(key)} className={`rounded-full px-4 py-2 text-xs font-black transition ${filter === key ? "bg-[#141B34] text-white" : "bg-white text-[#7A859F]"}`}>{key === "all" ? "전체" : statusLabels[key]}</button>)}</div>
-            {visible.map((sprint) => <Link href={`/admin/sprints/${sprint.id}`} key={sprint.id} className="block rounded-[24px] bg-white p-5 shadow-card"><div className="flex items-center justify-between gap-4"><div><h2 className="text-lg font-black text-[#17213B]">{sprint.title}</h2><p className="mt-1 text-sm font-semibold text-[#7A859F]">{sprint.student_name} · {sprint.start_date} ~ {sprint.end_date}</p><p className="mt-2 text-xs font-bold text-[#8A94A8]">DAY {sprint.day_info.day_number || "-"} / {sprint.day_info.total_days}</p></div><div className="text-right"><span className="rounded-full bg-[#F1F3FF] px-3 py-1 text-xs font-black text-[#5C63FF]">{statusLabels[sprint.status]}</span><p className="mt-2 text-xs font-bold text-[#E5533C]">스트라이크 {sprint.strike_summary.effective}/{sprint.strike_summary.threshold}</p></div></div></Link>)}
+            {visible.map((sprint) => (
+              <div key={sprint.id} className="rounded-[24px] bg-white p-5 shadow-card">
+                <Link href={`/admin/sprints/${sprint.id}`} className="block"><div className="flex items-center justify-between gap-4"><div><h2 className="text-lg font-black text-[#17213B]">{sprint.title}</h2><p className="mt-1 text-sm font-semibold text-[#7A859F]">{sprint.student_name} · {sprint.start_date} ~ {sprint.end_date}</p><p className="mt-2 text-xs font-bold text-[#8A94A8]">DAY {sprint.day_info.day_number || "-"} / {sprint.day_info.total_days}</p></div><div className="text-right"><span className="rounded-full bg-[#F1F3FF] px-3 py-1 text-xs font-black text-[#5C63FF]">{statusLabels[sprint.status]}</span><p className="mt-2 text-xs font-bold text-[#E5533C]">스트라이크 {sprint.strike_summary.effective}/{sprint.strike_summary.threshold}</p></div></div></Link>
+                <div className="mt-3 flex gap-2 border-t border-[#F1F3FA] pt-3">
+                  <Link href={`/admin/sprints/${sprint.id}/mock-exams`} className="rounded-xl bg-[#EAF5FF] px-3 py-1.5 text-xs font-black text-[#2874E8]">모의고사 관리</Link>
+                  <Link href={`/admin/sprints/${sprint.id}/worksheets`} className="rounded-xl bg-[#EAF5FF] px-3 py-1.5 text-xs font-black text-[#2874E8]">문제지 관리</Link>
+                  <Link href={`/admin/sprints/${sprint.id}/proofs`} className="rounded-xl bg-[#F1F3FF] px-3 py-1.5 text-xs font-black text-[#5C63FF]">플래너·착석 인증</Link>
+                  <Link href={`/admin/sprints/${sprint.id}/study-time`} className="rounded-xl bg-[#F1F3FF] px-3 py-1.5 text-xs font-black text-[#5C63FF]">공부시간 검수</Link>
+                </div>
+              </div>
+            ))}
             {visible.length === 0 && <div className="rounded-[28px] bg-white p-10 text-center text-sm font-bold text-[#98A2B3]">해당 SPRINT가 없습니다.</div>}
           </section>
         </div>
