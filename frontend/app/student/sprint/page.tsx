@@ -256,17 +256,17 @@ export default function StudentSprintPage() {
   return (
     <ScreenShell withBottomNav>
       <div className="-mx-5 -mt-7 min-h-screen bg-[radial-gradient(circle_at_50%_-5%,#D9F6FF_0,#EEF9FF_34%,#F8FBFF_68%)] px-5 pb-10 pt-9">
-        <header className="mb-7 flex items-start justify-between gap-3">
+        <header className="mb-7 flex flex-col gap-4 min-[430px]:flex-row min-[430px]:items-start min-[430px]:justify-between">
           <div className="min-w-0">
             <h1 className="text-[3.2rem] font-black leading-none tracking-[-0.08em] text-[#2E74E8] drop-shadow-[0_8px_16px_rgba(47,116,232,0.18)]">SPRINT</h1>
             <p className="mt-2 break-keep text-lg font-bold tracking-[-0.04em] text-[#244A80]">오늘의 기록이 목표를 완성해요</p>
           </div>
-          <div className="flex shrink-0 flex-col items-end gap-4">
-            <div className="relative text-[#436AA2]" aria-label="알림">
+          <div className="flex shrink-0 items-center justify-between gap-3 min-[430px]:flex-col min-[430px]:items-end">
+            <div className="relative order-2 text-[#436AA2] min-[430px]:order-none" aria-label="알림">
               <Icon name="bell" />
               <span className="absolute right-0 top-0 h-3 w-3 rounded-full bg-[#F25E72]" />
             </div>
-            <Link href="/student" className="whitespace-nowrap break-keep rounded-full bg-white px-4 py-3 text-sm font-black text-[#285EB8] shadow-[0_8px_20px_rgba(60,94,140,0.18)]">↔ 오늘도 해냄으로 전환</Link>
+            <Link href="/student" className="order-1 whitespace-nowrap break-keep rounded-full bg-white px-4 py-3 text-sm font-black text-[#285EB8] shadow-[0_8px_20px_rgba(60,94,140,0.18)] min-[430px]:order-none">↔ 오늘도 해냄으로 전환</Link>
           </div>
         </header>
 
@@ -277,12 +277,12 @@ export default function StudentSprintPage() {
         ) : (
           <>
             <section className="relative mb-8 overflow-hidden rounded-[24px] bg-white/95 p-5 shadow-[0_18px_36px_rgba(49,89,130,0.18)] ring-1 ring-[#DCEBFA]">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-[1.35fr_1fr_1fr]">
+              <div className="grid grid-cols-1 gap-4 min-[760px]:grid-cols-[1.35fr_1fr_1fr]">
                 <div>
                   <p className="text-3xl font-black tracking-[-0.05em] text-[#2E74E8] break-keep">DAY {program.day_info.day_number || "-"}</p>
                   <p className="mt-2 text-lg font-bold text-[#183050] break-keep">{program.day_info.status === "scheduled" ? `시작까지 ${program.day_info.days_remaining}일` : program.day_info.status === "completed" ? "SPRINT 종료" : `종료까지 ${program.day_info.days_remaining}일 남았어요!`}</p>
                 </div>
-                <div className="sm:border-l sm:border-[#E3EDF8] sm:pl-4">
+                <div className="border-t border-[#E3EDF8] pt-4 min-[760px]:border-l min-[760px]:border-t-0 min-[760px]:pl-4 min-[760px]:pt-0">
                   <p className="text-sm font-bold text-[#29415F] break-keep">전체 진행률</p>
                   <p className="mt-3 text-2xl font-black text-[#10213D]">{progress === null ? "-" : `${progress}%`}</p>
                   <div className="mt-3 h-2 rounded-full bg-[#DDE4EF]"><div className="h-full rounded-full bg-[#2874E8]" style={{ width: `${progress ?? 0}%` }} /></div>
@@ -301,12 +301,12 @@ export default function StudentSprintPage() {
                   {data.strike_summary?.latest_learning_date ? ` · ${data.strike_summary.latest_learning_date}` : ""}
                 </p>
               )}
-              <div className="absolute bottom-5 right-5 hidden h-16 w-20 rounded-t-[20px] bg-gradient-to-br from-[#A9D8FF] to-[#4F9DF5] opacity-80 sm:block" />
+              <div className="pointer-events-none absolute bottom-5 right-5 hidden h-16 w-20 rounded-t-[20px] bg-gradient-to-br from-[#A9D8FF] to-[#4F9DF5] opacity-40 min-[900px]:block" />
             </section>
 
             <section className="mb-8">
               <SectionHeader title="오늘의 인증" href="/student/sprint/proofs" />
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
+              <div className="grid grid-cols-1 gap-3 min-[760px]:grid-cols-3 min-[760px]:gap-4">
                 <ProofCard title="착석 인증" icon="seat" proof={data.proof_summaries?.seat_check} />
                 <ProofCard title="플래너 인증" icon="planner" proof={data.proof_summaries?.planner} />
                 <Link href="/student/sprint/study-time" className="min-w-0 rounded-[22px] bg-white/95 p-5 shadow-[0_12px_28px_rgba(71,104,143,0.14)] ring-1 ring-[#DFEAF6]">
@@ -324,7 +324,7 @@ export default function StudentSprintPage() {
 
             <section className="mb-8">
               <SectionHeader title="오늘의 학습" href="/student/sprint/vocabulary" />
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
+              <div className="grid grid-cols-1 gap-3 min-[520px]:grid-cols-2 min-[520px]:gap-4">
                 {vocabulary?.available ? (
                   <Link href={sprintVocabularyPath} className="min-w-0 rounded-[22px] bg-white/95 p-5 shadow-[0_12px_28px_rgba(71,104,143,0.14)] ring-1 ring-[#DFEAF6]">
                     <div className="flex items-center justify-between gap-3">
