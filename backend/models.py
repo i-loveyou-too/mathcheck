@@ -735,10 +735,16 @@ class SprintProgram(Base):
     study_time_deadline_time = Column(String(5), nullable=True)
     study_time_strike_on_missing = Column(Boolean, nullable=False, default=False, server_default=text("FALSE"))
     study_time_strike_on_shortage = Column(Boolean, nullable=False, default=False, server_default=text("FALSE"))
+    # deprecated (6차): SprintMockExamSeries/SprintMockExam 생성에만 쓰이던 반복 규칙 필드.
+    # 실제 시험 중심 데이터는 SprintMockExamRound/Paper로 이전되었다. API 호환을 위해
+    # 컬럼과 기존 시리즈 API는 그대로 남기고, 새 회차 자동 생성 시 기본값 후보로만 쓴다.
     mock_exam_weekday = Column(Integer, nullable=True)
     mock_exam_start_time = Column(String(5), nullable=True)
     mock_exam_submission_deadline_time = Column(String(5), nullable=True)
     first_mock_exam_date = Column(Date, nullable=True)
+    # 학생의 탐구 선택과목 2개 (7차 회차·시험지 모델에서 참가자 paper 자동 연결에 사용).
+    inquiry_subject_1 = Column(String(30), nullable=True)
+    inquiry_subject_2 = Column(String(30), nullable=True)
     vocabulary_bank_id = Column(Integer, ForeignKey("vocabulary_banks.id"), nullable=True)
     vocabulary_start_bank_day = Column(Integer, nullable=True)
     vocabulary_bank_day_direction = Column(String(20), nullable=False, default="ascending", server_default=text("'ascending'"))
@@ -784,6 +790,11 @@ class SprintProgram(Base):
     )
     worksheet_assignments = relationship(
         "SprintWorksheetAssignment",
+        back_populates="program",
+        cascade="all, delete-orphan",
+    )
+    mock_exam_rounds = relationship(
+        "SprintMockExamRound",
         back_populates="program",
         cascade="all, delete-orphan",
     )
@@ -1401,3 +1412,255 @@ class SprintSubjectGoal(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     program = relationship("SprintProgram")
+
+
+# ---------------------------------------------------------------------------
+# SPRINT 모의고사 회차/시험지 (7차): 회차 하나에 과목별 시험지(paper)가 여러 개
+# 달리는 실제 운영 구조. 기존 SprintMockExamSeries/SprintMockExam(단일 과목,
+# 5차)은 데이터가 없고 API 호환을 위해 그대로 남겨두며, 이 모델들이 새 등록/응시
+# 흐름의 실제 중심 데이터가 된다. 시험지·정답·등급컷은 회차/과목 단위로 한 번만
+# 저장하고, 학생마다 복제하지 않는다.
+# ---------------------------------------------------------------------------
+
+
+class SprintMockExamRound(Base):
+    """모의고사 회차 자체. sprint_program_id는 등록한 프로그램(=학생 1명)을 가리키며,
+    참가자는 이 프로그램에 속한 학생으로 한정한다 (기존 SprintProgram 1:1 구조 유지)."""
+
+    __tablename__ = "sprint_mock_exam_rounds"
+    __table_args__ = (
+        UniqueConstraint("sprint_program_id", "round_no", name="uq_sprint_mock_exam_rounds_program_round"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    sprint_program_id = Column(Integer, ForeignKey("sprint_programs.id", ondelete="CASCADE"), nullable=False, index=True)
+    round_no = Column(Integer, nullable=False)
+    title = Column(String(200), nullable=False)
+    exam_date = Column(Date, nullable=False)
+    start_time = Column(String(5), nullable=True)
+    submission_deadline_at = Column(DateTime(timezone=True), nullable=False)
+    status = Column(String(20), nullable=False, default="scheduled")  # scheduled | open | closed
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    program = relationship("SprintProgram", back_populates="mock_exam_rounds")
+    papers = relationship(
+        "SprintMockExamPaper",
+        back_populates="round",
+        cascade="all, delete-orphan",
+        order_by="SprintMockExamPaper.order_index, SprintMockExamPaper.id",
+    )
+    participants = relationship(
+        "SprintMockExamParticipant",
+        back_populates="round",
+        cascade="all, delete-orphan",
+    )
+
+
+class SprintMockExamPaper(Base):
+    """회차별 과목 시험지. 정답/배점/등급컷/파일은 이 paper에 딸려 한 번만 저장된다."""
+
+    __tablename__ = "sprint_mock_exam_papers"
+    __table_args__ = (
+        UniqueConstraint("mock_exam_round_id", "subject_code", name="uq_sprint_mock_exam_papers_round_subject"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    mock_exam_round_id = Column(Integer, ForeignKey("sprint_mock_exam_rounds.id", ondelete="CASCADE"), nullable=False, index=True)
+    subject_group = Column(String(20), nullable=False)  # korean | math | english | inquiry
+    subject_code = Column(String(30), nullable=False)  # korean | math | english | life_ethics | ethics_thought | social_culture | east_asian_history
+    title = Column(String(200), nullable=False)
+    question_count = Column(Integer, nullable=False)
+    total_score = Column(Integer, nullable=False, default=100)
+    scoring_policy = Column(String(20), nullable=False, default="equal_split")
+    order_index = Column(Integer, nullable=False, default=0)
+    is_required = Column(Boolean, nullable=False, default=True)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    round = relationship("SprintMockExamRound", back_populates="papers")
+    questions = relationship(
+        "SprintMockExamPaperQuestion",
+        back_populates="paper",
+        cascade="all, delete-orphan",
+        order_by="SprintMockExamPaperQuestion.question_no",
+    )
+    grade_cuts = relationship(
+        "SprintMockExamPaperGradeCut",
+        back_populates="paper",
+        cascade="all, delete-orphan",
+        order_by="SprintMockExamPaperGradeCut.grade",
+    )
+    media = relationship(
+        "SprintMockExamPaperMedia",
+        back_populates="paper",
+        cascade="all, delete-orphan",
+    )
+    participant_papers = relationship(
+        "SprintMockExamParticipantPaper",
+        back_populates="paper",
+    )
+
+
+class SprintMockExamPaperQuestion(Base):
+    """paper 단위로 한 번만 저장되는 문항별 정답/배점 원본. 학생마다 복제하지 않는다."""
+
+    __tablename__ = "sprint_mock_exam_paper_questions"
+    __table_args__ = (
+        UniqueConstraint("paper_id", "question_no", name="uq_sprint_mock_exam_paper_questions_paper_question"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    paper_id = Column(Integer, ForeignKey("sprint_mock_exam_papers.id", ondelete="CASCADE"), nullable=False, index=True)
+    question_no = Column(Integer, nullable=False)
+    correct_answer = Column(Integer, nullable=False)  # 1~5
+    score_points = Column(Integer, nullable=False)
+    category = Column(String(100), nullable=True)
+    is_scored = Column(Boolean, nullable=False, default=True)
+    memo = Column(String(300), nullable=True)
+
+    paper = relationship("SprintMockExamPaper", back_populates="questions")
+
+
+class SprintMockExamPaperGradeCut(Base):
+    """등급컷은 회차 전체가 아니라 paper(과목)별 데이터다."""
+
+    __tablename__ = "sprint_mock_exam_paper_grade_cuts"
+    __table_args__ = (
+        UniqueConstraint("paper_id", "grade", name="uq_sprint_mock_exam_paper_grade_cuts_paper_grade"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    paper_id = Column(Integer, ForeignKey("sprint_mock_exam_papers.id", ondelete="CASCADE"), nullable=False, index=True)
+    grade = Column(Integer, nullable=False)  # 1~9
+    minimum_score = Column(Integer, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    paper = relationship("SprintMockExamPaper", back_populates="grade_cuts")
+
+
+class SprintMockExamPaperMedia(Base):
+    """paper에 붙는 파일(문제지 PDF / 영어듣기 MP3). paper당 media_type별 최대 1개."""
+
+    __tablename__ = "sprint_mock_exam_paper_media"
+    __table_args__ = (
+        UniqueConstraint("paper_id", "media_type", name="uq_sprint_mock_exam_paper_media_paper_type"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    paper_id = Column(Integer, ForeignKey("sprint_mock_exam_papers.id", ondelete="CASCADE"), nullable=False, index=True)
+    media_type = Column(String(20), nullable=False)  # paper_pdf | listening_audio
+    storage_key = Column(String(500), nullable=False)
+    original_filename = Column(String(255), nullable=True)
+    mime_type = Column(String(100), nullable=False)
+    file_size = Column(Integer, nullable=False)
+    duration_seconds = Column(Integer, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    paper = relationship("SprintMockExamPaper", back_populates="media")
+
+
+class SprintMockExamParticipant(Base):
+    """학생별 회차 참가. 회차 생성/동기화 시 program에 속한 학생을 자동으로 생성한다."""
+
+    __tablename__ = "sprint_mock_exam_participants"
+    __table_args__ = (
+        UniqueConstraint("mock_exam_round_id", "student_id", name="uq_sprint_mock_exam_participants_round_student"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    mock_exam_round_id = Column(Integer, ForeignKey("sprint_mock_exam_rounds.id", ondelete="CASCADE"), nullable=False, index=True)
+    student_id = Column(Integer, ForeignKey("math_students.id"), nullable=False, index=True)
+    status = Column(String(20), nullable=False, default="not_started")  # not_started | in_progress | completed
+    assigned_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    round = relationship("SprintMockExamRound", back_populates="participants")
+    student = relationship("Student")
+    papers = relationship(
+        "SprintMockExamParticipantPaper",
+        back_populates="participant",
+        cascade="all, delete-orphan",
+        order_by="SprintMockExamParticipantPaper.id",
+    )
+
+
+class SprintMockExamParticipantPaper(Base):
+    """학생별 과목 배정 및 제출 상태. paper_id는 탐구 미선택/시험지 미등록 상태에서는
+    null일 수 있다 (subject_slot이 진짜 식별자이므로 unique는 paper_id가 아니라
+    participant_id+subject_slot 기준으로 잡는다 — 스펙 초안의 participant_id+paper_id
+    unique는 이 null 배정 상태를 표현할 수 없어 subject_slot 기준으로 조정했다)."""
+
+    __tablename__ = "sprint_mock_exam_participant_papers"
+    __table_args__ = (
+        UniqueConstraint("participant_id", "subject_slot", name="uq_sprint_mock_exam_participant_papers_participant_slot"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    participant_id = Column(Integer, ForeignKey("sprint_mock_exam_participants.id", ondelete="CASCADE"), nullable=False, index=True)
+    paper_id = Column(Integer, ForeignKey("sprint_mock_exam_papers.id", ondelete="CASCADE"), nullable=True, index=True)
+    subject_slot = Column(String(20), nullable=False)  # korean | math | english | inquiry_1 | inquiry_2
+    status = Column(String(20), nullable=False, default="needs_selection")
+    # needs_selection | not_started | draft | submitted | graded | confirmed
+    submitted_at = Column(DateTime(timezone=True), nullable=True)
+    raw_score = Column(Integer, nullable=True)
+    max_score = Column(Integer, nullable=True)
+    correct_count = Column(Integer, nullable=True)
+    grading_version = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    participant = relationship("SprintMockExamParticipant", back_populates="papers")
+    paper = relationship("SprintMockExamPaper", back_populates="participant_papers")
+    responses = relationship(
+        "SprintMockExamParticipantResponse",
+        back_populates="participant_paper",
+        cascade="all, delete-orphan",
+        order_by="SprintMockExamParticipantResponse.question_no",
+    )
+    score_logs = relationship(
+        "SprintMockExamParticipantScoreLog",
+        back_populates="participant_paper",
+        cascade="all, delete-orphan",
+        order_by="SprintMockExamParticipantScoreLog.created_at",
+    )
+
+
+class SprintMockExamParticipantResponse(Base):
+    __tablename__ = "sprint_mock_exam_participant_responses"
+    __table_args__ = (
+        UniqueConstraint("participant_paper_id", "question_no", name="uq_sprint_mock_exam_participant_responses_paper_question"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    participant_paper_id = Column(Integer, ForeignKey("sprint_mock_exam_participant_papers.id", ondelete="CASCADE"), nullable=False, index=True)
+    question_no = Column(Integer, nullable=False)
+    selected_answer = Column(Integer, nullable=True)  # 1~5, null = 미응답
+    is_correct = Column(Boolean, nullable=True)
+    awarded_points = Column(Integer, nullable=True)
+
+    participant_paper = relationship("SprintMockExamParticipantPaper", back_populates="responses")
+
+
+class SprintMockExamParticipantScoreLog(Base):
+    """정답/배점/등급컷 변경 재채점 시 변경 전/후를 남기는 감사 로그. 하드 삭제하지 않는다."""
+
+    __tablename__ = "sprint_mock_exam_participant_score_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    participant_paper_id = Column(Integer, ForeignKey("sprint_mock_exam_participant_papers.id", ondelete="CASCADE"), nullable=False, index=True)
+    grading_version = Column(Integer, nullable=False)
+    previous_raw_score = Column(Integer, nullable=True)
+    new_raw_score = Column(Integer, nullable=False)
+    previous_correct_count = Column(Integer, nullable=True)
+    new_correct_count = Column(Integer, nullable=False)
+    reason = Column(String(200), nullable=False, default="재채점")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    participant_paper = relationship("SprintMockExamParticipantPaper", back_populates="score_logs")

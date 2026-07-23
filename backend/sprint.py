@@ -100,6 +100,8 @@ class SprintProgramIn(SprintFeatureFlags):
     mock_exam_start_time: str | None = Field(default=None, pattern=r"^\d{2}:\d{2}$")
     mock_exam_submission_deadline_time: str | None = Field(default=None, pattern=r"^\d{2}:\d{2}$")
     first_mock_exam_date: date | None = None
+    inquiry_subject_1: str | None = None
+    inquiry_subject_2: str | None = None
     vocabulary_bank_id: int | None = None
     vocabulary_start_bank_day: int | None = Field(default=None, ge=1, le=365)
     vocabulary_bank_day_direction: Literal["ascending", "descending"] = "ascending"
@@ -121,6 +123,7 @@ class SprintProgramIn(SprintFeatureFlags):
     def validate_dates(self):
         if self.end_date < self.start_date:
             raise ValueError("종료일은 시작일보다 빠를 수 없습니다.")
+        validate_inquiry_subjects(self.inquiry_subject_1, self.inquiry_subject_2)
         return self
 
 
@@ -147,6 +150,8 @@ class SprintProgramUpdate(BaseModel):
     mock_exam_start_time: str | None = Field(default=None, pattern=r"^\d{2}:\d{2}$")
     mock_exam_submission_deadline_time: str | None = Field(default=None, pattern=r"^\d{2}:\d{2}$")
     first_mock_exam_date: date | None = None
+    inquiry_subject_1: str | None = None
+    inquiry_subject_2: str | None = None
     vocabulary_bank_id: int | None = None
     vocabulary_start_bank_day: int | None = Field(default=None, ge=1, le=365)
     vocabulary_bank_day_direction: Literal["ascending", "descending"] | None = None
@@ -166,6 +171,11 @@ class SprintProgramUpdate(BaseModel):
     penalty_word_count: int | None = Field(default=None, ge=1, le=500)
     penalty_repetition_count: int | None = Field(default=None, ge=1, le=100)
     penalty_due_hours: int | None = Field(default=None, ge=1, le=720)
+
+    @model_validator(mode="after")
+    def validate_inquiry(self):
+        validate_inquiry_subjects(self.inquiry_subject_1, self.inquiry_subject_2)
+        return self
 
 
 class SprintGoalIn(BaseModel):
@@ -293,6 +303,17 @@ def normalized_admin_comment(payload: object, *, required: bool = False) -> str 
     if required and not comment:
         raise HTTPException(status_code=400, detail="comment is required.")
     return comment or None
+
+
+def validate_inquiry_subjects(subject_1: str | None, subject_2: str | None) -> None:
+    """sprint_mock_rounds.py는 sprint.py를 import하지 않으므로 순환참조 없이 지역 import로 재사용한다."""
+    import sprint_mock_rounds
+
+    for value in (subject_1, subject_2):
+        if value is not None and value not in sprint_mock_rounds.INQUIRY_SUBJECT_CODES:
+            raise ValueError(f"허용되지 않은 탐구 선택과목입니다: {value}")
+    if subject_1 is not None and subject_2 is not None and subject_1 == subject_2:
+        raise ValueError("탐구 선택과목 두 개는 서로 달라야 합니다.")
 
 
 def normalize_program_values(values: dict) -> dict:
@@ -877,6 +898,12 @@ def worksheet_summary_safe(db: Session, program: models.SprintProgram, student_i
     return sprint_worksheets.worksheet_home_summary(db, program, student_id)
 
 
+def mock_round_summary_safe(db: Session, program: models.SprintProgram, student_id: int) -> dict:
+    """sprint_mock_rounds.py는 sprint.py를 import하지 않으므로 순환참조 없이 지역 import로 재사용한다."""
+    import sprint_mock_rounds
+    return sprint_mock_rounds.mock_round_home_summary(db, program, student_id)
+
+
 def vocabulary_home_summary(db: Session, student_id: int, today: date) -> dict:
     import vocabulary
 
@@ -1098,6 +1125,8 @@ def program_dict(db: Session, program: models.SprintProgram, today: date, includ
         "mock_exam_start_time": program.mock_exam_start_time,
         "mock_exam_submission_deadline_time": program.mock_exam_submission_deadline_time,
         "first_mock_exam_date": program.first_mock_exam_date,
+        "inquiry_subject_1": program.inquiry_subject_1,
+        "inquiry_subject_2": program.inquiry_subject_2,
         "vocabulary_bank_id": program.vocabulary_bank_id,
         "vocabulary_start_bank_day": program.vocabulary_start_bank_day,
         "vocabulary_bank_day_direction": program.vocabulary_bank_day_direction,
@@ -1431,6 +1460,7 @@ def student_sprint_dashboard(
         "vocabulary_summary": vocabulary_home_summary(db, student_id, today),
         "progress_summary": subject_goal_home_summary_safe(db, program),
         "mock_exam_summary": mock_exam_home_summary_safe(db, program, student_id),
+        "mock_round_summary": mock_round_summary_safe(db, program, student_id),
         "worksheet_summary": worksheet_summary_safe(db, program, student_id),
         "weekly_summary": sprint_weekly_summary(db, program, today),
         "upcoming": program_dict(db, upcoming, today) if upcoming else None,

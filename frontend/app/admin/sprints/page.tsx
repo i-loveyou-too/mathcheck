@@ -28,6 +28,12 @@ const today = new Date().toISOString().slice(0, 10);
 const plus = (days: number) => new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
 const statusLabels = { scheduled: "예정", active: "진행 중", completed: "종료" };
 const weekdays = ["일", "월", "화", "수", "목", "금", "토"];
+const INQUIRY_SUBJECT_OPTIONS = [
+  { code: "life_ethics", label: "생활과 윤리" },
+  { code: "ethics_thought", label: "윤리와 사상" },
+  { code: "social_culture", label: "사회문화" },
+  { code: "east_asian_history", label: "동아시아사" },
+];
 
 export default function AdminSprintsPage() {
   const router = useRouter();
@@ -48,6 +54,8 @@ export default function AdminSprintsPage() {
     mock_exam_start_time: "09:00",
     mock_exam_submission_deadline_time: "23:00",
     first_mock_exam_date: "",
+    inquiry_subject_1: "",
+    inquiry_subject_2: "",
     enable_seat_check: false,
     seat_check_open_time: "07:00",
     seat_check_deadline_time: "08:00",
@@ -130,6 +138,8 @@ export default function AdminSprintsPage() {
           mock_exam_start_time: form.enable_mock_exam ? form.mock_exam_start_time : null,
           mock_exam_submission_deadline_time: form.enable_mock_exam ? form.mock_exam_submission_deadline_time : null,
           first_mock_exam_date: form.enable_mock_exam && form.first_mock_exam_date ? form.first_mock_exam_date : null,
+          inquiry_subject_1: form.inquiry_subject_1 || null,
+          inquiry_subject_2: form.inquiry_subject_2 || null,
           enable_seat_check: form.enable_seat_check,
           seat_check_open_time: form.enable_seat_check ? form.seat_check_open_time : null,
           seat_check_deadline_time: form.enable_seat_check ? form.seat_check_deadline_time : null,
@@ -193,9 +203,20 @@ export default function AdminSprintsPage() {
               <div className="grid grid-cols-2 gap-3"><DateInput label="시작일" value={form.start_date} onChange={(value) => update({ start_date: value })} /><DateInput label="종료일" value={form.end_date} onChange={(value) => update({ end_date: value })} /></div>
             </Section>
 
-            <Section title="2. 매주 모의고사">
+            <Section title="2. 매주 모의고사 (참고용 기본값)">
+              <p className="rounded-2xl bg-white/10 p-3 text-xs font-bold leading-5 text-white/60">실제 회차·시험지 등록은 저장 후 SPRINT 상세의 &quot;모의고사 회차 관리&quot;에서 합니다. 여기 값은 저장되기만 하며 자동으로 시험을 만들지 않습니다.</p>
               <Toggle label="사용" checked={form.enable_mock_exam} onChange={(value) => update({ enable_mock_exam: value })} />
               {form.enable_mock_exam && <div className="grid grid-cols-2 gap-3"><SelectInput label="요일" value={form.mock_exam_weekday} onChange={(value) => update({ mock_exam_weekday: value })}>{weekdays.map((day, index) => <option key={day} value={index}>{day}요일</option>)}</SelectInput><TimeInput label="시작" value={form.mock_exam_start_time} onChange={(value) => update({ mock_exam_start_time: value })} /><TimeInput label="마감" value={form.mock_exam_submission_deadline_time} onChange={(value) => update({ mock_exam_submission_deadline_time: value })} /><DateInput label="첫 시험일" value={form.first_mock_exam_date} onChange={(value) => update({ first_mock_exam_date: value })} /></div>}
+              <div className="grid grid-cols-2 gap-3">
+                <SelectInput label="탐구 선택과목 1" value={form.inquiry_subject_1} onChange={(value) => update({ inquiry_subject_1: value })}>
+                  <option value="">미설정</option>
+                  {INQUIRY_SUBJECT_OPTIONS.filter((opt) => opt.code !== form.inquiry_subject_2).map((opt) => <option key={opt.code} value={opt.code}>{opt.label}</option>)}
+                </SelectInput>
+                <SelectInput label="탐구 선택과목 2" value={form.inquiry_subject_2} onChange={(value) => update({ inquiry_subject_2: value })}>
+                  <option value="">미설정</option>
+                  {INQUIRY_SUBJECT_OPTIONS.filter((opt) => opt.code !== form.inquiry_subject_1).map((opt) => <option key={opt.code} value={opt.code}>{opt.label}</option>)}
+                </SelectInput>
+              </div>
             </Section>
 
             <Section title="3. 착석 인증">
@@ -232,7 +253,7 @@ export default function AdminSprintsPage() {
               <div key={sprint.id} className="rounded-[24px] bg-white p-5 shadow-card">
                 <Link href={`/admin/sprints/${sprint.id}`} className="block"><div className="flex items-center justify-between gap-4"><div><h2 className="text-lg font-black text-[#17213B]">{sprint.title}</h2><p className="mt-1 text-sm font-semibold text-[#7A859F]">{sprint.student_name} · {sprint.start_date} ~ {sprint.end_date}</p><p className="mt-2 text-xs font-bold text-[#8A94A8]">DAY {sprint.day_info.day_number || "-"} / {sprint.day_info.total_days}</p></div><div className="text-right"><span className="rounded-full bg-[#F1F3FF] px-3 py-1 text-xs font-black text-[#5C63FF]">{statusLabels[sprint.status]}</span><p className="mt-2 text-xs font-bold text-[#E5533C]">스트라이크 {sprint.strike_summary.effective}/{sprint.strike_summary.threshold}</p></div></div></Link>
                 <div className="mt-3 flex gap-2 border-t border-[#F1F3FA] pt-3">
-                  <Link href={`/admin/sprints/${sprint.id}/mock-exams`} className="rounded-xl bg-[#EAF5FF] px-3 py-1.5 text-xs font-black text-[#2874E8]">모의고사 관리</Link>
+                  <Link href={`/admin/sprints/${sprint.id}/mock-exam-rounds`} className="rounded-xl bg-[#2874E8] px-3 py-1.5 text-xs font-black text-white">모의고사 회차 관리</Link>
                   <Link href={`/admin/sprints/${sprint.id}/worksheets`} className="rounded-xl bg-[#EAF5FF] px-3 py-1.5 text-xs font-black text-[#2874E8]">문제지 관리</Link>
                   <Link href={`/admin/sprints/${sprint.id}/proofs`} className="rounded-xl bg-[#F1F3FF] px-3 py-1.5 text-xs font-black text-[#5C63FF]">플래너·착석 인증</Link>
                   <Link href={`/admin/sprints/${sprint.id}/study-time`} className="rounded-xl bg-[#F1F3FF] px-3 py-1.5 text-xs font-black text-[#5C63FF]">공부시간 검수</Link>

@@ -71,6 +71,15 @@ type MockExamSummary = {
   submission_status?: string;
   path: string;
 };
+type MockRoundCardInfo = { id: number; round_no: number; title: string; exam_date: string; status: "scheduled" | "open" | "closed" };
+type MockRoundSummary = {
+  available: boolean;
+  status: "none" | "scheduled" | "open";
+  round?: MockRoundCardInfo | null;
+  days_remaining?: number;
+  participant_status?: string;
+  path: string;
+};
 type SubjectGoalNext = { title: string; subject: string; target_date: string };
 type SubjectGoalSummary = {
   available: boolean;
@@ -101,6 +110,7 @@ type Dashboard = {
   proof_summaries?: { seat_check: ProofSummary; planner: ProofSummary };
   vocabulary_summary?: VocabularySummary;
   mock_exam_summary?: MockExamSummary;
+  mock_round_summary?: MockRoundSummary;
   progress_summary?: SubjectGoalSummary;
   worksheet_summary?: WorksheetSummary;
   weekly_summary?: WeeklySummary;
@@ -350,39 +360,29 @@ export default function StudentSprintPage() {
             </section>
 
             <section className="mb-8">
-              <SectionHeader title="SPRINT 모의고사" href="/student/sprint/mock-exams" />
+              <SectionHeader title="SPRINT 모의고사" href="/student/sprint/mock-exam-rounds" />
               {(() => {
-                const mockExam = data.mock_exam_summary;
-                if (!mockExam?.available) {
-                  return (
-                    <div className="min-w-0 rounded-[22px] bg-white/85 p-5 shadow-[0_12px_28px_rgba(71,104,143,0.12)] ring-1 ring-[#DFEAF6]">
-                      <div className="flex min-w-0 items-center gap-4"><div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-[#EAF5FF] text-[#2E8AEA]"><Icon name="exam" /></div><div className="min-w-0 flex-1"><p className="break-keep text-sm font-black text-[#2874E8]">준비 중</p><p className="mt-1 break-keep text-lg font-black text-[#10213D]">모의고사 기능이 아직 연결되지 않았어요.</p></div></div>
-                    </div>
-                  );
-                }
-                if (mockExam.status === "none" || !mockExam.exam) {
+                const mockRound = data.mock_round_summary;
+                if (!mockRound?.available || mockRound.status === "none" || !mockRound.round) {
                   return (
                     <div className="min-w-0 rounded-[22px] bg-white/85 p-5 shadow-[0_12px_28px_rgba(71,104,143,0.12)] ring-1 ring-[#DFEAF6]">
                       <div className="flex min-w-0 items-center gap-4"><div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-[#EAF5FF] text-[#2E8AEA]"><Icon name="exam" /></div><div className="min-w-0 flex-1"><p className="break-keep text-sm font-black text-[#2874E8]">예정 없음</p><p className="mt-1 break-keep text-lg font-black text-[#10213D]">예정된 모의고사가 없어요.</p></div></div>
                     </div>
                   );
                 }
-                const exam = mockExam.exam;
-                const submissionLabel = mockExam.submission_status === "graded" || mockExam.submission_status === "confirmed" ? "성적 확인" : mockExam.submission_status === "draft" ? "작성 중" : mockExam.submission_status === "submitted" ? "채점 대기" : "응시 전";
+                const round = mockRound.round;
+                const participantLabel = mockRound.participant_status === "completed" ? "회차 완료" : mockRound.participant_status === "in_progress" ? "응시 중" : "응시 전";
                 return (
-                  <Link href={mockExam.path} className="block min-w-0 rounded-[22px] bg-white/95 p-5 shadow-[0_12px_28px_rgba(71,104,143,0.14)] ring-1 ring-[#DFEAF6]">
+                  <Link href={mockRound.path} className="block min-w-0 rounded-[22px] bg-white/95 p-5 shadow-[0_12px_28px_rgba(71,104,143,0.14)] ring-1 ring-[#DFEAF6]">
                     <div className="flex min-w-0 items-center gap-4">
                       <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-[#EAF5FF] text-[#2E8AEA]"><Icon name="exam" /></div>
                       <div className="min-w-0 flex-1">
-                        <div className="flex min-w-0 flex-wrap items-center gap-2">
-                          <p className="break-keep text-sm font-black text-[#2874E8]">{exam.round_no}회차 SPRINT 모의고사</p>
-                          {exam.is_date_overridden && <span className="shrink-0 break-keep rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-black text-amber-700">일정 변경</span>}
-                        </div>
-                        <p className="mt-1 break-keep text-lg font-black text-[#10213D]">{exam.exam_date} ({exam.weekday_label})</p>
-                        <p className="mt-1 break-keep text-sm font-semibold text-[#6E7F99]">{exam.question_count}문항 · {submissionLabel}</p>
+                        <p className="break-keep text-sm font-black text-[#2874E8]">{round.round_no}회차 · {round.title}</p>
+                        <p className="mt-1 break-keep text-lg font-black text-[#10213D]">{round.exam_date}</p>
+                        <p className="mt-1 break-keep text-sm font-semibold text-[#6E7F99]">국어·수학·영어·탐구2 · {participantLabel}</p>
                       </div>
-                      {mockExam.days_remaining !== undefined && mockExam.days_remaining >= 0 && (
-                        <div className="shrink-0 text-lg font-black text-[#2874E8]">{mockExam.days_remaining === 0 ? "D-DAY" : `D-${mockExam.days_remaining}`}</div>
+                      {mockRound.days_remaining !== undefined && mockRound.days_remaining >= 0 && (
+                        <div className="shrink-0 text-lg font-black text-[#2874E8]">{mockRound.days_remaining === 0 ? "D-DAY" : `D-${mockRound.days_remaining}`}</div>
                       )}
                     </div>
                   </Link>

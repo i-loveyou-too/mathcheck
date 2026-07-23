@@ -20,6 +20,7 @@ import schemas
 import sprint
 import sprint_compliance
 import sprint_goals
+import sprint_mock_rounds
 import sprint_worksheets
 import student_auth
 import vocabulary
@@ -238,6 +239,7 @@ app.include_router(sprint.router)
 app.include_router(sprint_compliance.router)
 app.include_router(mock_exam.router)
 app.include_router(sprint_goals.router)
+app.include_router(sprint_mock_rounds.router)
 app.include_router(sprint_worksheets.router)
 app.include_router(lessons.router)
 
