@@ -317,10 +317,23 @@ def find_student_for_phone(db: Session, phone: str):
     return None
 
 
+def is_legacy_read_only_progress_path(method: str, path: str) -> bool:
+    return method == "GET" and (
+        path.startswith("/student/progress-summary")
+        or path.startswith("/student/daily-tasks")
+        or path.startswith("/student/weekly-tasks")
+        or path.startswith("/student/today-tasks")
+        or path.startswith("/units/")
+        or path.startswith("/students/")
+    )
+
+
 class StudentSessionMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
         if request.method == "OPTIONS":
+            return await call_next(request)
+        if is_legacy_read_only_progress_path(request.method, path):
             return await call_next(request)
         is_student_path = (
             path.startswith("/student/")

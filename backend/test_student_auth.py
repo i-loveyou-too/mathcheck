@@ -71,6 +71,14 @@ class StudentCookieAuthTests(TestCase):
         with self.assertRaises(HTTPException):
             main.student_id_from_query("abc")
 
+    def test_legacy_progress_reads_are_not_blocked_by_student_cookie_middleware(self):
+        self.assertTrue(main.is_legacy_read_only_progress_path("GET", "/student/progress-summary"))
+        self.assertTrue(main.is_legacy_read_only_progress_path("GET", "/student/weekly-tasks"))
+        self.assertTrue(main.is_legacy_read_only_progress_path("GET", "/student/daily-tasks"))
+        self.assertTrue(main.is_legacy_read_only_progress_path("GET", "/units/1/tasks"))
+        self.assertFalse(main.is_legacy_read_only_progress_path("POST", "/progress/check"))
+        self.assertFalse(main.is_legacy_read_only_progress_path("GET", "/student/sprint/dashboard"))
+
     def test_phone_normalization_does_not_store_phone_in_cookie(self):
         self.assertEqual(student_auth.normalize_phone("010-1234-5678"), "01012345678")
         response = Response()
