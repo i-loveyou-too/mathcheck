@@ -133,6 +133,10 @@ export default function AdminMockExamRoundPage() {
     const note = window.prompt("제출 취소 사유(선택)") ?? undefined;
     void run(() => apiFetch(`/admin/mock-exam-submissions/${submissionId}/cancel`, { method: "POST", body: { review_note: note || null } }), "제출을 취소했습니다.");
   };
+  const deleteAssignment = (submissionId: number) => {
+    if (!window.confirm("이 학생의 미제출 모의고사 배정을 취소할까요? 임시 답안이 있으면 함께 정리됩니다.")) return;
+    void run(() => apiFetch(`/admin/mock-exam-submissions/${submissionId}`, { method: "DELETE" }), "학생 배정을 취소했습니다.");
+  };
 
   if (!detail || !submissionsData) {
     return <main className="min-h-screen bg-[#EEF2F6] p-10 text-center font-bold text-[#7A859F]">{error || "불러오는 중..."}</main>;
@@ -235,12 +239,23 @@ export default function AdminMockExamRoundPage() {
               <div key={submission.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#EEF1F7] p-3">
                 <div>
                   <p className="text-sm font-black text-[#17213B]">{student_name} · {submission.status}{submission.grading_version > 0 && ` (재채점 v${submission.grading_version})`}</p>
-                  <p className="text-xs font-bold text-[#7A859F]">{submission.raw_score ?? "-"}점 · 정답 {submission.correct_count ?? "-"}개</p>
+                  <p className="text-xs font-bold text-[#7A859F]">
+                    제출 {submission.submitted_at ? new Date(submission.submitted_at).toLocaleString("ko-KR") : "미제출"} · 점수 {submission.raw_score ?? "-"}점 · 정답 {submission.correct_count ?? "-"}개
+                  </p>
                 </div>
                 <div className="flex gap-1.5">
                   {submission.status === "graded" && <button onClick={() => confirmSubmission(submission.id)} className="rounded-lg bg-emerald-500 px-2.5 py-1.5 text-xs font-black text-white">확정</button>}
                   <button onClick={() => reopenSubmission(submission.id)} className="rounded-lg bg-[#F0F2F8] px-2.5 py-1.5 text-xs font-bold text-[#17213B]">재응시 허용</button>
                   <button onClick={() => cancelSubmission(submission.id)} className="rounded-lg bg-red-50 px-2.5 py-1.5 text-xs font-bold text-red-600">제출 취소</button>
+                  <button
+                    data-testid={`cancel-mock-exam-submission-${submission.id}`}
+                    disabled={["submitted", "graded", "confirmed"].includes(submission.status) || Boolean(submission.submitted_at)}
+                    onClick={() => deleteAssignment(submission.id)}
+                    className="rounded-lg bg-red-500 px-2.5 py-1.5 text-xs font-black text-white disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
+                    title={["submitted", "graded", "confirmed"].includes(submission.status) || Boolean(submission.submitted_at) ? "제출 기록이 있어 취소할 수 없습니다." : "배정 취소"}
+                  >
+                    배정 취소
+                  </button>
                 </div>
               </div>
             ))}

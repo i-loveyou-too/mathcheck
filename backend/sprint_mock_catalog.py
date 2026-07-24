@@ -516,6 +516,7 @@ def catalog_dict(catalog: models.SprintMockExamCatalog, reveal: bool = False) ->
         "id": catalog.id, "title": catalog.title, "subject": catalog.subject,
         "elective_name": catalog.elective_name,
         "exam_set_id": catalog.exam_set_id,
+        "score_template_id": catalog.score_template_id,
         "subject_label": catalog.elective_name or catalog.subject,
         "question_count": catalog.question_count, "total_score": catalog.total_score,
         "duration_minutes": catalog.duration_minutes, "is_published": catalog.is_published,
@@ -576,6 +577,7 @@ def assignment_dict(assignment: models.SprintMockExamAssignment, catalog: models
                 ),
             }
             for r in sorted(assignment.responses, key=lambda x: x.question_no)
+            if 1 <= r.question_no <= catalog.question_count
         ]
     return payload
 
@@ -705,8 +707,18 @@ def admin_add_set_exam(set_id: int, payload: SetExamCreateIn, db: Session = Depe
         template = db.get(models.SprintMockScoreTemplate, payload.score_template_id)
         if template is None:
             raise HTTPException(status_code=404, detail="배점 템플릿을 찾을 수 없습니다.")
-    question_count = payload.question_count if payload.question_count is not None else (template.question_count if template else None)
-    total_score = payload.total_score if payload.total_score is not None else (template.total_score if template else None)
+        if template.subject_category and template.subject_category != payload.subject:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{template.subject_category} 배점 템플릿은 {payload.subject} 시험에 사용할 수 없습니다.",
+            )
+        template_question_nos = sorted(item.question_no for item in template.items)
+        if template_question_nos != list(range(1, template.question_count + 1)):
+            raise HTTPException(status_code=400, detail="배점 템플릿의 문항 수와 배점 항목이 일치하지 않습니다.")
+
+    # 템플릿을 선택하면 요청에 남아 있는 직접 입력값보다 템플릿 스냅샷을 우선한다.
+    question_count = template.question_count if template else payload.question_count
+    total_score = template.total_score if template else payload.total_score
 
     exam = models.SprintMockExamCatalog(
         exam_set_id=exam_set.id,
@@ -1355,7 +1367,11 @@ def student_get_omr(assignment_id: int, student_id: int, db: Session = Depends(g
     if assignment.status in LOCKED_ASSIGNMENT_STATUSES:
         raise HTTPException(status_code=400, detail="이미 제출된 시험은 답안을 수정할 수 없습니다.")
     catalog = assignment.catalog
-    responses = {r.question_no: r.selected_answer for r in assignment.responses}
+    responses = {
+        r.question_no: r.selected_answer
+        for r in assignment.responses
+        if 1 <= r.question_no <= catalog.question_count
+    }
     return {
         "assignment": assignment_dict(assignment),
         "answers": [{"question_no": q, "selected_answer": responses.get(q)} for q in range(1, catalog.question_count + 1)],
@@ -1373,6 +1389,10 @@ def student_save_omr(assignment_id: int, payload: OmrSaveIn, db: Session = Depen
     catalog = assignment.catalog
     valid_question_nos = set(range(1, catalog.question_count + 1))
     existing = {r.question_no: r for r in assignment.responses}
+    for question_no, response in list(existing.items()):
+        if question_no not in valid_question_nos:
+            db.delete(response)
+            existing.pop(question_no)
     for item in payload.answers:
         if item.question_no not in valid_question_nos:
             raise HTTPException(status_code=400, detail=f"문항 번호 {item.question_no}는 이 시험에 존재하지 않습니다.")
@@ -1384,7 +1404,11 @@ def student_save_omr(assignment_id: int, payload: OmrSaveIn, db: Session = Depen
         response.selected_answer = item.selected_answer
     assignment.status = "draft"
     db.commit()
-    answered = sum(1 for r in existing.values() if r.selected_answer is not None)
+    answered = sum(
+        1
+        for question_no, response in existing.items()
+        if question_no in valid_question_nos and response.selected_answer is not None
+    )
     return {"saved": True, "answered_count": answered, "question_count": catalog.question_count}
 
 
@@ -1397,8 +1421,22 @@ def student_submit_assignment(assignment_id: int, payload: SubmitIn, db: Session
     if assignment.status in LOCKED_ASSIGNMENT_STATUSES:
         raise HTTPException(status_code=400, detail="이미 제출된 시험입니다.")
     catalog = assignment.catalog
+    valid_question_nos = set(range(1, catalog.question_count + 1))
+    invalid_response_nos = sorted({
+        response.question_no
+        for response in assignment.responses
+        if response.question_no not in valid_question_nos
+    })
+    if invalid_response_nos:
+        raise HTTPException(
+            status_code=400,
+            detail=f"문항 범위를 벗어난 저장 답안이 있습니다: {invalid_response_nos}",
+        )
     if not catalog.questions:
         raise HTTPException(status_code=400, detail="정답이 아직 등록되지 않아 채점할 수 없습니다.")
+    catalog_question_nos = sorted(question.question_no for question in catalog.questions)
+    if catalog_question_nos != list(range(1, catalog.question_count + 1)):
+        raise HTTPException(status_code=400, detail="시험 문항 수와 정답·배점 스냅샷이 일치하지 않습니다.")
     if any(q.correct_answer is None for q in catalog.questions):
         # 배점 템플릿으로 배점만 채워둔 상태. 정답 입력 전에는 채점할 수 없다.
         raise HTTPException(status_code=400, detail="정답이 아직 등록되지 않아 채점할 수 없습니다.")

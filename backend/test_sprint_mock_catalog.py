@@ -361,6 +361,42 @@ class MediaValidationTests(IsolatedAsyncioTestCase):
     async def test_listening_audio_upload_and_duration_estimate(self):
         media = await smc.admin_upload_listening_audio(self.catalog["id"], upload_file(MP3_BYTES, "listening.mp3"), self.db)
         self.assertEqual(media["media_type"], "listening_audio")
+        self.assertEqual(media["mime_type"], "audio/mpeg")
+        catalog = smc.get_catalog_or_404(self.db, self.catalog["id"])
+        stored = next(m for m in catalog.media if m.media_type == "listening_audio")
+        self.assertTrue(smr.storage_file_path(stored.storage_key).is_file())
+        response = smc.admin_get_listening_audio(self.catalog["id"], self.db)
+        self.assertIsInstance(response, FileResponse)
+        self.assertEqual(response.media_type, "audio/mpeg")
+
+    async def test_backend_accepts_mp3_larger_than_nginx_default_limit(self):
+        large_mp3 = MP3_BYTES + (b"\x00" * (2 * 1024 * 1024))
+        media = await smc.admin_upload_listening_audio(
+            self.catalog["id"],
+            upload_file(large_mp3, "large-listening.mp3"),
+            self.db,
+        )
+        self.assertEqual(media["file_size"], len(large_mp3))
+
+    async def test_replacing_listening_audio_removes_old_file_and_keeps_one_row(self):
+        await smc.admin_upload_listening_audio(self.catalog["id"], upload_file(MP3_BYTES, "first.mp3"), self.db)
+        catalog = smc.get_catalog_or_404(self.db, self.catalog["id"])
+        first_media = next(m for m in catalog.media if m.media_type == "listening_audio")
+        first_path = smr.storage_file_path(first_media.storage_key)
+        self.assertTrue(first_path.is_file())
+
+        second = await smc.admin_upload_listening_audio(
+            self.catalog["id"],
+            upload_file(MP3_BYTES + b"replacement", "second.mp3"),
+            self.db,
+        )
+        self.db.expire_all()
+        catalog = smc.get_catalog_or_404(self.db, self.catalog["id"])
+        rows = [m for m in catalog.media if m.media_type == "listening_audio"]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].id, second["id"])
+        self.assertFalse(first_path.exists())
+        self.assertTrue(smr.storage_file_path(rows[0].storage_key).is_file())
 
     async def test_non_mp3_rejected(self):
         with self.assertRaises(HTTPException) as ctx:
@@ -471,6 +507,32 @@ class TemplateSnapshotTests(TestCase):
         # 정답은 아직 비어 있다 (배점만 먼저 스냅샷)
         self.assertTrue(all(q["correct_answer"] is None for q in self.exam["questions"]))
 
+    def test_template_values_override_stale_direct_input_values(self):
+        exam_set = smc.admin_create_set(smc.SetCreateIn(title="SPRINT 2회"), self.db)
+        exam = smc.admin_add_set_exam(
+            exam_set["id"],
+            smc.SetExamCreateIn(
+                subject="수학",
+                score_template_id=self.template["id"],
+                question_count=45,
+                total_score=45,
+            ),
+            self.db,
+        )
+        self.assertEqual(exam["question_count"], 2)
+        self.assertEqual(exam["total_score"], 100)
+        self.assertEqual(len(exam["questions"]), 2)
+
+    def test_template_from_another_subject_is_rejected(self):
+        exam_set = smc.admin_create_set(smc.SetCreateIn(title="SPRINT 3회"), self.db)
+        with self.assertRaises(HTTPException) as ctx:
+            smc.admin_add_set_exam(
+                exam_set["id"],
+                smc.SetExamCreateIn(subject="영어", score_template_id=self.template["id"]),
+                self.db,
+            )
+        self.assertEqual(ctx.exception.status_code, 400)
+
     def test_submit_blocked_until_answer_key_entered(self):
         smc.admin_bulk_assign(self.exam["id"], smc.BulkAssignIn(assignments=[
             smc.AssignmentScheduleIn(student_id=self.student.id, exam_date=date(2026, 7, 26), available_from=PAST, submission_deadline_at=FAR_FUTURE),
@@ -539,6 +601,182 @@ class TemplateSnapshotTests(TestCase):
                 smc.QuestionItemIn(question_no=2, correct_answer=2, score_points=10),
             ]), self.db)
         self.assertEqual(ctx.exception.status_code, 400)
+
+
+class SubjectQuestionCountFlowTests(TestCase):
+    def setUp(self):
+        self.engine, self.db = make_db()
+        self.student = make_student(self.db, "A", "01000000001")
+        self.other_student = make_student(self.db, "B", "01000000002")
+        self.db.commit()
+
+    def tearDown(self):
+        self.db.close()
+        self.engine.dispose()
+
+    def test_template_catalog_assignment_and_omr_keep_each_question_count(self):
+        exam_set = smc.admin_create_set(smc.SetCreateIn(title="과목별 문항 수"), self.db)
+        specs = [
+            ("국어", None, 45),
+            ("수학", None, 30),
+            ("영어", None, 45),
+            ("탐구", "생활과 윤리", 20),
+        ]
+
+        for subject, elective_name, count in specs:
+            with self.subTest(subject=subject):
+                template = make_template(
+                    self.db,
+                    count=count,
+                    scores=[1] * count,
+                    name=f"{subject} {count}문항",
+                    subject=subject,
+                )
+                exam = smc.admin_add_set_exam(
+                    exam_set["id"],
+                    smc.SetExamCreateIn(
+                        subject=subject,
+                        elective_name=elective_name,
+                        score_template_id=template["id"],
+                        question_count=45,
+                        total_score=45,
+                    ),
+                    self.db,
+                )
+                self.assertEqual(exam["question_count"], count)
+                self.assertEqual(exam["score_template_id"], template["id"])
+                self.assertEqual(len(exam["questions"]), count)
+
+                smc.admin_set_questions(
+                    exam["id"],
+                    smc.QuestionSetIn(questions=[
+                        smc.QuestionItemIn(question_no=no, correct_answer=1, score_points=1)
+                        for no in range(1, count + 1)
+                    ]),
+                    self.db,
+                )
+                smc.admin_bulk_assign(
+                    exam["id"],
+                    smc.BulkAssignIn(assignments=[
+                        smc.AssignmentScheduleIn(
+                            student_id=self.student.id,
+                            exam_date=date(2026, 7, 26),
+                            available_from=PAST,
+                            submission_deadline_at=FAR_FUTURE,
+                        ),
+                    ]),
+                    self.db,
+                )
+                assignment = self.db.query(models.SprintMockExamAssignment).filter_by(
+                    catalog_id=exam["id"],
+                    student_id=self.student.id,
+                ).one()
+                assignment_payload = smc.assignment_dict(assignment)
+                self.assertEqual(assignment_payload["catalog"]["question_count"], count)
+                self.assertEqual(len(smc.student_get_omr(assignment.id, self.student.id, self.db)["answers"]), count)
+
+                smc.student_save_omr(
+                    assignment.id,
+                    smc.OmrSaveIn(
+                        student_id=self.student.id,
+                        answers=[smc.OmrAnswerItemIn(question_no=count, selected_answer=1)],
+                    ),
+                    self.db,
+                )
+                with self.assertRaises(HTTPException) as ctx:
+                    smc.student_save_omr(
+                        assignment.id,
+                        smc.OmrSaveIn(
+                            student_id=self.student.id,
+                            answers=[smc.OmrAnswerItemIn(question_no=count + 1, selected_answer=1)],
+                        ),
+                        self.db,
+                    )
+                self.assertEqual(ctx.exception.status_code, 400)
+                submitted = smc.student_submit_assignment(
+                    assignment.id,
+                    smc.SubmitIn(student_id=self.student.id, force=True),
+                    self.db,
+                )
+                self.assertEqual(submitted["status"], "graded")
+
+    def test_direct_input_question_count_is_preserved(self):
+        exam_set = smc.admin_create_set(smc.SetCreateIn(title="직접 입력"), self.db)
+        exam = smc.admin_add_set_exam(
+            exam_set["id"],
+            smc.SetExamCreateIn(subject="수학", question_count=17, total_score=50),
+            self.db,
+        )
+        self.assertEqual(exam["question_count"], 17)
+        self.assertEqual(exam["total_score"], 50)
+
+    def test_existing_out_of_range_response_is_hidden_and_blocks_submit(self):
+        exam_set = smc.admin_create_set(smc.SetCreateIn(title="오염 답안 방어"), self.db)
+        exam = smc.admin_add_set_exam(
+            exam_set["id"],
+            smc.SetExamCreateIn(subject="수학", question_count=2, total_score=2),
+            self.db,
+        )
+        smc.admin_set_questions(
+            exam["id"],
+            smc.QuestionSetIn(questions=[
+                smc.QuestionItemIn(question_no=1, correct_answer=1, score_points=1),
+                smc.QuestionItemIn(question_no=2, correct_answer=1, score_points=1),
+            ]),
+            self.db,
+        )
+        smc.admin_bulk_assign(
+            exam["id"],
+            smc.BulkAssignIn(assignments=[
+                smc.AssignmentScheduleIn(
+                    student_id=self.other_student.id,
+                    exam_date=date(2026, 7, 26),
+                    available_from=PAST,
+                    submission_deadline_at=FAR_FUTURE,
+                ),
+            ]),
+            self.db,
+        )
+        assignment = self.db.query(models.SprintMockExamAssignment).filter_by(
+            catalog_id=exam["id"],
+            student_id=self.other_student.id,
+        ).one()
+        self.db.add(models.SprintMockExamAssignmentResponse(
+            assignment_id=assignment.id,
+            question_no=3,
+            selected_answer=1,
+        ))
+        self.db.commit()
+        omr = smc.student_get_omr(assignment.id, self.other_student.id, self.db)
+        self.assertEqual([answer["question_no"] for answer in omr["answers"]], [1, 2])
+        with self.assertRaises(HTTPException) as ctx:
+            smc.student_submit_assignment(
+                assignment.id,
+                smc.SubmitIn(student_id=self.other_student.id, force=True),
+                self.db,
+            )
+        self.assertEqual(ctx.exception.status_code, 400)
+        smc.student_save_omr(
+            assignment.id,
+            smc.OmrSaveIn(
+                student_id=self.other_student.id,
+                answers=[smc.OmrAnswerItemIn(question_no=2, selected_answer=1)],
+            ),
+            self.db,
+        )
+        self.assertEqual(
+            self.db.query(models.SprintMockExamAssignmentResponse).filter_by(
+                assignment_id=assignment.id,
+                question_no=3,
+            ).count(),
+            0,
+        )
+        submitted = smc.student_submit_assignment(
+            assignment.id,
+            smc.SubmitIn(student_id=self.other_student.id, force=True),
+            self.db,
+        )
+        self.assertEqual(submitted["status"], "graded")
 
 
 class ExamSetAndProfileAssignmentTests(TestCase):
@@ -668,6 +906,15 @@ class ExamSetAndProfileAssignmentTests(TestCase):
                 subject="탐구", elective_name="생활과 윤리", question_count=2, total_score=100,
             ), self.db)
         self.assertEqual(ctx.exception.status_code, 400)
+
+    def test_unassigned_subject_exam_can_be_deleted_from_set(self):
+        exam_id = next(e["id"] for e in smc.admin_get_set(self.exam_set["id"], self.db)["exams"] if e["subject"] == "영어")
+
+        result = smc.admin_delete_catalog(exam_id, self.db)
+
+        self.assertTrue(result["deleted"])
+        self.assertIsNone(self.db.get(models.SprintMockExamCatalog, exam_id))
+        self.assertIsNotNone(self.db.get(models.SprintMockExamSet, self.exam_set["id"]))
 
     def test_invalid_elective_for_subject_rejected(self):
         with self.assertRaises(ValueError):

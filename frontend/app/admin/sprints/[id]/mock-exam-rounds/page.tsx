@@ -41,13 +41,14 @@ type ParticipantPaper = {
   wrong_count: number; unanswered_count: number; paper: Paper | null;
 };
 type Participant = { id: number; student_id: number; status: string; papers: ParticipantPaper[] };
+type ParticipantWithName = Participant & { student_name: string | null };
 type RoundStats = {
   total_participants: number; inquiry_unset_count: number; not_attempted_count: number; draft_count: number;
   submitted_count: number; graded_count: number; completed_count: number;
 };
 type Round = {
   id: number; sprint_program_id: number; round_no: number; title: string; exam_date: string; start_time: string | null;
-  submission_deadline_at: string; status: string; is_active: boolean; papers: Paper[]; stats?: RoundStats; participants?: Participant[];
+  submission_deadline_at: string; status: string; is_active: boolean; papers: Paper[]; stats?: RoundStats; participants?: ParticipantWithName[];
 };
 
 function formatBytes(size: number) {
@@ -212,6 +213,7 @@ function RoundDetail({ round, onChanged, onNotice, onError }: { round: Round; on
   const [questionCount, setQuestionCount] = useState("20");
   const [totalScore, setTotalScore] = useState("100");
   const [creatingPaper, setCreatingPaper] = useState(false);
+  const lockedStatuses = new Set(["submitted", "graded", "confirmed"]);
 
   const createPaper = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -228,6 +230,32 @@ function RoundDetail({ round, onChanged, onNotice, onError }: { round: Round; on
       onError(reason instanceof ApiError ? reason.message : "시험지를 추가하지 못했습니다.");
     } finally {
       setCreatingPaper(false);
+    }
+  };
+
+  const cancelStudentRound = async (studentId: number) => {
+    if (!window.confirm("이 학생의 미제출 과목 배정을 취소할까요? 제출 기록이 있는 과목은 유지됩니다.")) return;
+    try {
+      const result = await apiFetch<{ deleted_assignment_ids: number[]; blocked_assignment_ids: number[]; blocked_reason: string | null }>(
+        `/admin/sprint-mock-rounds/${round.id}/students/${studentId}`,
+        { method: "DELETE" },
+      );
+      onChanged();
+      const blocked = result.blocked_assignment_ids.length;
+      onNotice(blocked > 0 ? `미제출 ${result.deleted_assignment_ids.length}건 취소, 제출 기록 ${blocked}건은 유지했습니다.` : "학생 회차 배정을 취소했습니다.");
+    } catch (reason) {
+      onError(reason instanceof ApiError ? reason.message : "배정을 취소하지 못했습니다.");
+    }
+  };
+
+  const cancelSubjectAssignment = async (assignmentId: number) => {
+    if (!window.confirm("이 과목 배정을 취소할까요?")) return;
+    try {
+      await apiFetch(`/admin/sprint-mock-round-assignments/${assignmentId}`, { method: "DELETE" });
+      onChanged();
+      onNotice("과목 배정을 취소했습니다.");
+    } catch (reason) {
+      onError(reason instanceof ApiError ? reason.message : "과목 배정을 취소하지 못했습니다.");
     }
   };
 
@@ -259,9 +287,10 @@ function RoundDetail({ round, onChanged, onNotice, onError }: { round: Round; on
             <table className="w-full min-w-[560px] text-left text-xs">
               <thead>
                 <tr className="text-[#98A2B3]">
-                  <th className="py-1 pr-3">학생ID</th>
+                  <th className="py-1 pr-3">학생</th>
                   <th className="py-1 pr-3">상태</th>
                   {["국어", "수학", "영어", "탐구1", "탐구2"].map((label) => <th key={label} className="py-1 pr-3">{label}</th>)}
+                  <th className="py-1 pr-3">관리</th>
                 </tr>
               </thead>
               <tbody>
@@ -269,16 +298,39 @@ function RoundDetail({ round, onChanged, onNotice, onError }: { round: Round; on
                   const slotOf = (slot: string) => participant.papers.find((p) => p.subject_slot === slot);
                   return (
                     <tr key={participant.id} className="border-t border-[#F1F3FA]">
-                      <td className="py-1.5 pr-3 font-bold text-[#17213B]">#{participant.student_id}</td>
+                      <td className="py-1.5 pr-3 font-bold text-[#17213B]">{participant.student_name ?? `#${participant.student_id}`} <span className="text-[#98A2B3]">#{participant.student_id}</span></td>
                       <td className="py-1.5 pr-3"><span className="rounded-md bg-[#F1F3FF] px-2 py-0.5 font-black text-[#5C63FF]">{STATUS_LABELS[participant.status] ?? participant.status}</span></td>
                       {["korean", "math", "english", "inquiry_1", "inquiry_2"].map((slot) => {
                         const pp = slotOf(slot);
+                        const locked = pp ? lockedStatuses.has(pp.status) || Boolean(pp.submitted_at) : false;
                         return (
                           <td key={slot} className="py-1.5 pr-3 text-[#40516D]">
-                            {pp ? `${STATUS_LABELS[pp.status] ?? pp.status}${pp.raw_score != null ? ` (${pp.raw_score}점)` : ""}` : "-"}
+                            {pp ? (
+                              <div className="flex min-w-[96px] flex-col gap-1">
+                                <span>{STATUS_LABELS[pp.status] ?? pp.status}{pp.raw_score != null ? ` (${pp.raw_score}점)` : ""}</span>
+                                <button
+                                  data-testid={`cancel-round-assignment-${pp.id}`}
+                                  disabled={locked}
+                                  onClick={() => void cancelSubjectAssignment(pp.id)}
+                                  className="w-fit rounded-md bg-red-50 px-2 py-1 text-[10px] font-black text-red-600 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
+                                  title={locked ? "제출 기록이 있어 취소할 수 없습니다." : "과목 배정 취소"}
+                                >
+                                  과목 취소
+                                </button>
+                              </div>
+                            ) : "-"}
                           </td>
                         );
                       })}
+                      <td className="py-1.5 pr-3">
+                        <button
+                          data-testid={`cancel-round-participant-${round.id}-${participant.student_id}`}
+                          onClick={() => void cancelStudentRound(participant.student_id)}
+                          className="rounded-lg bg-red-500 px-2.5 py-1.5 text-xs font-black text-white"
+                        >
+                          배정 취소
+                        </button>
+                      </td>
                     </tr>
                   );
                 })}

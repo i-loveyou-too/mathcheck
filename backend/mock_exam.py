@@ -616,6 +616,23 @@ def submission_dict(submission: models.SprintMockExamSubmission, reveal: bool = 
     return payload
 
 
+def submission_assignment_delete_state(submission: models.SprintMockExamSubmission) -> dict:
+    locked = (
+        submission.status in LOCKED_SUBMISSION_STATUSES
+        or submission.submitted_at is not None
+        or bool(submission.score_logs)
+    )
+    return {
+        "submission_id": submission.id,
+        "exam_id": submission.exam_id,
+        "student_id": submission.student_id,
+        "status": submission.status,
+        "submitted_at": submission.submitted_at,
+        "can_delete": not locked,
+        "blocked_reason": "제출 기록이 있는 배정은 취소할 수 없습니다." if locked else None,
+    }
+
+
 # ---------------------------------------------------------------------------
 # 관리자 API
 # ---------------------------------------------------------------------------
@@ -901,6 +918,27 @@ def admin_cancel_submission(submission_id: int, payload: ReviewNoteIn, db: Sessi
     db.commit()
     db.refresh(submission)
     return submission_dict(submission)
+
+
+@router.get("/admin/mock-exam-submissions/{submission_id}/deletion-state")
+def admin_submission_deletion_state(submission_id: int, db: Session = Depends(get_db)):
+    submission = db.get(models.SprintMockExamSubmission, submission_id)
+    if submission is None:
+        raise HTTPException(status_code=404, detail="배정을 찾을 수 없습니다.")
+    return submission_assignment_delete_state(submission)
+
+
+@router.delete("/admin/mock-exam-submissions/{submission_id}")
+def admin_delete_submission_assignment(submission_id: int, db: Session = Depends(get_db)):
+    submission = db.get(models.SprintMockExamSubmission, submission_id)
+    if submission is None:
+        raise HTTPException(status_code=404, detail="배정을 찾을 수 없습니다.")
+    state = submission_assignment_delete_state(submission)
+    if not state["can_delete"]:
+        raise HTTPException(status_code=400, detail=state["blocked_reason"])
+    db.delete(submission)
+    db.commit()
+    return {"deleted_submission_id": submission_id}
 
 
 # ---------------------------------------------------------------------------

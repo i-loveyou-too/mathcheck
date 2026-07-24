@@ -217,6 +217,50 @@ class CompletionAndSecurityTests(TestCase):
             smr.student_submit_paper(pp.id, smr.SubmitIn(student_id=self.student.id), self.db)
         self.assertEqual(ctx.exception.status_code, 400)
 
+    def test_admin_can_cancel_unsubmitted_subject_assignment(self):
+        pp = next(p for p in self.participant.papers if p.subject_slot == "korean")
+        paper_id = pp.paper_id
+        response = models.SprintMockExamParticipantResponse(participant_paper_id=pp.id, question_no=1, selected_answer=2)
+        self.db.add(response)
+        self.db.commit()
+
+        result = smr.admin_delete_round_subject_assignment(pp.id, self.db)
+
+        self.assertEqual(result["deleted_assignment_ids"], [pp.id])
+        self.assertIsNone(self.db.get(models.SprintMockExamParticipantPaper, pp.id))
+        self.assertIsNotNone(self.db.get(models.SprintMockExamPaper, paper_id))
+        self.assertEqual(
+            self.db.query(models.SprintMockExamParticipantResponse).filter_by(participant_paper_id=pp.id).count(),
+            0,
+        )
+
+    def test_admin_cannot_cancel_submitted_subject_assignment(self):
+        pp = next(p for p in self.participant.papers if p.subject_slot == "korean")
+        self._submit_slot("korean")
+        self.db.refresh(pp)
+
+        with self.assertRaises(HTTPException) as ctx:
+            smr.admin_delete_round_subject_assignment(pp.id, self.db)
+
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertIsNotNone(self.db.get(models.SprintMockExamParticipantPaper, pp.id))
+        self.assertGreater(self.db.query(models.SprintMockExamParticipantResponse).filter_by(participant_paper_id=pp.id).count(), 0)
+
+    def test_admin_round_student_cancel_keeps_submitted_and_deletes_unsubmitted(self):
+        submitted_pp = next(p for p in self.participant.papers if p.subject_slot == "korean")
+        draft_pp = next(p for p in self.participant.papers if p.subject_slot == "math")
+        self._submit_slot("korean")
+        self.db.add(models.SprintMockExamParticipantResponse(participant_paper_id=draft_pp.id, question_no=1, selected_answer=3))
+        self.db.commit()
+
+        result = smr.admin_delete_round_student_assignment(self.round_id, self.student.id, self.db)
+
+        self.assertIn(submitted_pp.id, result["blocked_assignment_ids"])
+        self.assertIn(draft_pp.id, result["deleted_assignment_ids"])
+        self.assertIsNotNone(self.db.get(models.SprintMockExamParticipantPaper, submitted_pp.id))
+        self.assertIsNone(self.db.get(models.SprintMockExamParticipantPaper, draft_pp.id))
+        self.assertIsNotNone(self.db.get(models.SprintMockExamRound, self.round_id))
+
 
 class InquirySubjectChangeTests(TestCase):
     def setUp(self):

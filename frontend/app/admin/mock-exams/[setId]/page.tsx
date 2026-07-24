@@ -8,6 +8,7 @@ import { apiFetch, ApiError } from "@/lib/api";
 import { getAdmin } from "@/lib/storage";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "");
+const MAX_LISTENING_AUDIO_BYTES = 100 * 1024 * 1024;
 
 const SUBJECT_CHOICES: { subject: string; elective: string | null; label: string }[] = [
   { subject: "국어", elective: null, label: "국어 (공통)" },
@@ -69,7 +70,15 @@ export default function AdminMockExamSetDetailPage() {
   useEffect(() => {
     if (!getAdmin()) { router.push("/admin/login"); return; }
     void load().catch((reason) => setError(reason instanceof Error ? reason.message : "불러오지 못했습니다."));
-    void apiFetch<Template[]>("/admin/mock-score-templates").then(setTemplates).catch(() => null);
+    void apiFetch<Template[]>("/admin/mock-score-templates").then((result) => {
+      setTemplates(result);
+      setNewExam((current) => {
+        if (current.template_id) return current;
+        const choice = SUBJECT_CHOICES[Number(current.choice)];
+        const matchingTemplate = result.find((template) => template.subject_category === choice.subject);
+        return matchingTemplate ? { ...current, template_id: String(matchingTemplate.id) } : current;
+      });
+    }).catch(() => null);
     void apiFetch<Student[]>("/admin/students").then(setStudents).catch(() => null);
   }, [setId, router]);
 
@@ -82,11 +91,23 @@ export default function AdminMockExamSetDetailPage() {
   const addExam = () => {
     const choice = SUBJECT_CHOICES[Number(newExam.choice)];
     const body: Record<string, unknown> = { subject: choice.subject, elective_name: choice.elective };
-    if (newExam.template_id) body.score_template_id = Number(newExam.template_id);
-    if (newExam.question_count) body.question_count = Number(newExam.question_count);
-    if (newExam.total_score) body.total_score = Number(newExam.total_score);
+    if (newExam.template_id) {
+      body.score_template_id = Number(newExam.template_id);
+    } else {
+      if (newExam.question_count) body.question_count = Number(newExam.question_count);
+      if (newExam.total_score) body.total_score = Number(newExam.total_score);
+    }
     if (newExam.duration_minutes) body.duration_minutes = Number(newExam.duration_minutes);
-    void run(() => apiFetch(`/admin/mock-exam-sets/${setId}/exams`, { method: "POST", body }), "과목 시험을 추가했습니다.");
+    void run(async () => {
+      await apiFetch(`/admin/mock-exam-sets/${setId}/exams`, { method: "POST", body });
+      setNewExam((current) => ({
+        ...current,
+        template_id: "",
+        question_count: "",
+        total_score: "",
+        duration_minutes: "",
+      }));
+    }, "과목 시험을 추가했습니다.");
   };
 
   const runPreview = async () => {
@@ -149,14 +170,42 @@ export default function AdminMockExamSetDetailPage() {
           <h2 className="text-lg font-black text-[#17213B]">과목 시험 추가</h2>
           <div className="mt-3 grid gap-2 sm:grid-cols-6">
             <label className="text-[11px] font-bold text-[#7A859F] sm:col-span-2">과목
-              <select value={newExam.choice} onChange={(e) => setNewExam({ ...newExam, choice: e.target.value })} className="mt-1 block h-10 w-full rounded-lg bg-[#F5F6FA] px-2 text-sm text-[#17213B]">
+              <select
+                value={newExam.choice}
+                onChange={(e) => {
+                  const choice = SUBJECT_CHOICES[Number(e.target.value)];
+                  const matchingTemplate = templates.find((template) => template.subject_category === choice.subject);
+                  setNewExam({
+                    ...newExam,
+                    choice: e.target.value,
+                    template_id: matchingTemplate ? String(matchingTemplate.id) : "",
+                    question_count: "",
+                    total_score: "",
+                  });
+                }}
+                className="mt-1 block h-10 w-full rounded-lg bg-[#F5F6FA] px-2 text-sm text-[#17213B]"
+              >
                 {SUBJECT_CHOICES.map((c, i) => <option key={c.label} value={i}>{c.label}</option>)}
               </select>
             </label>
             <label className="text-[11px] font-bold text-[#7A859F] sm:col-span-2">배점 템플릿
-              <select value={newExam.template_id} onChange={(e) => setNewExam({ ...newExam, template_id: e.target.value })} className="mt-1 block h-10 w-full rounded-lg bg-[#F5F6FA] px-2 text-sm text-[#17213B]">
+              <select
+                value={newExam.template_id}
+                onChange={(e) => setNewExam({
+                  ...newExam,
+                  template_id: e.target.value,
+                  question_count: e.target.value ? "" : newExam.question_count,
+                  total_score: e.target.value ? "" : newExam.total_score,
+                })}
+                className="mt-1 block h-10 w-full rounded-lg bg-[#F5F6FA] px-2 text-sm text-[#17213B]"
+              >
                 <option value="">직접 입력</option>
-                {templates.map((t) => <option key={t.id} value={t.id}>{t.name} ({t.question_count}문항/{t.total_score}점)</option>)}
+                {templates
+                  .filter((template) => {
+                    const choice = SUBJECT_CHOICES[Number(newExam.choice)];
+                    return !template.subject_category || template.subject_category === choice.subject;
+                  })
+                  .map((t) => <option key={t.id} value={t.id}>{t.name} ({t.question_count}문항/{t.total_score}점)</option>)}
               </select>
             </label>
             {!newExam.template_id && (
@@ -287,15 +336,40 @@ function ExamCard({ exam, open, onToggle, onChanged, onNotice, onError }: {
   };
 
   const upload = async (kind: string, file: File) => {
+    if (!API_BASE_URL) {
+      onError("NEXT_PUBLIC_API_URL is not configured.");
+      return;
+    }
+    if (kind === "listening-audio" && file.size > MAX_LISTENING_AUDIO_BYTES) {
+      onError("듣기 MP3는 100MB 이하만 업로드할 수 있습니다.");
+      return;
+    }
     setUploading(kind);
     try {
       const body = new FormData();
       body.append("file", file);
       const res = await fetch(`${API_BASE_URL}/admin/mock-exam-catalog/${exam.id}/${kind}`, { method: "POST", body, credentials: "include" });
-      if (!res.ok) throw new Error((await res.json().catch(() => null))?.detail || "업로드 실패");
+      if (!res.ok) {
+        const responseBody = await res.json().catch(() => null);
+        const message = res.status === 413
+          ? "서버 업로드 용량 제한을 초과했습니다. nginx client_max_body_size 설정을 확인해주세요."
+          : responseBody?.detail || "업로드 실패";
+        throw new Error(message);
+      }
       onChanged(); onNotice("파일을 업로드했습니다.");
     } catch (reason) { onError(reason instanceof Error ? reason.message : "업로드하지 못했습니다."); }
     finally { setUploading(""); }
+  };
+
+  const deleteExam = async () => {
+    if (!window.confirm(`"${exam.subject_label}" 과목 시험을 삭제할까요? 제출 기록이 있으면 삭제되지 않습니다.`)) return;
+    try {
+      await apiFetch(`/admin/mock-exam-catalog/${exam.id}`, { method: "DELETE" });
+      onChanged();
+      onNotice("과목 시험을 삭제했습니다.");
+    } catch (reason) {
+      onError(reason instanceof ApiError ? reason.message : "과목 시험을 삭제하지 못했습니다.");
+    }
   };
 
   const prefill = () => {
@@ -316,6 +390,15 @@ function ExamCard({ exam, open, onToggle, onChanged, onNotice, onError }: {
           {isEnglish && (exam.has_listening_audio ? <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-[10px] font-black text-emerald-600">듣기 있음</span> : <span className="rounded-md bg-gray-100 px-2 py-0.5 text-[10px] font-black text-gray-500">듣기 없음</span>)}
           {exam.has_solution_pdf ? <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-[10px] font-black text-emerald-600">해설 있음</span> : <span className="rounded-md bg-gray-100 px-2 py-0.5 text-[10px] font-black text-gray-500">해설 없음</span>}
           <button onClick={onToggle} className="rounded-lg bg-[#EAF5FF] px-2.5 py-1.5 text-xs font-black text-[#2874E8]">{open ? "접기" : "관리"}</button>
+          <button
+            data-testid={`delete-set-exam-${exam.id}`}
+            disabled={exam.submitted_count > 0}
+            onClick={() => void deleteExam()}
+            className="rounded-lg bg-red-50 px-2.5 py-1.5 text-xs font-black text-red-600 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
+            title={exam.submitted_count > 0 ? "제출 기록이 있어 삭제할 수 없습니다." : "과목 시험 삭제"}
+          >
+            과목 삭제
+          </button>
         </div>
       </div>
 

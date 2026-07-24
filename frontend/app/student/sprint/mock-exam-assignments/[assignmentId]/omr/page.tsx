@@ -27,22 +27,42 @@ export default function StudentMockExamOmrPage() {
   useEffect(() => {
     const student = getStudent();
     if (!student) { router.push("/login"); return; }
+    let cancelled = false;
     setStudentId(student.id);
+    setData(null);
+    setAnswers({});
+    setError("");
+    setNotice("");
     void apiFetch<OmrData>(`/student/sprint/mock-exam-assignments/${assignmentId}/omr?student_id=${student.id}`)
       .then((result) => {
+        if (cancelled) return;
+        const total = result.assignment.catalog.question_count;
         setData(result);
-        setAnswers(Object.fromEntries(result.answers.map((a) => [a.question_no, a.selected_answer])));
+        setAnswers(Object.fromEntries(
+          result.answers
+            .filter((answer) => answer.question_no >= 1 && answer.question_no <= total)
+            .map((answer) => [answer.question_no, answer.selected_answer]),
+        ));
       })
-      .catch((reason) => setError(reason instanceof ApiError ? reason.message : "답안을 불러오지 못했습니다."));
+      .catch((reason) => {
+        if (!cancelled) setError(reason instanceof ApiError ? reason.message : "답안을 불러오지 못했습니다.");
+      });
+    return () => { cancelled = true; };
   }, [router, assignmentId]);
 
   const saveDraft = async (silent = false) => {
     if (!studentId || !data) return false;
     if (!silent) { setBusy(true); setError(""); setNotice(""); }
     try {
+      const total = data.assignment.catalog.question_count;
       await apiFetch(`/student/sprint/mock-exam-assignments/${assignmentId}/omr`, {
         method: "PUT",
-        body: { student_id: studentId, answers: Object.entries(answers).map(([q, a]) => ({ question_no: Number(q), selected_answer: a })) },
+        body: {
+          student_id: studentId,
+          answers: Object.entries(answers)
+            .map(([q, a]) => ({ question_no: Number(q), selected_answer: a }))
+            .filter((answer) => answer.question_no >= 1 && answer.question_no <= total),
+        },
       });
       if (!silent) setNotice("임시저장했습니다.");
       return true;

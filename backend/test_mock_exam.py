@@ -305,6 +305,35 @@ class OmrSubmissionTests(TestCase):
             mock_exam.admin_update_exam(self.exam.id, mock_exam.ExamUpdateIn(question_count=10), self.db)
         self.assertEqual(ctx.exception.status_code, 400)
 
+    def test_admin_can_delete_unsubmitted_student_assignment(self):
+        submission = models.SprintMockExamSubmission(exam_id=self.exam.id, student_id=self.student.id, status="draft")
+        self.db.add(submission)
+        self.db.flush()
+        self.db.add(models.SprintMockExamResponse(submission_id=submission.id, question_no=1, selected_answer=2))
+        self.db.commit()
+        submission_id = submission.id
+        exam_id = self.exam.id
+        series_id = self.exam.series_id
+
+        result = mock_exam.admin_delete_submission_assignment(submission_id, self.db)
+
+        self.assertEqual(result["deleted_submission_id"], submission_id)
+        self.assertIsNone(self.db.get(models.SprintMockExamSubmission, submission_id))
+        self.assertEqual(self.db.query(models.SprintMockExamResponse).filter_by(submission_id=submission_id).count(), 0)
+        self.assertIsNotNone(self.db.get(models.SprintMockExam, exam_id))
+        self.assertIsNotNone(self.db.get(models.SprintMockExamSeries, series_id))
+
+    def test_admin_cannot_delete_submitted_student_assignment(self):
+        submission = models.SprintMockExamSubmission(exam_id=self.exam.id, student_id=self.student.id, status="submitted")
+        self.db.add(submission)
+        self.db.commit()
+
+        with self.assertRaises(HTTPException) as ctx:
+            mock_exam.admin_delete_submission_assignment(submission.id, self.db)
+
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertIsNotNone(self.db.get(models.SprintMockExamSubmission, submission.id))
+
 
 class RegradeTests(TestCase):
     def setUp(self):

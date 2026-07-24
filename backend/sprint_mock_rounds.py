@@ -583,6 +583,36 @@ def recompute_participant_status(participant: models.SprintMockExamParticipant, 
     participant.status = "completed"
 
 
+def participant_paper_delete_state(pp: models.SprintMockExamParticipantPaper) -> dict:
+    locked = pp.status in LOCKED_PAPER_STATUSES or pp.submitted_at is not None or bool(pp.score_logs)
+    return {
+        "assignment_id": pp.id,
+        "participant_id": pp.participant_id,
+        "paper_id": pp.paper_id,
+        "subject_slot": pp.subject_slot,
+        "status": pp.status,
+        "submitted_at": pp.submitted_at,
+        "can_delete": not locked,
+        "blocked_reason": "제출 기록이 있는 과목은 취소할 수 없습니다." if locked else None,
+    }
+
+
+def delete_unlocked_participant_paper(db: Session, pp: models.SprintMockExamParticipantPaper) -> int:
+    state = participant_paper_delete_state(pp)
+    if not state["can_delete"]:
+        raise HTTPException(status_code=400, detail=state["blocked_reason"])
+    assignment_id = pp.id
+    participant = pp.participant
+    db.delete(pp)
+    db.flush()
+    remaining = db.query(models.SprintMockExamParticipantPaper).filter_by(participant_id=participant.id).all()
+    if remaining:
+        recompute_participant_status(participant, db)
+    else:
+        db.delete(participant)
+    return assignment_id
+
+
 def sync_participants(db: Session, round_: models.SprintMockExamRound) -> dict:
     """program_id로 지정된 학생(오늘 구조상 1명)을 이 회차의 participant로 만들고,
     국어/수학/영어/탐구 paper를 자동 연결한다. 이미 제출한 학생 데이터는 건드리지 않는다.
@@ -745,6 +775,7 @@ def participant_dict(participant: models.SprintMockExamParticipant, reveal: bool
         "id": participant.id,
         "mock_exam_round_id": participant.mock_exam_round_id,
         "student_id": participant.student_id,
+        "student_name": participant.student.name if participant.student else None,
         "status": participant.status,
         "assigned_at": participant.assigned_at,
         "completed_at": participant.completed_at,
@@ -916,6 +947,68 @@ def admin_confirm_all(round_id: int, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(round_)
     return round_dict(db, round_, include_stats=True) | {"confirmed_count": len(rows)}
+
+
+@router.get("/admin/sprint-mock-rounds/{round_id}/students/{student_id}/deletion-state")
+def admin_round_student_deletion_state(round_id: int, student_id: int, db: Session = Depends(get_db)):
+    get_round_or_404(db, round_id)
+    participant = (
+        db.query(models.SprintMockExamParticipant)
+        .filter_by(mock_exam_round_id=round_id, student_id=student_id)
+        .first()
+    )
+    if participant is None:
+        raise HTTPException(status_code=404, detail="학생 회차 배정을 찾을 수 없습니다.")
+    papers = [participant_paper_delete_state(pp) for pp in participant.papers]
+    blocked = [row["assignment_id"] for row in papers if not row["can_delete"]]
+    return {
+        "round_id": round_id,
+        "student_id": student_id,
+        "participant_id": participant.id,
+        "can_delete_all": len(blocked) == 0,
+        "has_deletable_assignments": any(row["can_delete"] for row in papers),
+        "blocked_assignment_ids": blocked,
+        "assignments": papers,
+        "blocked_reason": "제출 기록이 있는 과목은 취소할 수 없습니다." if blocked else None,
+    }
+
+
+@router.delete("/admin/sprint-mock-rounds/{round_id}/students/{student_id}")
+def admin_delete_round_student_assignment(round_id: int, student_id: int, db: Session = Depends(get_db)):
+    get_round_or_404(db, round_id)
+    participant = (
+        db.query(models.SprintMockExamParticipant)
+        .filter_by(mock_exam_round_id=round_id, student_id=student_id)
+        .first()
+    )
+    if participant is None:
+        raise HTTPException(status_code=404, detail="학생 회차 배정을 찾을 수 없습니다.")
+
+    deleted: list[int] = []
+    blocked: list[int] = []
+    for pp in list(participant.papers):
+        state = participant_paper_delete_state(pp)
+        if state["can_delete"]:
+            deleted.append(delete_unlocked_participant_paper(db, pp))
+        else:
+            blocked.append(pp.id)
+    if not deleted and blocked:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="제출 기록이 있는 과목은 취소할 수 없습니다.")
+    db.commit()
+    return {
+        "deleted_assignment_ids": deleted,
+        "blocked_assignment_ids": blocked,
+        "blocked_reason": "제출 기록이 있는 과목은 취소할 수 없습니다." if blocked else None,
+    }
+
+
+@router.delete("/admin/sprint-mock-round-assignments/{assignment_id}")
+def admin_delete_round_subject_assignment(assignment_id: int, db: Session = Depends(get_db)):
+    pp = get_participant_paper_or_404(db, assignment_id)
+    deleted_id = delete_unlocked_participant_paper(db, pp)
+    db.commit()
+    return {"deleted_assignment_ids": [deleted_id], "blocked_assignment_ids": []}
 
 
 # ---------------------------------------------------------------------------
