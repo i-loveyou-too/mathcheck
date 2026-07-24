@@ -10,6 +10,7 @@ import { getStudent } from "@/lib/storage";
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "");
 
 type Media = { id: number; media_type: string; original_filename: string | null; duration_seconds: number | null };
+// 문제지는 관리자가 종이로 직접 전달하므로 이 화면에는 시험지 PDF 영역이 없다.
 type Assignment = {
   id: number;
   catalog_id: number;
@@ -50,10 +51,8 @@ export default function StudentMockExamAssignmentDetailPage() {
 
   const catalog = data.catalog;
   const isEnglish = catalog.subject.includes("영어");
-  const worksheet = catalog.media.find((m) => m.media_type === "worksheet_pdf");
   const audio = catalog.media.find((m) => m.media_type === "listening_audio");
   const locked = ["submitted", "graded", "confirmed"].includes(data.status);
-  const worksheetUrl = studentId ? `${API_BASE_URL}/student/sprint/mock-exam-catalog/${catalog.id}/worksheet-file?student_id=${studentId}` : "#";
   const audioUrl = studentId ? `${API_BASE_URL}/student/sprint/mock-exam-catalog/${catalog.id}/listening-audio?student_id=${studentId}` : "#";
 
   return (
@@ -86,12 +85,8 @@ export default function StudentMockExamAssignmentDetailPage() {
         ) : (
           <>
             <section className="mt-4 rounded-[28px] bg-white/95 p-5 shadow-[0_12px_28px_rgba(71,104,143,0.14)] ring-1 ring-[#DFEAF6]">
-              <h2 className="break-keep text-lg font-black text-[#10213D]">시험지</h2>
-              {worksheet ? (
-                <a href={worksheetUrl} target="_blank" rel="noopener noreferrer" className="mt-3 block h-12 break-keep rounded-2xl bg-[#10213D] text-center text-sm font-black leading-[3rem] text-white">시험지 PDF 열기</a>
-              ) : (
-                <p className="mt-3 break-keep text-sm font-bold text-[#8CA0BD]">등록된 시험지가 없습니다.</p>
-              )}
+              <h2 className="break-keep text-lg font-black text-[#10213D]">문제지 안내</h2>
+              <p className="mt-2 break-keep text-sm font-semibold text-[#6E7F99]">문제지는 종이로 직접 받습니다. 받은 문제지로 풀고 아래에서 답안만 입력해주세요.</p>
               {isEnglish && audio && (
                 <div className="mt-4">
                   <p className="break-keep text-xs font-black text-[#6E7F99]">영어 듣기</p>

@@ -494,3 +494,109 @@ class ExamStatusTests(TestCase):
     def test_overnight_deadline_rolls_to_next_day(self):
         deadline = mock_exam.compute_deadline_at(date(2026, 7, 26), "02:00")
         self.assertEqual(deadline.date(), date(2026, 7, 27))
+
+
+class LegacySeriesDeletionTests(TestCase):
+    """구 모의고사 관리 삭제 정책 3분기:
+    기록 없음 → 즉시 삭제 / 배정만 있음 → force 필요 / 제출·채점 있음 → 삭제 금지(archive)"""
+
+    def setUp(self):
+        self.engine, self.db = make_db()
+        self.student = models.Student(name="학생", phone="01000000000", grade="고3")
+        self.db.add(self.student)
+        self.db.flush()
+        self.program = models.SprintProgram(
+            student_id=self.student.id, title="여름 SPRINT",
+            start_date=date(2026, 7, 20), end_date=date(2026, 9, 13),
+            is_active=True, enable_mock_exam=True,
+        )
+        self.db.add(self.program)
+        self.db.commit()
+
+    def tearDown(self):
+        self.db.close()
+        self.engine.dispose()
+
+    def _series(self, rounds=2):
+        return mock_exam.admin_create_series(self.program.id, mock_exam.SeriesCreateIn(
+            title="SPRINT 모의고사", recurrence_weekday=6, first_exam_date=FIRST_SUNDAY,
+            submission_deadline_time="23:00", generation_mode="fixed_rounds", total_rounds=rounds,
+            subject="수학", default_question_count=2,
+        ), self.db)
+
+    def _add_submission(self, exam_id, status):
+        submission = models.SprintMockExamSubmission(exam_id=exam_id, student_id=self.student.id, status=status)
+        self.db.add(submission)
+        self.db.commit()
+        return submission
+
+    def test_state_clean_series_can_hard_delete(self):
+        series = self._series()
+        state = mock_exam.admin_series_deletion_state(series["id"], self.db)
+        self.assertTrue(state["can_hard_delete"])
+        self.assertFalse(state["requires_force"])
+
+    def test_delete_series_with_no_records(self):
+        series = self._series()
+        result = mock_exam.admin_delete_series(series["id"], False, self.db)
+        self.assertTrue(result["deleted"])
+        self.assertIsNone(self.db.get(models.SprintMockExamSeries, series["id"]))
+        self.assertEqual(self.db.query(models.SprintMockExam).count(), 0)
+
+    def test_delete_with_assignment_only_requires_force(self):
+        series = self._series()
+        exam_id = series["rounds"][0]["id"]
+        self._add_submission(exam_id, "draft")
+
+        state = mock_exam.admin_series_deletion_state(series["id"], self.db)
+        self.assertTrue(state["can_hard_delete"])
+        self.assertTrue(state["requires_force"])
+
+        with self.assertRaises(HTTPException) as ctx:
+            mock_exam.admin_delete_series(series["id"], False, self.db)
+        self.assertEqual(ctx.exception.status_code, 409)
+
+        result = mock_exam.admin_delete_series(series["id"], True, self.db)
+        self.assertTrue(result["deleted"])
+
+    def test_delete_blocked_when_submitted(self):
+        series = self._series()
+        self._add_submission(series["rounds"][0]["id"], "submitted")
+        state = mock_exam.admin_series_deletion_state(series["id"], self.db)
+        self.assertFalse(state["can_hard_delete"])
+        with self.assertRaises(HTTPException) as ctx:
+            mock_exam.admin_delete_series(series["id"], True, self.db)
+        self.assertEqual(ctx.exception.status_code, 400)
+        # 데이터는 그대로 보존되어야 한다.
+        self.assertIsNotNone(self.db.get(models.SprintMockExamSeries, series["id"]))
+        self.assertEqual(self.db.query(models.SprintMockExamSubmission).count(), 1)
+
+    def test_delete_blocked_when_graded(self):
+        series = self._series()
+        self._add_submission(series["rounds"][0]["id"], "graded")
+        with self.assertRaises(HTTPException) as ctx:
+            mock_exam.admin_delete_series(series["id"], True, self.db)
+        self.assertEqual(ctx.exception.status_code, 400)
+
+    def test_archive_series_keeps_records(self):
+        series = self._series()
+        self._add_submission(series["rounds"][0]["id"], "graded")
+        archived = mock_exam.admin_archive_series(series["id"], self.db)
+        self.assertFalse(archived["is_active"])
+        self.assertEqual(self.db.query(models.SprintMockExamSubmission).count(), 1)
+        self.assertEqual(self.db.query(models.SprintMockExam).count(), 2)
+
+    def test_delete_single_exam_round_policies(self):
+        series = self._series()
+        first, second = series["rounds"][0]["id"], series["rounds"][1]["id"]
+
+        # 기록 없는 회차는 바로 삭제
+        self.assertTrue(mock_exam.admin_delete_exam(first, False, self.db)["deleted"])
+        self.assertEqual(self.db.query(models.SprintMockExam).count(), 1)
+
+        # 제출 기록 있는 회차는 삭제 금지
+        self._add_submission(second, "graded")
+        with self.assertRaises(HTTPException) as ctx:
+            mock_exam.admin_delete_exam(second, True, self.db)
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertEqual(self.db.query(models.SprintMockExam).count(), 1)

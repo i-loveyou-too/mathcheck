@@ -8,38 +8,28 @@ import { AdminBottomNav } from "@/components/admin-bottom-nav";
 import { apiFetch, ApiError } from "@/lib/api";
 import { getAdmin } from "@/lib/storage";
 
-type GradeCut = { grade: number; minimum_score: number };
-type Media = { id: number; media_type: string; original_filename: string | null };
-type Catalog = {
+type ExamSet = {
   id: number;
+  round_no: number | null;
   title: string;
-  subject: string;
-  question_count: number;
-  total_score: number;
-  duration_minutes: number | null;
-  is_published: boolean;
-  sort_order: number;
-  has_answer_key: boolean;
-  answer_key_total: number;
-  grade_cuts: GradeCut[];
-  media: Media[];
-  assignment_count: number;
+  scheduled_at: string | null;
+  is_active: boolean;
+  archived_at: string | null;
+  exam_count: number;
+  assigned_student_count: number;
+  completed_student_count: number;
 };
 
-const SUBJECT_OPTIONS = ["국어", "수학", "영어", "생활과 윤리", "윤리와 사상", "사회문화", "동아시아사"];
-
-export default function AdminMockExamCatalogPage() {
+export default function AdminMockExamSetsPage() {
   const router = useRouter();
-  const [catalog, setCatalog] = useState<Catalog[]>([]);
+  const [sets, setSets] = useState<ExamSet[]>([]);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({
-    title: "SPRINT 1회", subject: "수학", question_count: "20", total_score: "100", duration_minutes: "100",
-  });
+  const [form, setForm] = useState({ title: "SPRINT 1회", round_no: "", scheduled_at: "" });
 
   const load = async () => {
-    setCatalog(await apiFetch<Catalog[]>("/admin/mock-exam-catalog"));
+    setSets(await apiFetch<ExamSet[]>("/admin/mock-exam-sets"));
   };
 
   useEffect(() => {
@@ -47,27 +37,51 @@ export default function AdminMockExamCatalogPage() {
     void load().catch((reason) => setError(reason instanceof Error ? reason.message : "목록을 불러오지 못했습니다."));
   }, [router]);
 
-  const createCatalog = async (event: React.FormEvent) => {
+  const createSet = async (event: React.FormEvent) => {
     event.preventDefault();
     setSaving(true);
     setError("");
-    setNotice("");
     try {
-      const created = await apiFetch<Catalog>("/admin/mock-exam-catalog", {
+      const created = await apiFetch<ExamSet>("/admin/mock-exam-sets", {
         method: "POST",
         body: {
           title: form.title,
-          subject: form.subject,
-          question_count: Number(form.question_count),
-          total_score: Number(form.total_score),
-          duration_minutes: form.duration_minutes ? Number(form.duration_minutes) : null,
+          round_no: form.round_no ? Number(form.round_no) : null,
+          scheduled_at: form.scheduled_at || null,
         },
       });
       router.push(`/admin/mock-exams/${created.id}`);
     } catch (reason) {
-      setError(reason instanceof ApiError ? reason.message : "시험을 만들지 못했습니다.");
+      setError(reason instanceof ApiError ? reason.message : "세트를 만들지 못했습니다.");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const deleteSet = async (set: ExamSet) => {
+    setError(""); setNotice("");
+    if (!window.confirm(`정말 "${set.title}" 세트를 삭제하시겠습니까?\n안에 등록된 과목 시험 ${set.exam_count}개와 정답·등급컷이 함께 삭제되며 되돌릴 수 없습니다.`)) return;
+    try {
+      await apiFetch(`/admin/mock-exam-sets/${set.id}`, { method: "DELETE" });
+      await load();
+      setNotice("세트를 삭제했습니다.");
+    } catch (reason) {
+      const message = reason instanceof ApiError ? reason.message : "삭제하지 못했습니다.";
+      if (reason instanceof ApiError && reason.status === 400) {
+        if (window.confirm(`${message}\n\n대신 보관 처리할까요? 기존 응시 기록은 그대로 보존됩니다.`)) {
+          try {
+            await apiFetch(`/admin/mock-exam-sets/${set.id}/archive`, { method: "POST" });
+            await load();
+            setNotice("세트를 보관 처리했습니다.");
+            return;
+          } catch (archiveError) {
+            setError(archiveError instanceof ApiError ? archiveError.message : "보관 처리하지 못했습니다.");
+            return;
+          }
+        }
+        return;
+      }
+      setError(message);
     }
   };
 
@@ -78,52 +92,46 @@ export default function AdminMockExamCatalogPage() {
           <div>
             <p className="text-sm font-bold text-[#2874E8]">SPRINT MOCK EXAM</p>
             <h1 className="mt-1 text-3xl font-black text-[#17213B]">SPRINT 모의고사 관리</h1>
-            <p className="mt-2 text-sm font-semibold text-[#7A859F]">공통 시험을 한 번 등록하고 여러 학생에게 배정합니다. 시험지·정답·등급컷은 학생마다 복제하지 않습니다.</p>
+            <p className="mt-2 text-sm font-semibold text-[#7A859F]">회차(세트) 단위로 등록하고, 세트 안에 국어·수학·영어·탐구 시험을 넣은 뒤 여러 학생에게 한 번에 배정합니다.</p>
           </div>
+          <Link href="/admin/mock-exams/score-templates" className="rounded-full bg-white px-4 py-2 text-sm font-black text-[#17213B] shadow-sm">배점 템플릿 관리 ›</Link>
         </div>
 
         {error && <p className="mt-5 rounded-2xl bg-red-50 px-4 py-3 text-sm font-bold text-red-600">{error}</p>}
         {notice && <p className="mt-5 rounded-2xl bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700">{notice}</p>}
 
-        <div className="mt-6 grid gap-5 lg:grid-cols-[360px_1fr]">
-          <form onSubmit={createCatalog} className="h-fit rounded-[24px] bg-white p-6 shadow-card">
-            <h2 className="text-lg font-black text-[#17213B]">새 공통 시험 등록</h2>
+        <div className="mt-6 grid gap-5 lg:grid-cols-[340px_1fr]">
+          <form onSubmit={createSet} className="h-fit rounded-[24px] bg-white p-6 shadow-card">
+            <h2 className="text-lg font-black text-[#17213B]">새 회차 등록</h2>
             <div className="mt-4 space-y-3 text-xs font-bold text-[#7A859F]">
-              <label className="block">시험명 (자유 입력: SPRINT 1회 / 1.5회 / FINAL 1회)<input required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="mt-1 h-11 w-full rounded-xl bg-[#F5F6FA] px-3 text-[#17213B]" /></label>
-              <label className="block">과목<input required list="subject-options" value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} className="mt-1 h-11 w-full rounded-xl bg-[#F5F6FA] px-3 text-[#17213B]" />
-                <datalist id="subject-options">{SUBJECT_OPTIONS.map((s) => <option key={s} value={s} />)}</datalist>
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                <label className="block">문항 수<input type="number" min="1" required value={form.question_count} onChange={(e) => setForm({ ...form, question_count: e.target.value })} className="mt-1 h-11 w-full rounded-xl bg-[#F5F6FA] px-3 text-[#17213B]" /></label>
-                <label className="block">총점<input type="number" min="1" required value={form.total_score} onChange={(e) => setForm({ ...form, total_score: e.target.value })} className="mt-1 h-11 w-full rounded-xl bg-[#F5F6FA] px-3 text-[#17213B]" /></label>
-              </div>
-              <label className="block">시험 시간(분, 선택)<input type="number" min="1" value={form.duration_minutes} onChange={(e) => setForm({ ...form, duration_minutes: e.target.value })} className="mt-1 h-11 w-full rounded-xl bg-[#F5F6FA] px-3 text-[#17213B]" /></label>
+              <label className="block">회차명 (자유 입력: SPRINT 1회 / 1.5회 / FINAL 1회)<input required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="mt-1 h-11 w-full rounded-xl bg-[#F5F6FA] px-3 text-[#17213B]" /></label>
+              <label className="block">정렬용 회차 번호 (선택)<input type="number" min="1" value={form.round_no} onChange={(e) => setForm({ ...form, round_no: e.target.value })} className="mt-1 h-11 w-full rounded-xl bg-[#F5F6FA] px-3 text-[#17213B]" /></label>
+              <label className="block">시행 예정일 (선택)<input type="date" value={form.scheduled_at} onChange={(e) => setForm({ ...form, scheduled_at: e.target.value })} className="mt-1 h-11 w-full rounded-xl bg-[#F5F6FA] px-3 text-[#17213B]" /></label>
             </div>
-            <button disabled={saving} className="mt-5 h-12 w-full rounded-2xl bg-[#2874E8] text-sm font-black text-white disabled:opacity-50">{saving ? "생성 중..." : "시험 만들기"}</button>
+            <button disabled={saving} className="mt-5 h-12 w-full rounded-2xl bg-[#2874E8] text-sm font-black text-white disabled:opacity-50">{saving ? "생성 중..." : "회차 만들기"}</button>
           </form>
 
           <section className="space-y-3">
-            {catalog.length === 0 && <div className="rounded-[24px] bg-white p-8 text-center text-sm font-bold text-[#98A2B3] shadow-card">등록된 공통 시험이 없습니다.</div>}
-            {catalog.map((exam) => (
-              <Link href={`/admin/mock-exams/${exam.id}`} key={exam.id} className="block rounded-[24px] bg-white p-5 shadow-card transition hover:-translate-y-0.5">
+            {sets.length === 0 && <div className="rounded-[24px] bg-white p-8 text-center text-sm font-bold text-[#98A2B3] shadow-card">등록된 회차가 없습니다.</div>}
+            {sets.map((set) => (
+              <div key={set.id} className="rounded-[24px] bg-white p-5 shadow-card">
                 <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
+                  <Link href={`/admin/mock-exams/${set.id}`} className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <h2 className="text-lg font-black text-[#17213B]">{exam.title}</h2>
-                      <span className="rounded-md bg-[#EAF5FF] px-2 py-0.5 text-[10px] font-black text-[#2874E8]">{exam.subject}</span>
-                      {exam.is_published ? <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-[10px] font-black text-emerald-600">공개</span> : <span className="rounded-md bg-gray-100 px-2 py-0.5 text-[10px] font-black text-gray-500">비공개</span>}
+                      <h2 className="text-lg font-black text-[#17213B]">{set.title}</h2>
+                      {!set.is_active && <span className="rounded-md bg-gray-100 px-2 py-0.5 text-[10px] font-black text-gray-500">보관됨</span>}
                     </div>
-                    <p className="mt-1 text-sm font-bold text-[#7A859F]">{exam.question_count}문항 · {exam.total_score}점{exam.duration_minutes ? ` · ${exam.duration_minutes}분` : ""} · 배정 {exam.assignment_count}명</p>
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {exam.has_answer_key ? <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-[10px] font-black text-emerald-600">정답 등록됨</span> : <span className="rounded-md bg-red-50 px-2 py-0.5 text-[10px] font-black text-red-500">정답 미등록</span>}
-                    {exam.grade_cuts.length > 0 && <span className="rounded-md bg-[#EAF5FF] px-2 py-0.5 text-[10px] font-black text-[#2874E8]">등급컷 {exam.grade_cuts.length}</span>}
-                    {exam.media.some((m) => m.media_type === "worksheet_pdf") && <span className="rounded-md bg-[#F1F3FF] px-2 py-0.5 text-[10px] font-black text-[#5C63FF]">시험지</span>}
-                    {exam.media.some((m) => m.media_type === "solution_pdf") && <span className="rounded-md bg-[#F1F3FF] px-2 py-0.5 text-[10px] font-black text-[#5C63FF]">해설</span>}
-                    {exam.media.some((m) => m.media_type === "listening_audio") && <span className="rounded-md bg-[#F1F3FF] px-2 py-0.5 text-[10px] font-black text-[#5C63FF]">듣기</span>}
+                    <p className="mt-1 text-sm font-bold text-[#7A859F]">
+                      과목 {set.exam_count}개 · 배정 {set.assigned_student_count}명 · 응시 완료 {set.completed_student_count}명
+                      {set.scheduled_at ? ` · 시행 ${set.scheduled_at}` : ""}
+                    </p>
+                  </Link>
+                  <div className="flex shrink-0 gap-2">
+                    <Link href={`/admin/mock-exams/${set.id}`} className="rounded-xl bg-[#EAF5FF] px-3 py-2 text-xs font-black text-[#2874E8]">관리</Link>
+                    <button data-testid={`delete-set-${set.id}`} onClick={() => void deleteSet(set)} className="rounded-xl bg-red-50 px-3 py-2 text-xs font-black text-red-600">삭제</button>
                   </div>
                 </div>
-              </Link>
+              </div>
             ))}
           </section>
         </div>

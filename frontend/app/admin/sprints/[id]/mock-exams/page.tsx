@@ -150,6 +150,80 @@ export default function AdminSprintMockExamsPage() {
     }), "전체 시리즈 일정을 재생성했습니다. (이미 제출된 회차는 유지됨)", series.id);
   };
 
+  type DeletionState = { can_hard_delete: boolean; requires_force: boolean; submission_count: number; graded_count: number; exam_count: number };
+
+  const deleteSeries = async (series: Series) => {
+    setError(""); setNotice("");
+    let state: DeletionState;
+    try {
+      state = await apiFetch<DeletionState>(`/admin/mock-exam-series/${series.id}/deletion-state`);
+    } catch (reason) {
+      setError(reason instanceof ApiError ? reason.message : "삭제 가능 여부를 확인하지 못했습니다.");
+      return;
+    }
+
+    if (!state.can_hard_delete) {
+      const archive = window.confirm(
+        `"${series.title}"에는 제출·채점 기록이 ${state.graded_count}건 있어 삭제할 수 없습니다.\n\n대신 비활성화하면 학생에게 노출되지 않고 기존 기록은 그대로 보존됩니다.\n비활성화할까요?`,
+      );
+      if (!archive) return;
+      try {
+        await apiFetch(`/admin/mock-exam-series/${series.id}/archive`, { method: "POST" });
+        await load();
+        setNotice("시리즈를 비활성화했습니다. 기존 제출 기록은 보존됩니다.");
+      } catch (reason) {
+        setError(reason instanceof ApiError ? reason.message : "비활성화하지 못했습니다.");
+      }
+      return;
+    }
+
+    const warning = state.requires_force
+      ? `\n\n⚠ 학생 배정 기록이 ${state.submission_count}건 있습니다. 함께 삭제됩니다.`
+      : "";
+    const ok = window.confirm(
+      `정말 "${series.title}" 시리즈를 삭제하시겠습니까?\n회차 ${state.exam_count}개와 등록된 정답이 함께 삭제되며 되돌릴 수 없습니다.${warning}`,
+    );
+    if (!ok) return;
+    try {
+      await apiFetch(`/admin/mock-exam-series/${series.id}${state.requires_force ? "?force=true" : ""}`, { method: "DELETE" });
+      await load();
+      setExpanded((prev) => { const next = { ...prev }; delete next[series.id]; return next; });
+      setNotice("시리즈를 삭제했습니다.");
+    } catch (reason) {
+      setError(reason instanceof ApiError ? reason.message : "삭제하지 못했습니다.");
+    }
+  };
+
+  const deleteRound = async (seriesId: number, round: Round) => {
+    setError(""); setNotice("");
+    if (!window.confirm(`${round.round_no}회차(${round.exam_date})를 삭제하시겠습니까?\n등록된 정답도 함께 삭제되며 되돌릴 수 없습니다.`)) return;
+    try {
+      await apiFetch(`/admin/mock-exams/${round.id}`, { method: "DELETE" });
+      await load();
+      if (expanded[seriesId]) await refreshExpandedSeries(seriesId);
+      setNotice("회차를 삭제했습니다.");
+    } catch (reason) {
+      if (reason instanceof ApiError && reason.status === 409) {
+        if (!window.confirm(`${reason.message}\n\n그래도 삭제할까요?`)) return;
+        try {
+          await apiFetch(`/admin/mock-exams/${round.id}?force=true`, { method: "DELETE" });
+          await load();
+          if (expanded[seriesId]) await refreshExpandedSeries(seriesId);
+          setNotice("회차를 삭제했습니다.");
+        } catch (retry) {
+          setError(retry instanceof ApiError ? retry.message : "삭제하지 못했습니다.");
+        }
+        return;
+      }
+      setError(reason instanceof ApiError ? reason.message : "삭제하지 못했습니다.");
+    }
+  };
+
+  const refreshExpandedSeries = async (seriesId: number) => {
+    const detail = await apiFetch<Series>(`/admin/mock-exam-series/${seriesId}`);
+    setExpanded((prev) => ({ ...prev, [seriesId]: detail }));
+  };
+
   const generateMore = (seriesId: number) => {
     void run(() => apiFetch(`/admin/mock-exam-series/${seriesId}/generate-rounds`, { method: "POST" }), "회차를 추가 생성했습니다.", seriesId);
   };
@@ -229,6 +303,7 @@ export default function AdminSprintMockExamsPage() {
                       <button onClick={() => generateMore(series.id)} className="rounded-xl bg-[#F0F2F8] px-3 py-2 text-xs font-black text-[#17213B]">회차 추가생성</button>
                       <button onClick={() => rescheduleAll(series)} className="rounded-xl bg-[#17213B] px-3 py-2 text-xs font-black text-white">전체 일정 변경</button>
                       <button onClick={() => void toggleExpand(series.id)} className="rounded-xl bg-[#EAF5FF] px-3 py-2 text-xs font-black text-[#2874E8]">{detail ? "접기" : "회차 보기"}</button>
+                      <button data-testid={`delete-series-${series.id}`} onClick={() => void deleteSeries(series)} className="rounded-xl bg-red-50 px-3 py-2 text-xs font-black text-red-600">삭제</button>
                     </div>
                   </div>
 
@@ -249,6 +324,7 @@ export default function AdminSprintMockExamsPage() {
                             <Link href={`/admin/sprints/${programId}/mock-exams/${round.id}`} className="rounded-lg bg-[#5C63FF] px-2.5 py-1.5 text-xs font-black text-white">관리</Link>
                             <button onClick={() => rescheduleSingle(round)} className="rounded-lg bg-[#F0F2F8] px-2.5 py-1.5 text-xs font-bold text-[#17213B]">이 회차만</button>
                             <button onClick={() => rescheduleFrom(series.id, round)} className="rounded-lg bg-[#F0F2F8] px-2.5 py-1.5 text-xs font-bold text-[#17213B]">이후 전체</button>
+                            <button data-testid={`delete-round-${round.id}`} onClick={() => void deleteRound(series.id, round)} className="rounded-lg bg-red-50 px-2.5 py-1.5 text-xs font-bold text-red-600">삭제</button>
                           </div>
                         </div>
                       ))}

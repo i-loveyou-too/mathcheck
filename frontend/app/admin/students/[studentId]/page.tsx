@@ -401,6 +401,8 @@ export default function AdminStudentDetailPage() {
             </div>
           </section>
 
+          <ElectiveProfileCard studentId={params.studentId} />
+
           {loadingInit ? (
             <div className="rounded-[32px] border border-white/80 bg-white px-6 py-20 text-center text-sm font-bold text-[#98A2B3] shadow-[0_16px_40px_rgba(15,23,42,0.06)]">
               불러오는 중...
@@ -783,5 +785,97 @@ export default function AdminStudentDetailPage() {
 
       <AdminBottomNav />
     </main>
+  );
+}
+
+type ElectiveProfile = {
+  korean_elective: string | null;
+  math_elective: string | null;
+  inquiry_subject_1: string | null;
+  inquiry_subject_2: string | null;
+  options?: { korean: string[]; math: string[]; inquiry: string[] };
+};
+
+function ElectiveProfileCard({ studentId }: { studentId: string }) {
+  const [profile, setProfile] = useState<ElectiveProfile | null>(null);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!studentId) return;
+    void apiFetch<ElectiveProfile>(`/admin/students/${studentId}/electives`)
+      .then(setProfile)
+      .catch((reason) => setError(reason instanceof Error ? reason.message : "선택과목을 불러오지 못했습니다."));
+  }, [studentId]);
+
+  if (!profile) return null;
+
+  const options = profile.options ?? {
+    korean: ["화법과 작문", "언어와 매체"],
+    math: ["확률과 통계", "미적분", "기하"],
+    inquiry: ["생활과 윤리", "윤리와 사상", "사회문화", "동아시아사"],
+  };
+
+  const save = async () => {
+    setSaving(true);
+    setError("");
+    setNotice("");
+    try {
+      const updated = await apiFetch<ElectiveProfile>(`/admin/students/${studentId}/electives`, {
+        method: "PATCH",
+        body: {
+          korean_elective: profile.korean_elective || null,
+          math_elective: profile.math_elective || null,
+          inquiry_subject_1: profile.inquiry_subject_1 || null,
+          inquiry_subject_2: profile.inquiry_subject_2 || null,
+        },
+      });
+      setProfile({ ...updated, options });
+      setNotice("선택과목을 저장했습니다. 기존 모의고사 배정은 그대로 유지됩니다.");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "저장하지 못했습니다.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const field = (label: string, key: keyof ElectiveProfile, choices: string[]) => (
+    <label className="text-xs font-bold text-[#7C8799]">
+      {label}
+      <select
+        value={(profile[key] as string | null) ?? ""}
+        onChange={(event) => setProfile({ ...profile, [key]: event.target.value || null })}
+        className="mt-1 block h-10 w-full rounded-xl bg-[#F5F6FA] px-3 text-sm font-bold text-[#17213B]"
+      >
+        <option value="">미설정</option>
+        {choices.map((choice) => <option key={choice} value={choice}>{choice}</option>)}
+      </select>
+    </label>
+  );
+
+  return (
+    <section className="rounded-[32px] border border-[#E8EEFF] bg-white p-6 shadow-[0_16px_40px_rgba(15,23,42,0.06)]">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-xs font-black text-[#2874E8]">수능 선택과목</p>
+          <h2 className="mt-1 text-lg font-black text-[#17213B]">모의고사 배정 기본값</h2>
+        </div>
+        <button onClick={() => void save()} disabled={saving} className="rounded-xl bg-[#2874E8] px-4 py-2 text-xs font-black text-white disabled:opacity-50">
+          {saving ? "저장 중..." : "저장"}
+        </button>
+      </div>
+      <p className="mt-2 text-xs font-semibold text-[#98A2B3]">
+        모의고사 세트를 배정할 때 이 프로필로 과목이 자동 선택됩니다. 프로필을 바꿔도 이미 배정된 모의고사 과목은 바뀌지 않습니다.
+      </p>
+      {error && <p className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-xs font-bold text-red-600">{error}</p>}
+      {notice && <p className="mt-3 rounded-xl bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700">{notice}</p>}
+      <div className="mt-4 grid gap-3 sm:grid-cols-4">
+        {field("국어 선택", "korean_elective", options.korean)}
+        {field("수학 선택", "math_elective", options.math)}
+        {field("탐구 1", "inquiry_subject_1", options.inquiry)}
+        {field("탐구 2", "inquiry_subject_2", options.inquiry)}
+      </div>
+    </section>
   );
 }

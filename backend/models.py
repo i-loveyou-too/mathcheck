@@ -27,6 +27,12 @@ class Student(Base):
     name = Column(String(100), nullable=False)
     phone = Column(String(20), unique=True, index=True, nullable=False)
     grade = Column(String(20), nullable=False)
+    # 수능 선택과목 프로필. 모의고사 세트 배정 시 "기본값"으로만 쓰이며, 실제 배정은 배정 시점에
+    # assignment(=특정 과목 시험)로 확정 저장되므로 이후 프로필이 바뀌어도 기존 배정은 유지된다.
+    korean_elective = Column(String(30), nullable=True)   # 화법과 작문 / 언어와 매체
+    math_elective = Column(String(30), nullable=True)     # 확률과 통계 / 미적분 / 기하
+    inquiry_subject_1 = Column(String(30), nullable=True)  # 생활과 윤리 / 윤리와 사상 / 사회문화 / 동아시아사
+    inquiry_subject_2 = Column(String(30), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     progress = relationship("Progress", back_populates="student", cascade="all, delete-orphan")
@@ -1675,14 +1681,86 @@ class SprintMockExamParticipantScoreLog(Base):
 # ---------------------------------------------------------------------------
 
 
+class SprintMockScoreTemplate(Base):
+    """문항별 배점 템플릿 (예: "수학 수능형 30문항"). 시험지 생성 시 이 배점을 시험지 문항에
+    복사(스냅샷)하며, 이후 템플릿을 고쳐도 이미 만들어진 시험지의 배점은 바뀌지 않는다."""
+
+    __tablename__ = "sprint_mock_score_templates"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(200), nullable=False)
+    subject_category = Column(String(50), nullable=True)
+    question_count = Column(Integer, nullable=False)
+    total_score = Column(Integer, nullable=False)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    items = relationship(
+        "SprintMockScoreTemplateItem",
+        back_populates="template",
+        cascade="all, delete-orphan",
+        order_by="SprintMockScoreTemplateItem.question_no",
+    )
+
+
+class SprintMockScoreTemplateItem(Base):
+    __tablename__ = "sprint_mock_score_template_items"
+    __table_args__ = (
+        UniqueConstraint("template_id", "question_no", name="uq_sprint_mock_score_template_items_template_question"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    template_id = Column(Integer, ForeignKey("sprint_mock_score_templates.id", ondelete="CASCADE"), nullable=False, index=True)
+    question_no = Column(Integer, nullable=False)
+    score = Column(Integer, nullable=False)
+    sort_order = Column(Integer, nullable=False, default=0)
+
+    template = relationship("SprintMockScoreTemplate", back_populates="items")
+
+
+class SprintMockExamSet(Base):
+    """모의고사 세트 = "SPRINT 1회" 한 묶음. 세트 안에 과목별 시험(SprintMockExamCatalog)이 들어간다.
+    관리자 목록은 이 세트 단위로 표시되고, 학생 배정도 세트 단위로 일괄 수행한다."""
+
+    __tablename__ = "sprint_mock_exam_sets"
+
+    id = Column(Integer, primary_key=True, index=True)
+    round_no = Column(Integer, nullable=True)
+    title = Column(String(200), nullable=False)
+    scheduled_at = Column(Date, nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True)
+    archived_at = Column(DateTime(timezone=True), nullable=True)
+    sort_order = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    exams = relationship(
+        "SprintMockExamCatalog",
+        back_populates="exam_set",
+        order_by="SprintMockExamCatalog.sort_order, SprintMockExamCatalog.id",
+    )
+
+
 class SprintMockExamCatalog(Base):
-    """공통 시험 원본. 과목 하나당 한 건이며(예: "SPRINT 1회 수학"), 여러 학생에게 배정될 수 있다."""
+    """세트 안의 과목별 시험 원본 (예: "SPRINT 1회"의 수학). 문항/정답/등급컷/미디어를 여기에
+    한 번만 저장하고 학생마다 복제하지 않는다. exam_set_id는 nullable이라 세트에 속하지 않는
+    기존 단일 시험도 그대로 유효하다 (기존 데이터 무손상)."""
 
     __tablename__ = "sprint_mock_exam_catalog"
 
     id = Column(Integer, primary_key=True, index=True)
+    exam_set_id = Column(Integer, ForeignKey("sprint_mock_exam_sets.id", ondelete="SET NULL"), nullable=True, index=True)
     title = Column(String(200), nullable=False)
     subject = Column(String(50), nullable=False)
+    # subject="탐구"일 때 세부 과목명. 4종만 사용한다:
+    # 생활과 윤리 / 윤리와 사상 / 사회문화 / 동아시아사.
+    # 학생별 선택 2과목은 SprintProgram.inquiry_subject_1/2(코드)에 저장되어 있고,
+    # 세트 배정 시 그 코드를 이 elective_name과 매칭해 해당 학생의 탐구 시험만 배정한다.
+    elective_name = Column(String(50), nullable=True)
+    # 생성 시 사용한 배점 템플릿 (추적용). 실제 채점은 항상 이 시험지에 복사된 문항 배점
+    # 스냅샷(SprintMockExamCatalogQuestion.score_points)으로 하며 템플릿을 다시 읽지 않는다.
+    score_template_id = Column(Integer, ForeignKey("sprint_mock_score_templates.id", ondelete="SET NULL"), nullable=True)
     question_count = Column(Integer, nullable=False)
     total_score = Column(Integer, nullable=False, default=100)
     duration_minutes = Column(Integer, nullable=True)
@@ -1712,6 +1790,7 @@ class SprintMockExamCatalog(Base):
         "SprintMockExamAssignment",
         back_populates="catalog",
     )
+    exam_set = relationship("SprintMockExamSet", back_populates="exams")
 
 
 class SprintMockExamCatalogQuestion(Base):
@@ -1723,7 +1802,9 @@ class SprintMockExamCatalogQuestion(Base):
     id = Column(Integer, primary_key=True, index=True)
     catalog_id = Column(Integer, ForeignKey("sprint_mock_exam_catalog.id", ondelete="CASCADE"), nullable=False, index=True)
     question_no = Column(Integer, nullable=False)
-    correct_answer = Column(Integer, nullable=False)
+    # 배점 템플릿으로 시험지를 만들면 배점만 먼저 채워지고 정답은 나중에 입력하므로 nullable이다.
+    # 정답이 비어 있는 문항이 하나라도 있으면 학생 제출(채점)을 막는다.
+    correct_answer = Column(Integer, nullable=True)
     score_points = Column(Integer, nullable=False)
     category = Column(String(100), nullable=True)
     is_scored = Column(Boolean, nullable=False, default=True)

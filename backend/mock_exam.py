@@ -663,6 +663,85 @@ def admin_update_series(series_id: int, payload: SeriesUpdateIn, db: Session = D
     return series_dict(series, include_rounds=True)
 
 
+def series_deletion_state(db: Session, series: models.SprintMockExamSeries) -> dict:
+    """이 시리즈를 지울 수 있는지 판단한다.
+    - 제출/채점 기록(submitted/graded/confirmed)이 있으면 hard delete 금지 → archive만
+    - 배정(답안 작성 전 draft/not_started 제출행 포함)만 있으면 경고 후 삭제 허용
+    - 아무 기록도 없으면 바로 삭제 가능"""
+    exam_ids = [exam.id for exam in series.exams]
+    if not exam_ids:
+        return {"can_hard_delete": True, "requires_force": False, "submission_count": 0, "graded_count": 0, "exam_count": 0}
+    rows = (
+        db.query(models.SprintMockExamSubmission)
+        .filter(models.SprintMockExamSubmission.exam_id.in_(exam_ids))
+        .all()
+    )
+    graded = [row for row in rows if row.status in LOCKED_SUBMISSION_STATUSES]
+    return {
+        "can_hard_delete": not graded,
+        "requires_force": bool(rows) and not graded,
+        "submission_count": len(rows),
+        "graded_count": len(graded),
+        "exam_count": len(exam_ids),
+    }
+
+
+@router.get("/admin/mock-exam-series/{series_id}/deletion-state")
+def admin_series_deletion_state(series_id: int, db: Session = Depends(get_db)):
+    return series_deletion_state(db, get_series_or_404(db, series_id))
+
+
+@router.delete("/admin/mock-exam-series/{series_id}")
+def admin_delete_series(series_id: int, force: bool = Query(default=False), db: Session = Depends(get_db)):
+    """구 모의고사 시리즈 삭제. 제출/채점 기록이 있으면 삭제 대신 비활성화(archive)만 허용한다."""
+    series = get_series_or_404(db, series_id)
+    state = series_deletion_state(db, series)
+    if not state["can_hard_delete"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"제출·채점 기록이 {state['graded_count']}건 있어 삭제할 수 없습니다. 비활성화를 사용하세요.",
+        )
+    if state["requires_force"] and not force:
+        raise HTTPException(
+            status_code=409,
+            detail=f"학생 배정 기록이 {state['submission_count']}건 있습니다. 그래도 삭제하려면 다시 확인해주세요.",
+        )
+    db.delete(series)  # 회차/정답/배정은 FK ON DELETE CASCADE로 함께 정리된다.
+    db.commit()
+    return {"deleted": True, "deleted_exam_count": state["exam_count"]}
+
+
+@router.post("/admin/mock-exam-series/{series_id}/archive")
+def admin_archive_series(series_id: int, db: Session = Depends(get_db)):
+    """제출 기록이 있어 지울 수 없는 시리즈를 비활성화한다. 기존 기록은 그대로 보존된다."""
+    series = get_series_or_404(db, series_id)
+    series.is_active = False
+    db.commit()
+    db.refresh(series)
+    return series_dict(series, include_rounds=True)
+
+
+@router.delete("/admin/mock-exams/{exam_id}")
+def admin_delete_exam(exam_id: int, force: bool = Query(default=False), db: Session = Depends(get_db)):
+    """개별 회차 삭제. 시리즈와 동일한 정책을 회차 단위로 적용한다."""
+    exam = get_exam_or_404(db, exam_id)
+    rows = db.query(models.SprintMockExamSubmission).filter_by(exam_id=exam_id).all()
+    graded = [row for row in rows if row.status in LOCKED_SUBMISSION_STATUSES]
+    if graded:
+        raise HTTPException(
+            status_code=400,
+            detail=f"제출·채점 기록이 {len(graded)}건 있어 이 회차를 삭제할 수 없습니다.",
+        )
+    if rows and not force:
+        raise HTTPException(
+            status_code=409,
+            detail=f"학생 배정 기록이 {len(rows)}건 있습니다. 그래도 삭제하려면 다시 확인해주세요.",
+        )
+    db.delete(exam)
+    db.commit()
+    return {"deleted": True}
+
+
 @router.post("/admin/mock-exam-series/{series_id}/generate-rounds")
 def admin_generate_rounds(series_id: int, db: Session = Depends(get_db)):
     series = get_series_or_404(db, series_id)
