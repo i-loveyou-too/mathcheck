@@ -45,7 +45,7 @@ IMPLEMENTED_FEATURES = {
 }
 
 STUDY_SUBMISSION_STATUSES = {"draft", "pending", "approved", "rejected", "cancelled"}
-MAX_STUDY_IMAGE_BYTES = 8 * 1024 * 1024
+MAX_STUDY_IMAGE_BYTES = 20 * 1024 * 1024  # 최신 스마트폰 카메라 사진(HEIC/고화소 JPEG) 기준으로 여유를 둔다.
 MAX_STUDY_IMAGE_COUNT = 3
 STORAGE_ROOT = Path("storage")
 SPRINT_STUDY_STORAGE_ROOT = STORAGE_ROOT / "sprint-study"
@@ -420,7 +420,13 @@ def validate_study_submission_program(program: models.SprintProgram, learning_da
         raise HTTPException(status_code=400, detail="Future learning dates cannot be submitted.")
 
 
+HEIC_FTYP_BRANDS = {b"heic", b"heix", b"hevc", b"hevx", b"heim", b"heis", b"hevm", b"hevs", b"mif1", b"msf1"}
+
+
 def detect_image(data: bytes) -> tuple[str, str, int | None, int | None]:
+    if len(data) >= 12 and data[4:8] == b"ftyp" and data[8:12] in HEIC_FTYP_BRANDS:
+        # iOS 카메라 촬영 사진의 기본 포맷(HEIC/HEIF). ISO-BMFF 컨테이너라 가로/세로는 별도 파싱 없이 비워둔다.
+        return "heic", "image/heic", None, None
     if data.startswith(b"\x89PNG\r\n\x1a\n") and len(data) >= 24:
         width, height = struct.unpack(">II", data[16:24])
         return "png", "image/png", width, height
@@ -449,7 +455,7 @@ def detect_image(data: bytes) -> tuple[str, str, int | None, int | None]:
             height = int.from_bytes(data[27:30], "little") + 1
             return "webp", "image/webp", width, height
         return "webp", "image/webp", None, None
-    raise HTTPException(status_code=400, detail="Only JPEG, PNG, and WEBP images are supported.")
+    raise HTTPException(status_code=400, detail="Only JPEG, PNG, WEBP, and HEIC images are supported.")
 
 
 def safe_storage_key(student_id: int, learning_date: date, extension: str) -> str:
@@ -902,6 +908,22 @@ def mock_round_summary_safe(db: Session, program: models.SprintProgram, student_
     """sprint_mock_rounds.py는 sprint.py를 import하지 않으므로 순환참조 없이 지역 import로 재사용한다."""
     import sprint_mock_rounds
     return sprint_mock_rounds.mock_round_home_summary(db, program, student_id)
+
+
+def mock_catalog_summary_safe(db: Session, program: models.SprintProgram, student_id: int) -> dict:
+    """sprint_mock_catalog.py는 sprint.py를 import하지 않으므로 순환참조 없이 지역 import로 재사용한다.
+    8차(공통 카탈로그)가 새 기본 시스템이며, 7차(회차)는 기존 배정/응시 기록 보존을 위해 남겨둔다.
+    학생에게 카탈로그 배정이 있으면 그것을 우선 보여주고, 없으면(과거 회차 배정만 있는 경우) 회차
+    요약으로 대체해 기존에 회차로 배정받은 학생의 화면이 비어 보이지 않게 한다."""
+    import sprint_mock_catalog
+
+    summary = sprint_mock_catalog.mock_catalog_home_summary(db, student_id)
+    if summary.get("assignment") is not None:
+        return summary
+    round_summary = mock_round_summary_safe(db, program, student_id)
+    if round_summary.get("round") is not None:
+        return round_summary
+    return summary
 
 
 def vocabulary_home_summary(db: Session, student_id: int, today: date) -> dict:
@@ -1461,6 +1483,7 @@ def student_sprint_dashboard(
         "progress_summary": subject_goal_home_summary_safe(db, program),
         "mock_exam_summary": mock_exam_home_summary_safe(db, program, student_id),
         "mock_round_summary": mock_round_summary_safe(db, program, student_id),
+        "mock_catalog_summary": mock_catalog_summary_safe(db, program, student_id),
         "worksheet_summary": worksheet_summary_safe(db, program, student_id),
         "weekly_summary": sprint_weekly_summary(db, program, today),
         "upcoming": program_dict(db, upcoming, today) if upcoming else None,

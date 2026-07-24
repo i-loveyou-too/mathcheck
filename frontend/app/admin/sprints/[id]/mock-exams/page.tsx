@@ -45,7 +45,7 @@ export default function AdminSprintMockExamsPage() {
   const [form, setForm] = useState({
     title: "SPRINT 모의고사", recurrence_weekday: "6", first_exam_date: today,
     submission_deadline_time: "23:00", generation_mode: "until_sprint_end", total_rounds: "8",
-    subject: "수학", default_question_count: "20", default_total_score: "100",
+    subject: "", default_question_count: "20", default_total_score: "100",
   });
 
   const load = async () => {
@@ -159,8 +159,18 @@ export default function AdminSprintMockExamsPage() {
       <div className="mx-auto max-w-[1180px] px-5 py-8">
         <Link href={`/admin/sprints/${programId}`} className="text-sm font-bold text-[#64748B]">← SPRINT 상세</Link>
         <div className="mt-4">
-          <p className="text-sm font-bold text-[#FF6B4A]">MOCK EXAM SERIES</p>
+          <p className="text-sm font-bold text-[#FF6B4A]">MOCK EXAM SERIES (구버전)</p>
           <h1 className="mt-1 text-3xl font-black text-[#17213B]">주간 반복 모의고사</h1>
+        </div>
+
+        <div className="mt-4 rounded-2xl border border-amber-300 bg-amber-50 px-5 py-4">
+          <p className="text-sm font-black text-amber-800">⚠ 이 화면은 이전 버전입니다.</p>
+          <p className="mt-1 text-xs font-bold text-amber-700">
+            여기서 등록한 시험은 저장은 되지만 학생 SPRINT 화면과 새 관리자 회차 목록에는 표시되지 않습니다.
+            새 시험은 반드시{" "}
+            <Link href={`/admin/sprints/${programId}/mock-exam-rounds`} className="underline">모의고사 회차 관리</Link>
+            {" "}(과목별 시험지를 등록하는 화면)에서 등록해주세요.
+          </p>
         </div>
 
         {error && <p className="mt-5 rounded-2xl bg-red-50 px-4 py-3 text-sm font-bold text-red-600">{error}</p>}
@@ -194,7 +204,7 @@ export default function AdminSprintMockExamsPage() {
                 <label className="block">총 회차 수<input type="number" min="1" value={form.total_rounds} onChange={(e) => setForm({ ...form, total_rounds: e.target.value })} className="mt-1 h-11 w-full rounded-xl bg-[#F5F6FA] px-3 text-[#17213B]" /></label>
               )}
               <div className="grid grid-cols-2 gap-2">
-                <label className="block">기본 과목<input value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} className="mt-1 h-11 w-full rounded-xl bg-[#F5F6FA] px-3 text-[#17213B]" /></label>
+                <label className="block">기본 과목<input required placeholder="예: 국어, 영어" value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} className="mt-1 h-11 w-full rounded-xl bg-[#F5F6FA] px-3 text-[#17213B]" /></label>
                 <label className="block">기본 문항 수<input type="number" min="1" value={form.default_question_count} onChange={(e) => setForm({ ...form, default_question_count: e.target.value })} className="mt-1 h-11 w-full rounded-xl bg-[#F5F6FA] px-3 text-[#17213B]" /></label>
               </div>
               <label className="block">기본 총점<input type="number" min="1" value={form.default_total_score} onChange={(e) => setForm({ ...form, default_total_score: e.target.value })} className="mt-1 h-11 w-full rounded-xl bg-[#F5F6FA] px-3 text-[#17213B]" /></label>

@@ -190,7 +190,10 @@ export default function AdminSprintsPage() {
             <h1 className="mt-1 text-3xl font-black text-[#17213B]">SPRINT 통합 배정</h1>
             <p className="mt-2 text-sm text-[#7A859F]">학생별 기간, 인증, 영단어, 목표 운영 설정을 한 번에 배정합니다.</p>
           </div>
-          <span className="rounded-full bg-[#E7E9FF] px-4 py-2 text-sm font-black text-[#4C52D6]">{sprints.length}개</span>
+          <div className="flex items-center gap-2">
+            <Link href="/admin/mock-exams" className="rounded-full bg-[#2874E8] px-4 py-2 text-sm font-black text-white">SPRINT 모의고사 관리 ›</Link>
+            <span className="rounded-full bg-[#E7E9FF] px-4 py-2 text-sm font-black text-[#4C52D6]">{sprints.length}개</span>
+          </div>
         </div>
 
         {error && <p className="mb-5 rounded-2xl bg-red-50 px-4 py-3 text-sm font-bold text-red-600">{error}</p>}

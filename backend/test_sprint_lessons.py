@@ -407,6 +407,16 @@ class SprintTests(TestCase):
         with self.assertRaises(HTTPException):
             sprint.detect_image(b"not an image")
 
+    def test_heic_signature_accepted(self):
+        # iOS 카메라 기본 포맷: ftyp 박스 + heic 계열 브랜드 코드.
+        heic = b"\x00\x00\x00\x18ftypheic\x00\x00\x00\x00" + b"\x00" * 16
+        extension, mime_type, width, height = sprint.detect_image(heic)
+        self.assertEqual(extension, "heic")
+        self.assertEqual(mime_type, "image/heic")
+        heif_generic = b"\x00\x00\x00\x18ftypmif1\x00\x00\x00\x00" + b"\x00" * 16
+        extension, mime_type, _, _ = sprint.detect_image(heif_generic)
+        self.assertEqual(extension, "heic")
+
     def test_daily_proof_deadlines_and_timing(self):
         deadline = sprint.proof_deadline_at(self.program, "planner", date(2026, 7, 22))
         self.assertEqual(deadline.isoformat(), "2026-07-22T23:00:00+09:00")

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import random
 import re
+from difflib import SequenceMatcher
 from html import escape
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -47,6 +48,93 @@ def normalize_answers(values: list[str]) -> list[str]:
     if not answers:
         raise HTTPException(status_code=400, detail="At least one accepted answer is required.")
     return answers
+
+
+# --- 채점: exact -> 정규화 일치 -> 다중 뜻/구분자·괄호 무시 일치 -> 조사 제거 -> 유사도 ---
+# 완전히 다른 답까지 정답 처리되지 않도록 유사도는 마지막 단계에서만, 보수적인 임계값으로만 사용한다.
+ANSWER_DELIMITER_PATTERN = re.compile(r"[,，/／·ㆍ;；]|\s+")
+ANSWER_PAREN_PATTERN = re.compile(r"[\(（][^\)）]*[\)）]|\[[^\]]*\]")
+# 명사에 흔히 붙는 조사만 다룬다 (동사/형용사 활용형 정규화는 형태소 분석이 필요해 범위 밖).
+KOREAN_PARTICLE_SUFFIXES = sorted(
+    ["은", "는", "이", "가", "을", "를", "의", "와", "과", "도", "만", "에", "에서", "에게", "한테", "으로", "로", "이다"],
+    key=len,
+    reverse=True,
+)
+ANSWER_SIMILARITY_THRESHOLD = 0.84
+ANSWER_SIMILARITY_MIN_LENGTH = 2
+HANGUL_SYLLABLE_BASE = 0xAC00
+HANGUL_SYLLABLE_LAST = 0xD7A3
+HANGUL_CHOSUNG = list("ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ")
+HANGUL_JUNGSUNG = list("ㅏㅐㅑㅒㅓㅔㅕㅖㅗㅘㅙㅚㅛㅜㅝㅞㅟㅠㅡㅢㅣ")
+HANGUL_JONGSUNG = [""] + list("ㄱㄲㄳㄴㄵㄶㄷㄹㄺㄻㄼㄽㄾㄿㅀㅁㅂㅄㅅㅆㅇㅈㅊㅋㅌㅍㅎ")
+
+
+def decompose_hangul(value: str) -> str:
+    """한글 음절을 초/중/종성 자모로 풀어, 한 글자 안의 작은 오타(모음 하나 차이 등)도
+    문자열 유사도에서 큰 차이로 보이지 않게 한다 (완성형 음절 단위 비교의 한계 보정)."""
+    result: list[str] = []
+    for char in value:
+        code = ord(char)
+        if HANGUL_SYLLABLE_BASE <= code <= HANGUL_SYLLABLE_LAST:
+            offset = code - HANGUL_SYLLABLE_BASE
+            cho, remainder = divmod(offset, 21 * 28)
+            jung, jong = divmod(remainder, 28)
+            result.append(HANGUL_CHOSUNG[cho])
+            result.append(HANGUL_JUNGSUNG[jung])
+            if HANGUL_JONGSUNG[jong]:
+                result.append(HANGUL_JONGSUNG[jong])
+        else:
+            result.append(char)
+    return "".join(result)
+
+
+def strip_korean_particle(value: str) -> str:
+    for suffix in KOREAN_PARTICLE_SUFFIXES:
+        if len(value) > len(suffix) + 1 and value.endswith(suffix):
+            return value[: -len(suffix)]
+    return value
+
+
+def answer_candidate_set(value: str) -> set[str]:
+    """정답 후보 하나를 구분자(쉼표/슬래시/가운뎃점/공백)와 괄호 유무로 분해해 후보 집합을 만든다."""
+    variants = {value}
+    without_notes = normalize_text(ANSWER_PAREN_PATTERN.sub("", value))
+    if without_notes:
+        variants.add(without_notes)
+    candidates: set[str] = set()
+    for variant in variants:
+        normalized_variant = normalize_text(variant)
+        if normalized_variant:
+            candidates.add(normalized_variant)
+        for part in ANSWER_DELIMITER_PATTERN.split(variant):
+            normalized_part = normalize_text(part)
+            if normalized_part:
+                candidates.add(normalized_part)
+    candidates |= {strip_korean_particle(c) for c in candidates}
+    return {c for c in candidates if c}
+
+
+def is_answer_correct(input_answer: str, accepted_answers: list[str]) -> bool:
+    raw_input = (input_answer or "").strip()
+    if not raw_input or not accepted_answers:
+        return False
+    if raw_input in accepted_answers:  # 1) exact
+        return True
+    normalized_input = normalize_text(raw_input)
+    input_candidates = {normalized_input, strip_korean_particle(normalized_input)}
+    accepted_candidates: set[str] = set()
+    for value in accepted_answers:
+        accepted_candidates |= answer_candidate_set(value)
+    if input_candidates & accepted_candidates:  # 2) 정규화 일치 3) 다중 뜻/구분자/괄호/조사 무시 일치
+        return True
+    if len(normalized_input) < ANSWER_SIMILARITY_MIN_LENGTH:  # 한 글자 답은 유사도 오탐이 커서 제외
+        return False
+    decomposed_input = decompose_hangul(normalized_input)
+    best_ratio = max(
+        (SequenceMatcher(None, decomposed_input, decompose_hangul(candidate)).ratio() for candidate in accepted_candidates),
+        default=0.0,
+    )
+    return best_ratio >= ANSWER_SIMILARITY_THRESHOLD  # 4) 유사도 (경미한 오타 허용, 자모 단위로 비교)
 
 
 def parse_meanings(raw_meaning: str) -> tuple[list[str], list[str]]:
@@ -1116,6 +1204,22 @@ def admin_update_challenge(challenge_id: int, payload: ChallengeUpdate, db: Sess
     return challenge_dict(db, challenge, include_words=True)
 
 
+@router.delete("/admin/vocabulary-challenges/{challenge_id}")
+def admin_delete_challenge(challenge_id: int, db: Session = Depends(get_db)):
+    challenge = get_challenge_or_404(db, challenge_id)
+    session_count = db.query(func.count(models.VocabularyTestSession.id)).filter(
+        models.VocabularyTestSession.challenge_id == challenge_id
+    ).scalar() or 0
+    if session_count > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"이 챌린지에는 학생 응시 기록이 {session_count}건 있어 삭제할 수 없습니다. 비활성화를 사용하세요.",
+        )
+    db.delete(challenge)
+    db.commit()
+    return {"deleted": True}
+
+
 @router.post("/admin/vocabulary-challenges/{challenge_id}/words", status_code=201)
 def admin_add_words(challenge_id: int, payload: BulkWordsIn, db: Session = Depends(get_db)):
     challenge = get_challenge_or_404(db, challenge_id)
@@ -1414,8 +1518,7 @@ def submit_session(db: Session, session: models.VocabularyTestSession):
                 session_id=session.id, question_id=question.id, input_answer=""
             )
             db.add(answer)
-        accepted = {normalize_text(value) for value in question.accepted_answers_snapshot}
-        answer.is_correct = normalize_text(answer.input_answer) in accepted
+        answer.is_correct = is_answer_correct(answer.input_answer, question.accepted_answers_snapshot)
         if answer.is_correct:
             correct_count += 1
             if session.session_type == "review":

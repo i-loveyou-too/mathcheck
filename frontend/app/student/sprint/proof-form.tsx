@@ -347,7 +347,7 @@ export function ProofForm({ proofType }: { proofType: ProofType }) {
           )}
 
           {!locked && canAddMore && (
-            <input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={(event) => { addPendingFiles(event.target.files); event.target.value = ""; }} className="mt-4 block w-full text-sm" />
+            <input type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" multiple onChange={(event) => { addPendingFiles(event.target.files); event.target.value = ""; }} className="mt-4 block w-full text-sm" />
           )}
           {!locked && pendingFiles.length > 0 && (
             <button disabled={busy} onClick={() => void uploadPendingPhotos()} className="mt-3 h-11 w-full break-keep rounded-2xl bg-[#10213D] text-sm font-black text-white disabled:opacity-40">{busy ? "업로드 중..." : "사진 올리기"}</button>

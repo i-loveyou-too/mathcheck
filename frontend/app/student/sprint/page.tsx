@@ -80,6 +80,16 @@ type MockRoundSummary = {
   participant_status?: string;
   path: string;
 };
+type MockCatalogCardInfo = { id: number; title: string; subject: string; exam_date: string };
+type MockCatalogSummary = {
+  available: boolean;
+  status: "none" | "scheduled" | "open";
+  assignment?: MockCatalogCardInfo | null;
+  round?: MockRoundCardInfo | null;
+  days_remaining?: number;
+  participant_status?: string;
+  path: string;
+};
 type SubjectGoalNext = { title: string; subject: string; target_date: string };
 type SubjectGoalSummary = {
   available: boolean;
@@ -111,6 +121,7 @@ type Dashboard = {
   vocabulary_summary?: VocabularySummary;
   mock_exam_summary?: MockExamSummary;
   mock_round_summary?: MockRoundSummary;
+  mock_catalog_summary?: MockCatalogSummary;
   progress_summary?: SubjectGoalSummary;
   worksheet_summary?: WorksheetSummary;
   weekly_summary?: WeeklySummary;
@@ -277,12 +288,12 @@ export default function StudentSprintPage() {
         ) : (
           <>
             <section className="relative mb-8 overflow-hidden rounded-[24px] bg-white/95 p-5 shadow-[0_18px_36px_rgba(49,89,130,0.18)] ring-1 ring-[#DCEBFA]">
-              <div className="grid grid-cols-1 gap-4 min-[760px]:grid-cols-[1.35fr_1fr_1fr]">
+              <div className="grid grid-cols-1 gap-4">
                 <div>
                   <p className="text-3xl font-black tracking-[-0.05em] text-[#2E74E8] break-keep">DAY {program.day_info.day_number || "-"}</p>
                   <p className="mt-2 text-lg font-bold text-[#183050] break-keep">{program.day_info.status === "scheduled" ? `시작까지 ${program.day_info.days_remaining}일` : program.day_info.status === "completed" ? "SPRINT 종료" : `종료까지 ${program.day_info.days_remaining}일 남았어요!`}</p>
                 </div>
-                <div className="border-t border-[#E3EDF8] pt-4 min-[760px]:border-l min-[760px]:border-t-0 min-[760px]:pl-4 min-[760px]:pt-0">
+                <div className="border-t border-[#E3EDF8] pt-4">
                   <p className="text-sm font-bold text-[#29415F] break-keep">전체 진행률</p>
                   <p className="mt-3 text-2xl font-black text-[#10213D]">{progress === null ? "-" : `${progress}%`}</p>
                   <div className="mt-3 h-2 rounded-full bg-[#DDE4EF]"><div className="h-full rounded-full bg-[#2874E8]" style={{ width: `${progress ?? 0}%` }} /></div>
@@ -301,12 +312,12 @@ export default function StudentSprintPage() {
                   {data.strike_summary?.latest_learning_date ? ` · ${data.strike_summary.latest_learning_date}` : ""}
                 </p>
               )}
-              <div className="pointer-events-none absolute bottom-5 right-5 hidden h-16 w-20 rounded-t-[20px] bg-gradient-to-br from-[#A9D8FF] to-[#4F9DF5] opacity-40 min-[900px]:block" />
+              <div className="pointer-events-none absolute bottom-5 right-5 hidden h-16 w-20 rounded-t-[20px] bg-gradient-to-br from-[#A9D8FF] to-[#4F9DF5] opacity-40" />
             </section>
 
             <section className="mb-8">
               <SectionHeader title="오늘의 인증" href="/student/sprint/proofs" />
-              <div className="grid grid-cols-1 gap-3 min-[760px]:grid-cols-3 min-[760px]:gap-4">
+              <div className="grid grid-cols-1 gap-3">
                 <ProofCard title="착석 인증" icon="seat" proof={data.proof_summaries?.seat_check} />
                 <ProofCard title="플래너 인증" icon="planner" proof={data.proof_summaries?.planner} />
                 <Link href="/student/sprint/study-time" className="min-w-0 rounded-[22px] bg-white/95 p-5 shadow-[0_12px_28px_rgba(71,104,143,0.14)] ring-1 ring-[#DFEAF6]">
@@ -360,29 +371,34 @@ export default function StudentSprintPage() {
             </section>
 
             <section className="mb-8">
-              <SectionHeader title="SPRINT 모의고사" href="/student/sprint/mock-exam-rounds" />
+              <SectionHeader title="SPRINT 모의고사" href="/student/sprint/mock-exam-assignments" />
               {(() => {
-                const mockRound = data.mock_round_summary;
-                if (!mockRound?.available || mockRound.status === "none" || !mockRound.round) {
+                const summary = data.mock_catalog_summary;
+                // 새 카탈로그 배정을 우선 표시하고, 없으면 백엔드가 넘겨준 기존 회차 요약(round)로 대체된다.
+                const assignment = summary?.assignment;
+                const round = summary?.round;
+                if (!summary?.available || summary.status === "none" || (!assignment && !round)) {
                   return (
                     <div className="min-w-0 rounded-[22px] bg-white/85 p-5 shadow-[0_12px_28px_rgba(71,104,143,0.12)] ring-1 ring-[#DFEAF6]">
                       <div className="flex min-w-0 items-center gap-4"><div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-[#EAF5FF] text-[#2E8AEA]"><Icon name="exam" /></div><div className="min-w-0 flex-1"><p className="break-keep text-sm font-black text-[#2874E8]">예정 없음</p><p className="mt-1 break-keep text-lg font-black text-[#10213D]">예정된 모의고사가 없어요.</p></div></div>
                     </div>
                   );
                 }
-                const round = mockRound.round;
-                const participantLabel = mockRound.participant_status === "completed" ? "회차 완료" : mockRound.participant_status === "in_progress" ? "응시 중" : "응시 전";
+                const title = assignment ? assignment.title : round!.title;
+                const subtitle = assignment ? assignment.subject : "국어·수학·영어·탐구2";
+                const examDate = assignment ? assignment.exam_date : round!.exam_date;
+                const statusLabel = summary.status === "open" ? "응시 가능" : "응시 전";
                 return (
-                  <Link href={mockRound.path} className="block min-w-0 rounded-[22px] bg-white/95 p-5 shadow-[0_12px_28px_rgba(71,104,143,0.14)] ring-1 ring-[#DFEAF6]">
+                  <Link href={summary.path} className="block min-w-0 rounded-[22px] bg-white/95 p-5 shadow-[0_12px_28px_rgba(71,104,143,0.14)] ring-1 ring-[#DFEAF6]">
                     <div className="flex min-w-0 items-center gap-4">
                       <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-[#EAF5FF] text-[#2E8AEA]"><Icon name="exam" /></div>
                       <div className="min-w-0 flex-1">
-                        <p className="break-keep text-sm font-black text-[#2874E8]">{round.round_no}회차 · {round.title}</p>
-                        <p className="mt-1 break-keep text-lg font-black text-[#10213D]">{round.exam_date}</p>
-                        <p className="mt-1 break-keep text-sm font-semibold text-[#6E7F99]">국어·수학·영어·탐구2 · {participantLabel}</p>
+                        <p className="break-keep text-sm font-black text-[#2874E8]">{title}</p>
+                        <p className="mt-1 break-keep text-lg font-black text-[#10213D]">{examDate}</p>
+                        <p className="mt-1 break-keep text-sm font-semibold text-[#6E7F99]">{subtitle} · {statusLabel}</p>
                       </div>
-                      {mockRound.days_remaining !== undefined && mockRound.days_remaining >= 0 && (
-                        <div className="shrink-0 text-lg font-black text-[#2874E8]">{mockRound.days_remaining === 0 ? "D-DAY" : `D-${mockRound.days_remaining}`}</div>
+                      {summary.days_remaining !== undefined && summary.days_remaining >= 0 && (
+                        <div className="shrink-0 text-lg font-black text-[#2874E8]">{summary.days_remaining === 0 ? "D-DAY" : `D-${summary.days_remaining}`}</div>
                       )}
                     </div>
                   </Link>

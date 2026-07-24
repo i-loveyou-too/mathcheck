@@ -14,6 +14,7 @@ from vocabulary import (
     create_session,
     cumulative_bank_day_sequence,
     get_session_for_student,
+    is_answer_correct,
     normalize_text,
     preview_bank_xlsx,
     session_print_html,
@@ -360,4 +361,52 @@ class VocabularyTests(TestCase):
         day1 = create_session(self.db, challenge, date(2026, 7, 1), "main")
         day2 = create_session(self.db, challenge, date(2026, 7, 2), "main")
         self.assertEqual(day1.total_count, 100)
-        self.assertEqual(day2.total_count, 100)
+
+
+class AnswerGradingTests(TestCase):
+    """기존 단답 정답 채점(정확히 일치)이 깨지지 않으면서, 다중 뜻/구분자/괄호/조사/경미한
+    오타까지 정답 처리하되 완전히 다른 답은 오답으로 남는지 검증한다."""
+
+    def test_exact_match_still_works(self):
+        self.assertTrue(is_answer_correct("사과", ["사과"]))
+
+    def test_case_and_whitespace_normalization_still_works(self):
+        self.assertTrue(is_answer_correct("  Apple ", ["apple"]))
+
+    def test_multiple_separate_accepted_answers_any_one_matches(self):
+        self.assertTrue(is_answer_correct("능금", ["사과", "능금"]))
+
+    def test_single_answer_with_comma_separated_meanings(self):
+        self.assertTrue(is_answer_correct("달리다", ["뛰다, 달리다"]))
+
+    def test_single_answer_with_slash_separated_meanings(self):
+        self.assertTrue(is_answer_correct("능금", ["사과/능금"]))
+
+    def test_single_answer_with_middle_dot_separated_meanings(self):
+        self.assertTrue(is_answer_correct("능금", ["사과ㆍ능금"]))
+
+    def test_parenthetical_note_ignored(self):
+        self.assertTrue(is_answer_correct("사과", ["사과(과일)"]))
+        self.assertTrue(is_answer_correct("사과", ["사과 (fruit)"]))
+
+    def test_common_particle_suffix_tolerated(self):
+        self.assertTrue(is_answer_correct("사과를", ["사과"]))
+        self.assertTrue(is_answer_correct("사과", ["사과는"]))
+
+    def test_minor_typo_accepted_via_similarity(self):
+        self.assertTrue(is_answer_correct("컴퓨타", ["컴퓨터"]))
+
+    def test_completely_different_answer_rejected(self):
+        self.assertFalse(is_answer_correct("바나나", ["사과"]))
+
+    def test_empty_answer_rejected(self):
+        self.assertFalse(is_answer_correct("", ["사과"]))
+        self.assertFalse(is_answer_correct("   ", ["사과"]))
+
+    def test_short_single_character_words_not_fuzzy_matched(self):
+        # 한 글자 단어는 유사도 오탐 위험이 커서 정확/정규화 일치만 인정한다.
+        self.assertFalse(is_answer_correct("불", ["물"]))
+        self.assertTrue(is_answer_correct("물", ["물"]))
+
+    def test_unrelated_short_answer_not_falsely_matched_by_similarity(self):
+        self.assertFalse(is_answer_correct("고양이", ["강아지"]))

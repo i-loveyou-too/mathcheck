@@ -132,9 +132,18 @@ export default function AdminMockExamRoundsPage() {
       <div className="mx-auto max-w-[1180px] px-5 py-8">
         <Link href={`/admin/sprints/${programId}`} className="text-sm font-bold text-[#64748B]">← SPRINT 상세</Link>
         <div className="mt-4">
-          <p className="text-sm font-bold text-[#FF6B4A]">MOCK EXAM ROUNDS</p>
+          <p className="text-sm font-bold text-[#FF6B4A]">MOCK EXAM ROUNDS (이전 방식)</p>
           <h1 className="mt-1 text-3xl font-black text-[#17213B]">모의고사 회차 관리</h1>
           <p className="mt-2 text-sm font-semibold text-[#7A859F]">회차 하나에 국어·수학·영어·탐구(4과목 중 택2) 시험지를 등록하면, 이 SPRINT 학생에게 자동 배정됩니다.</p>
+        </div>
+
+        <div className="mt-4 rounded-2xl border border-amber-300 bg-amber-50 px-5 py-4">
+          <p className="text-sm font-black text-amber-800">ℹ 새 모의고사 관리 화면이 생겼습니다.</p>
+          <p className="mt-1 text-xs font-bold text-amber-700">
+            이제 공통 시험을 한 번 등록해 여러 학생에게 배정하는{" "}
+            <Link href="/admin/mock-exams" className="underline">SPRINT 모의고사 관리</Link>
+            {" "}화면을 사용하세요. 이 회차 화면은 기존에 배정·응시 기록이 있는 학생을 위해 유지되며, 기존 데이터는 그대로 보존됩니다.
+          </p>
         </div>
 
         {error && <p className="mt-5 rounded-2xl bg-red-50 px-4 py-3 text-sm font-bold text-red-600">{error}</p>}

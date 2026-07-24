@@ -103,16 +103,16 @@ export default function StudentSprintStudyTimePage() {
     if (studentId) void load(studentId, date).catch((reason) => setError(reason instanceof Error ? reason.message : "날짜 정보를 불러오지 못했습니다."));
   };
 
-  const saveDraft = async () => {
+  const saveDraft = async (silent = false) => {
     if (!studentId) return null;
     const subject_breakdown: Record<string, number> = {};
     Object.entries(breakdown).forEach(([key, value]) => {
       const numeric = Number(value || 0);
       if (numeric > 0) subject_breakdown[key] = numeric;
     });
-    setBusy(true);
+    if (!silent) setBusy(true);
     setError("");
-    setNotice("");
+    if (!silent) setNotice("");
     try {
       const result = await apiFetch<CurrentData>("/student/sprint/study-time/drafts", {
         method: "POST",
@@ -125,13 +125,13 @@ export default function StudentSprintStudyTimePage() {
         },
       });
       setData(result);
-      setNotice("임시저장했습니다.");
+      if (!silent) setNotice("임시저장했습니다.");
       return result.submission;
     } catch (reason) {
       setError(reason instanceof ApiError ? reason.message : "임시저장에 실패했습니다.");
       return null;
     } finally {
-      setBusy(false);
+      if (!silent) setBusy(false);
     }
   };
 
@@ -159,7 +159,7 @@ export default function StudentSprintStudyTimePage() {
     setError("");
     setNotice("");
     try {
-      const submission = await saveDraft();
+      const submission = await saveDraft(true);
       if (!submission) return;
       await uploadFiles(submission);
       const refreshed = await apiFetch<CurrentData>(`/student/sprint/study-time/current?student_id=${studentId}&learning_date=${learningDate}`);
@@ -243,7 +243,7 @@ export default function StudentSprintStudyTimePage() {
             {subjects.map((subject) => <label key={subject} className="break-keep text-xs font-bold text-[#6E7F99]">{subject}<input disabled={locked} type="number" min="0" value={breakdown[subject] ?? ""} onChange={(event) => setBreakdown({ ...breakdown, [subject]: event.target.value })} className="mt-1 h-10 w-full rounded-xl border border-[#DFEAF6] px-3 text-[#10213D] disabled:bg-[#F5F8FC]" placeholder="분" /></label>)}
           </div>
           <textarea disabled={locked} value={memo} onChange={(event) => setMemo(event.target.value)} rows={3} className="mt-4 w-full resize-none rounded-2xl border border-[#DFEAF6] p-3 text-sm text-[#10213D] outline-none disabled:bg-[#F5F8FC]" placeholder="메모" />
-          <input disabled={locked} type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={(event) => setFiles(Array.from(event.target.files ?? []).slice(0, 3))} className="mt-4 block w-full text-sm" />
+          <input disabled={locked} type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" multiple onChange={(event) => setFiles(Array.from(event.target.files ?? []).slice(0, 3))} className="mt-4 block w-full text-sm" />
           {files.length > 0 && <p className="mt-2 break-keep text-xs font-bold text-[#2874E8]">새 사진 {files.length}장 선택됨</p>}
           {reviewComment && (
             <div className={`mt-3 rounded-2xl border px-4 py-3 ${commentClassName}`}>

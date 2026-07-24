@@ -1,0 +1,10 @@
+{
+  // Workspace Trust 기능 활성화
+  "security.workspace.trust.enabled": true,
+
+  // 새 폴더 열 때 "Trust this workspace?" 팝업 표시 안 함
+  "security.workspace.trust.startupPrompt": "never",
+
+  // Untrusted 상태의 파일도 열 수 있도록 허용
+  "security.workspace.trust.untrustedFiles": "open"
+}

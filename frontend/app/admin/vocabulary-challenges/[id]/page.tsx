@@ -50,6 +50,9 @@ export default function VocabularyChallengeDetailPage() {
   const [selectedWords, setSelectedWords] = useState<number[]>([]);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [editForm, setEditForm] = useState({ name: "", start_date: "", end_date: "" });
+  const [deleting, setDeleting] = useState(false);
 
   const load = async () => {
     const [detail, assignmentRows, status] = await Promise.all([
@@ -61,6 +64,7 @@ export default function VocabularyChallengeDetailPage() {
     setAssignments(assignmentRows);
     setDays(status.days);
     setSelectedDate((current) => current || detail.start_date);
+    setEditForm({ name: detail.name, start_date: detail.start_date, end_date: detail.end_date });
   };
 
   useEffect(() => {
@@ -122,6 +126,32 @@ export default function VocabularyChallengeDetailPage() {
     body: { word_ids: selectedWords },
   }), `${selectedDate} 배정을 저장했습니다.`);
 
+  const saveEdit = async () => {
+    await run(() => apiFetch(`/admin/vocabulary-challenges/${challengeId}`, {
+      method: "PATCH",
+      body: { name: editForm.name, start_date: editForm.start_date, end_date: editForm.end_date },
+    }), "챌린지 정보를 수정했습니다. 시작일 기준으로 DAY/배정이 자동으로 다시 계산됩니다.");
+    setEditing(false);
+  };
+
+  const deleteChallenge = async () => {
+    if (!challenge) return;
+    const confirmed = window.confirm(
+      `정말 "${challenge.name}" 챌린지를 삭제하시겠습니까?\n학생 응시 기록이 있으면 삭제할 수 없고, 대신 비활성화를 사용해야 합니다.\n삭제하면 등록된 단어와 배정 정보가 함께 사라지며 되돌릴 수 없습니다.`,
+    );
+    if (!confirmed) return;
+    setDeleting(true);
+    setError("");
+    try {
+      await apiFetch(`/admin/vocabulary-challenges/${challengeId}`, { method: "DELETE" });
+      router.push("/admin/vocabulary-challenges");
+    } catch (reason) {
+      setError(reason instanceof ApiError ? reason.message : "삭제하지 못했습니다.");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   if (!challenge) {
     return <main className="min-h-screen bg-[#EEF2F6] p-10 text-center font-bold text-[#7A859F]">{error || "불러오는 중..."}</main>;
   }
@@ -136,8 +166,25 @@ export default function VocabularyChallengeDetailPage() {
             <p className="mt-2 text-sm font-semibold text-[#7A859F]">{challenge.student_name} · {challenge.start_date} ~ {challenge.end_date}</p>
             <p className="mt-1 text-xs font-bold text-[#98A2B3]">{challenge.source_type === "word_bank" ? `공용 워드뱅크 · ${challenge.word_bank_title ?? "-"}` : `직접 등록 · ${challenge.accumulation_type}`}</p>
           </div>
-          <button onClick={() => void run(() => apiFetch(`/admin/vocabulary-challenges/${challengeId}`, { method: "PATCH", body: { is_active: !challenge.is_active } }), challenge.is_active ? "비활성화했습니다." : "활성화했습니다.")} className={`rounded-full px-4 py-2 text-sm font-black ${challenge.is_active ? "bg-emerald-100 text-emerald-700" : "bg-gray-200 text-gray-600"}`}>{challenge.is_active ? "활성 운영 중" : "비활성"}</button>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => setEditing((value) => !value)} className="rounded-full bg-white px-4 py-2 text-sm font-black text-[#17213B] shadow-sm">{editing ? "수정 닫기" : "정보 수정"}</button>
+            <button onClick={() => void run(() => apiFetch(`/admin/vocabulary-challenges/${challengeId}`, { method: "PATCH", body: { is_active: !challenge.is_active } }), challenge.is_active ? "비활성화했습니다." : "활성화했습니다.")} className={`rounded-full px-4 py-2 text-sm font-black ${challenge.is_active ? "bg-emerald-100 text-emerald-700" : "bg-gray-200 text-gray-600"}`}>{challenge.is_active ? "활성 운영 중" : "비활성"}</button>
+            <button disabled={deleting} onClick={() => void deleteChallenge()} className="rounded-full bg-red-50 px-4 py-2 text-sm font-black text-red-600 disabled:opacity-50">{deleting ? "삭제 중..." : "삭제"}</button>
+          </div>
         </div>
+
+        {editing && (
+          <section className="mt-4 rounded-[24px] bg-white p-5 shadow-card">
+            <p className="text-xs font-black text-[#6478FF]">챌린지 정보 수정</p>
+            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+              <label className="text-xs font-bold text-[#667085]">이름<input value={editForm.name} onChange={(event) => setEditForm({ ...editForm, name: event.target.value })} className="mt-1.5 h-11 w-full rounded-xl border border-[#E5EAF1] px-3 font-bold text-[#17213B]" /></label>
+              <label className="text-xs font-bold text-[#667085]">시작일<input type="date" value={editForm.start_date} onChange={(event) => setEditForm({ ...editForm, start_date: event.target.value })} className="mt-1.5 h-11 w-full rounded-xl border border-[#E5EAF1] px-3 font-bold text-[#17213B]" /></label>
+              <label className="text-xs font-bold text-[#667085]">종료일<input type="date" value={editForm.end_date} onChange={(event) => setEditForm({ ...editForm, end_date: event.target.value })} className="mt-1.5 h-11 w-full rounded-xl border border-[#E5EAF1] px-3 font-bold text-[#17213B]" /></label>
+            </div>
+            <p className="mt-2 text-xs font-semibold text-[#98A2B3]">시작일을 바꾸면 DAY 번호와 워드뱅크 진행 범위가 새 시작일 기준으로 다시 계산됩니다. 직접 등록 방식의 날짜별 배정은 달력 날짜 그대로 유지됩니다.</p>
+            <button onClick={() => void saveEdit()} className="mt-3 h-11 rounded-xl bg-[#17213B] px-5 text-sm font-black text-white">저장</button>
+          </section>
+        )}
 
         {error && <p className="mt-5 rounded-2xl bg-red-50 px-4 py-3 text-sm font-bold text-red-600">{error}</p>}
         {notice && <p className="mt-5 rounded-2xl bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700">{notice}</p>}
