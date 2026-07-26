@@ -801,7 +801,7 @@ export default function TextbooksManagementPage() {
           },
         });
         setDetail(updatedDetail);
-        setMessage(`"${form.fullTitle.trim()}" 교재가 수정되었습니다.`);
+        setMessage(`"${updatedDetail.full_title}" 교재가 수정되었습니다. 현재 문항 수: ${updatedDetail.item_count}개`);
         await fetchTextbooks();
         await handleSelectTextbook(editingTextbookId, true);
         setShowAddForm(false);

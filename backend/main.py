@@ -13,17 +13,22 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 import crud
+import admin_auth
 import lessons
-import mock_exam
 import models  # noqa: F401 - importing models registers them with SQLAlchemy
 import schemas
 import sprint
 import sprint_compliance
+import sprint_exam_v2
+import sprint_exam_v2_assignment
+import sprint_exam_v2_attempt
+import sprint_exam_v2_scoring
+import sprint_exam_v2_retake_approval
+import sprint_exam_v2_result_publication
 import sprint_goals
-import sprint_mock_catalog
-import sprint_mock_rounds
 import sprint_worksheets
 import student_auth
+import student_electives
 import vocabulary
 from database import Base, SessionLocal, engine, get_db
 from study_dates import get_study_date
@@ -238,47 +243,16 @@ app = FastAPI(title="Math Progress API", lifespan=lifespan)
 app.include_router(vocabulary.router)
 app.include_router(sprint.router)
 app.include_router(sprint_compliance.router)
-app.include_router(mock_exam.router)
+app.include_router(sprint_exam_v2.router)
+app.include_router(sprint_exam_v2_assignment.router)
+app.include_router(sprint_exam_v2_attempt.router)
+app.include_router(sprint_exam_v2_scoring.router)
+app.include_router(sprint_exam_v2_retake_approval.router)
+app.include_router(sprint_exam_v2_result_publication.router)
 app.include_router(sprint_goals.router)
-app.include_router(sprint_mock_rounds.router)
-app.include_router(sprint_mock_catalog.router)
 app.include_router(sprint_worksheets.router)
+app.include_router(student_electives.router)
 app.include_router(lessons.router)
-
-allowed_origins = [
-    "https://aimon.teamzsoft.com",
-    "http://192.168.99.99:3000",
-    "http://localhost:3000",
-    "http://localhost:3001",
-    "http://127.0.0.1:3000",
-    "http://127.0.0.1:3001",
-]
-
-frontend_origins = ",".join(
-    value
-    for value in [
-        os.getenv("FRONTEND_ORIGINS", ""),
-        os.getenv("FRONTEND_ORIGIN", ""),
-    ]
-    if value
-)
-for origin in frontend_origins.split(","):
-    cleaned_origin = origin.strip().rstrip("/")
-    if cleaned_origin and cleaned_origin not in allowed_origins:
-        allowed_origins.append(cleaned_origin)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=allowed_origins,
-    allow_origin_regex=os.getenv(
-        "FRONTEND_ORIGIN_REGEX",
-        r"https://.*\.vercel\.app|http://(localhost|127\.0\.0\.1|192\.168\.99\.99):\d+",
-    ),
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 
 def extract_student_id_from_json(value: object) -> int | None:
     if isinstance(value, dict):
@@ -334,6 +308,14 @@ def is_legacy_read_only_progress_path(method: str, path: str) -> bool:
     )
 
 
+def is_sprint_exam_result_read_path(method: str, path: str) -> bool:
+    return (
+        method == "GET"
+        and path.startswith("/student/sprint-exam-v2/attempts/")
+        and path.endswith("/result")
+    )
+
+
 class StudentSessionMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
@@ -352,7 +334,11 @@ class StudentSessionMiddleware(BaseHTTPMiddleware):
 
         db = SessionLocal()
         try:
-            student = student_auth.get_current_student_from_cookie(db, request)
+            student = student_auth.get_current_student_from_cookie(
+                db,
+                request,
+                touch=not is_sprint_exam_result_read_path(request.method, path),
+            )
             path_student_id = student_id_from_path(path)
             if path_student_id is not None and path_student_id != student.id:
                 return JSONResponse({"detail": "Cannot access another student's data."}, status_code=403)
@@ -381,6 +367,60 @@ class StudentSessionMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(StudentSessionMiddleware)
+
+
+class AdminSessionMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+        if request.method == "OPTIONS" or not path.startswith("/admin/"):
+            return await call_next(request)
+
+        db = SessionLocal()
+        try:
+            admin_auth.get_current_admin_from_cookie(db, request)
+        except HTTPException as exc:
+            return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+        finally:
+            db.close()
+        return await call_next(request)
+
+
+app.add_middleware(AdminSessionMiddleware)
+
+
+allowed_origins = [
+    "https://aimon.teamzsoft.com",
+    "http://192.168.99.99:3000",
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:3001",
+]
+
+frontend_origins = ",".join(
+    value
+    for value in [
+        os.getenv("FRONTEND_ORIGINS", ""),
+        os.getenv("FRONTEND_ORIGIN", ""),
+    ]
+    if value
+)
+for origin in frontend_origins.split(","):
+    cleaned_origin = origin.strip().rstrip("/")
+    if cleaned_origin and cleaned_origin not in allowed_origins:
+        allowed_origins.append(cleaned_origin)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_origin_regex=os.getenv(
+        "FRONTEND_ORIGIN_REGEX",
+        r"https://.*\.vercel\.app|http://(localhost|127\.0\.0\.1|192\.168\.99\.99):\d+",
+    ),
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/")
@@ -1212,11 +1252,18 @@ def admin_update_curriculum_node_status(
 
 
 @app.post("/auth/admin-login", response_model=schemas.AdminLoginResponse, tags=["Admin"])
-def admin_login(payload: schemas.AdminLoginRequest, db: Session = Depends(get_db)):
+def admin_login(payload: schemas.AdminLoginRequest, response: Response, db: Session = Depends(get_db)):
     admin = crud.get_admin_by_username(db, payload.username)
     if admin is None or admin.password != payload.password:
         raise HTTPException(status_code=401, detail="Invalid credentials")
+    admin_auth.issue_admin_session(response, admin)
     return admin
+
+
+@app.post("/auth/admin-logout", tags=["Admin"])
+def admin_logout(response: Response):
+    admin_auth.clear_admin_cookie(response)
+    return {"ok": True}
 
 
 @app.get("/admin/students", response_model=list[schemas.AdminStudentSummary], tags=["Admin"])
@@ -1597,6 +1644,9 @@ def admin_update_textbook(
 ):
     try:
         textbook = crud.update_textbook(db, textbook_id, payload)
+    except crud.TextbookItemCountError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
     except IntegrityError:
@@ -1677,9 +1727,11 @@ def admin_replace_textbook_sections(
         raise HTTPException(status_code=404, detail="Textbook not found")
     if payload.structure_type is not None:
         textbook.structure_type = payload.structure_type
-        db.commit()
     try:
         sections = crud.replace_textbook_sections(db, textbook_id, payload.sections)
+    except crud.TextbookItemCountError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     return {

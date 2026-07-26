@@ -30,7 +30,7 @@ type StrikeList = { summary: { effective: number; threshold: number; total_activ
 
 const featureLabels: Record<string, string> = {
   enable_seat_check: "착석 인증", enable_planner_submission: "플래너 제출", enable_study_timer: "공부시간 기록",
-  enable_vocabulary: "영단어 챌린지", enable_mock_exam: "모의고사", enable_goals: "기간 목표",
+  enable_vocabulary: "영단어 챌린지", enable_goals: "기간 목표",
   enable_three_strikes: "삼진아웃", enable_penalty_assignment: "깜지",
 };
 featureLabels.enable_seat_check = "착석 인증";
@@ -41,7 +41,6 @@ const strikeTypes = [
   ["manual", "수동"], ["seat_check_late", "착석 지각"], ["seat_check_missing", "착석 미제출"],
   ["planner_late", "플래너 지각"], ["planner_missing", "플래너 미제출"], ["vocabulary_missing", "영단어 미응시"],
   ["study_time_missing", "공부시간 미제출"], ["study_time_shortage", "공부시간 부족"],
-  ["mock_exam_late", "모의고사 지각"], ["mock_exam_missing", "모의고사 미응시"],
 ] as const;
 const today = new Date().toISOString().slice(0, 10);
 
@@ -150,8 +149,7 @@ export default function AdminSprintDetailPage() {
       <div className="mt-4 flex flex-wrap gap-2">
         <Link href={`/admin/sprints/${id}/proofs`} className="rounded-xl bg-white px-3 py-2 text-xs font-black text-[#5C63FF] shadow-sm">플래너·착석 인증 관리</Link>
         <Link href={`/admin/sprints/${id}/study-time`} className="rounded-xl bg-white px-3 py-2 text-xs font-black text-[#5C63FF] shadow-sm">공부시간 인증 검수</Link>
-        <Link href={`/admin/sprints/${id}/mock-exam-rounds`} className="rounded-xl bg-[#5C63FF] px-3 py-2 text-xs font-black text-white shadow-sm">모의고사 회차 관리</Link>
-        <Link href={`/admin/sprints/${id}/mock-exams`} className="rounded-xl bg-white px-3 py-2 text-xs font-black text-[#98A2B3] shadow-sm">모의고사 관리 (구)</Link>
+        <Link href={`/admin/sprints/${id}/exam-v2`} className="rounded-xl bg-white px-3 py-2 text-xs font-black text-[#5C63FF] shadow-sm">모의고사 V2</Link>
         <Link href={`/admin/sprints/${id}/worksheets`} className="rounded-xl bg-white px-3 py-2 text-xs font-black text-[#5C63FF] shadow-sm">문제지 관리</Link>
         <Link href={`/admin/sprints/${id}/goals`} className="rounded-xl bg-white px-3 py-2 text-xs font-black text-[#5C63FF] shadow-sm">과목별 목표 관리</Link>
       </div>

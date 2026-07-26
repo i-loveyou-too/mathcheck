@@ -191,7 +191,6 @@ export default function AdminSprintsPage() {
             <p className="mt-2 text-sm text-[#7A859F]">학생별 기간, 인증, 영단어, 목표 운영 설정을 한 번에 배정합니다.</p>
           </div>
           <div className="flex items-center gap-2">
-            <Link href="/admin/mock-exams" className="rounded-full bg-[#2874E8] px-4 py-2 text-sm font-black text-white">SPRINT 모의고사 관리 ›</Link>
             <span className="rounded-full bg-[#E7E9FF] px-4 py-2 text-sm font-black text-[#4C52D6]">{sprints.length}개</span>
           </div>
         </div>
@@ -256,7 +255,6 @@ export default function AdminSprintsPage() {
               <div key={sprint.id} className="rounded-[24px] bg-white p-5 shadow-card">
                 <Link href={`/admin/sprints/${sprint.id}`} className="block"><div className="flex items-center justify-between gap-4"><div><h2 className="text-lg font-black text-[#17213B]">{sprint.title}</h2><p className="mt-1 text-sm font-semibold text-[#7A859F]">{sprint.student_name} · {sprint.start_date} ~ {sprint.end_date}</p><p className="mt-2 text-xs font-bold text-[#8A94A8]">DAY {sprint.day_info.day_number || "-"} / {sprint.day_info.total_days}</p></div><div className="text-right"><span className="rounded-full bg-[#F1F3FF] px-3 py-1 text-xs font-black text-[#5C63FF]">{statusLabels[sprint.status]}</span><p className="mt-2 text-xs font-bold text-[#E5533C]">스트라이크 {sprint.strike_summary.effective}/{sprint.strike_summary.threshold}</p></div></div></Link>
                 <div className="mt-3 flex gap-2 border-t border-[#F1F3FA] pt-3">
-                  <Link href={`/admin/sprints/${sprint.id}/mock-exam-rounds`} className="rounded-xl bg-[#2874E8] px-3 py-1.5 text-xs font-black text-white">모의고사 회차 관리</Link>
                   <Link href={`/admin/sprints/${sprint.id}/worksheets`} className="rounded-xl bg-[#EAF5FF] px-3 py-1.5 text-xs font-black text-[#2874E8]">문제지 관리</Link>
                   <Link href={`/admin/sprints/${sprint.id}/proofs`} className="rounded-xl bg-[#F1F3FF] px-3 py-1.5 text-xs font-black text-[#5C63FF]">플래너·착석 인증</Link>
                   <Link href={`/admin/sprints/${sprint.id}/study-time`} className="rounded-xl bg-[#F1F3FF] px-3 py-1.5 text-xs font-black text-[#5C63FF]">공부시간 검수</Link>

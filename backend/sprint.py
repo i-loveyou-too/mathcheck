@@ -41,7 +41,6 @@ IMPLEMENTED_FEATURES = {
     "enable_study_time_submission",
     "enable_planner_submission",
     "enable_seat_check",
-    "enable_mock_exam",
 }
 
 STUDY_SUBMISSION_STATUSES = {"draft", "pending", "approved", "rejected", "cancelled"}
@@ -58,10 +57,10 @@ STRIKE_TYPES = {
     "planner_missing",
     "vocabulary_missing",
     "study_time_shortage",
-    "mock_exam_late",
-    "mock_exam_missing",
     "manual",
 }
+
+INQUIRY_SUBJECT_CODES = {"life_ethics", "ethics_thought", "social_culture", "east_asian_history"}
 
 
 # ---------------------------------------------------------------------------
@@ -306,11 +305,9 @@ def normalized_admin_comment(payload: object, *, required: bool = False) -> str 
 
 
 def validate_inquiry_subjects(subject_1: str | None, subject_2: str | None) -> None:
-    """sprint_mock_rounds.py는 sprint.py를 import하지 않으므로 순환참조 없이 지역 import로 재사용한다."""
-    import sprint_mock_rounds
-
+    """Validate inquiry subject codes used by Sprint program settings."""
     for value in (subject_1, subject_2):
-        if value is not None and value not in sprint_mock_rounds.INQUIRY_SUBJECT_CODES:
+        if value is not None and value not in INQUIRY_SUBJECT_CODES:
             raise ValueError(f"허용되지 않은 탐구 선택과목입니다: {value}")
     if subject_1 is not None and subject_2 is not None and subject_1 == subject_2:
         raise ValueError("탐구 선택과목 두 개는 서로 달라야 합니다.")
@@ -886,12 +883,6 @@ def sprint_weekly_summary(db: Session, program: models.SprintProgram, today: dat
     }
 
 
-def mock_exam_home_summary_safe(db: Session, program: models.SprintProgram, student_id: int) -> dict:
-    """mock_exam.py는 sprint.py를 import하지 않으므로 순환참조 없이 지역 import로 재사용한다."""
-    import mock_exam
-    return mock_exam.mock_exam_home_summary(db, program, student_id)
-
-
 def subject_goal_home_summary_safe(db: Session, program: models.SprintProgram) -> dict:
     """sprint_goals.py는 sprint.py를 import하지 않으므로 순환참조 없이 지역 import로 재사용한다."""
     import sprint_goals
@@ -902,28 +893,6 @@ def worksheet_summary_safe(db: Session, program: models.SprintProgram, student_i
     """sprint_worksheets.py는 sprint.py를 import하지 않으므로 순환참조 없이 지역 import로 재사용한다."""
     import sprint_worksheets
     return sprint_worksheets.worksheet_home_summary(db, program, student_id)
-
-
-def mock_round_summary_safe(db: Session, program: models.SprintProgram, student_id: int) -> dict:
-    """sprint_mock_rounds.py는 sprint.py를 import하지 않으므로 순환참조 없이 지역 import로 재사용한다."""
-    import sprint_mock_rounds
-    return sprint_mock_rounds.mock_round_home_summary(db, program, student_id)
-
-
-def mock_catalog_summary_safe(db: Session, program: models.SprintProgram, student_id: int) -> dict:
-    """sprint_mock_catalog.py는 sprint.py를 import하지 않으므로 순환참조 없이 지역 import로 재사용한다.
-    8차(공통 카탈로그)가 새 기본 시스템이며, 7차(회차)는 기존 배정/응시 기록 보존을 위해 남겨둔다.
-    학생에게 카탈로그 배정이 있으면 그것을 우선 보여주고, 없으면(과거 회차 배정만 있는 경우) 회차
-    요약으로 대체해 기존에 회차로 배정받은 학생의 화면이 비어 보이지 않게 한다."""
-    import sprint_mock_catalog
-
-    summary = sprint_mock_catalog.mock_catalog_home_summary(db, student_id)
-    if summary.get("assignment") is not None:
-        return summary
-    round_summary = mock_round_summary_safe(db, program, student_id)
-    if round_summary.get("round") is not None:
-        return round_summary
-    return summary
 
 
 def vocabulary_home_summary(db: Session, student_id: int, today: date) -> dict:
@@ -1375,7 +1344,6 @@ def feature_cards(program: models.SprintProgram, student_id: int) -> list[dict]:
         ("enable_planner_submission", "플래너 제출", "planner"),
         ("enable_study_timer", "공부시간 기록", "study_timer"),
         ("enable_vocabulary", "영단어 챌린지", "vocabulary"),
-        ("enable_mock_exam", "모의고사", "mock_exam"),
         ("enable_goals", "기간 목표", "goals"),
         ("enable_three_strikes", "삼진아웃·깜지", "three_strikes"),
     ]
@@ -1481,9 +1449,6 @@ def student_sprint_dashboard(
         },
         "vocabulary_summary": vocabulary_home_summary(db, student_id, today),
         "progress_summary": subject_goal_home_summary_safe(db, program),
-        "mock_exam_summary": mock_exam_home_summary_safe(db, program, student_id),
-        "mock_round_summary": mock_round_summary_safe(db, program, student_id),
-        "mock_catalog_summary": mock_catalog_summary_safe(db, program, student_id),
         "worksheet_summary": worksheet_summary_safe(db, program, student_id),
         "weekly_summary": sprint_weekly_summary(db, program, today),
         "upcoming": program_dict(db, upcoming, today) if upcoming else None,
@@ -1514,7 +1479,6 @@ def feature_cards(program: models.SprintProgram, student_id: int) -> list[dict]:
         ("enable_study_timer", "공부시간 타이머", "study_timer"),
         ("enable_study_time_submission", "공부시간 인증", "study_time_submission"),
         ("enable_vocabulary", "영단어 챌린지", "vocabulary"),
-        ("enable_mock_exam", "모의고사", "mock_exam"),
         ("enable_goals", "기간 목표", "goals"),
         ("enable_three_strikes", "삼진아웃", "three_strikes"),
     ]
@@ -1523,7 +1487,6 @@ def feature_cards(program: models.SprintProgram, student_id: int) -> list[dict]:
         "planner": "/student/sprint/planner",
         "study_time_submission": "/student/sprint/study-time",
         "vocabulary": "/student/vocabulary",
-        "mock_exam": "/student/sprint/mock-exams",
     }
     return [
         {

@@ -1,7 +1,7 @@
 """SPRINT 문제지 배정 + 풀이 제출 (6차).
 
 기존 SPRINT 기능(sprint.py)은 수정하지 않고, sprint.py가 이 모듈의 대시보드 요약
-함수를 지연 import(순환 참조 방지)로 가져다 쓴다. mock_exam.py / sprint_goals.py와
+함수를 지연 import(순환 참조 방지)로 가져다 쓴다. sprint_goals.py와
 동일한 모듈 분리 패턴을 따른다.
 """
 

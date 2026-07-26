@@ -53,43 +53,6 @@ type WeeklySummary = {
   planner_submitted_days: number | null;
   vocabulary_average_score: number | null;
 };
-type MockExamCardInfo = {
-  id: number;
-  round_no: number;
-  title: string;
-  exam_date: string;
-  weekday_label: string;
-  question_count: number;
-  status: "scheduled" | "open" | "closed";
-  is_date_overridden: boolean;
-};
-type MockExamSummary = {
-  available: boolean;
-  status: "coming_soon" | "none" | "scheduled" | "open";
-  exam?: MockExamCardInfo | null;
-  days_remaining?: number;
-  submission_status?: string;
-  path: string;
-};
-type MockRoundCardInfo = { id: number; round_no: number; title: string; exam_date: string; status: "scheduled" | "open" | "closed" };
-type MockRoundSummary = {
-  available: boolean;
-  status: "none" | "scheduled" | "open";
-  round?: MockRoundCardInfo | null;
-  days_remaining?: number;
-  participant_status?: string;
-  path: string;
-};
-type MockCatalogCardInfo = { id: number; title: string; subject: string; exam_date: string };
-type MockCatalogSummary = {
-  available: boolean;
-  status: "none" | "scheduled" | "open";
-  assignment?: MockCatalogCardInfo | null;
-  round?: MockRoundCardInfo | null;
-  days_remaining?: number;
-  participant_status?: string;
-  path: string;
-};
 type SubjectGoalNext = { title: string; subject: string; target_date: string };
 type SubjectGoalSummary = {
   available: boolean;
@@ -119,9 +82,6 @@ type Dashboard = {
   study_time_submission?: StudySubmission;
   proof_summaries?: { seat_check: ProofSummary; planner: ProofSummary };
   vocabulary_summary?: VocabularySummary;
-  mock_exam_summary?: MockExamSummary;
-  mock_round_summary?: MockRoundSummary;
-  mock_catalog_summary?: MockCatalogSummary;
   progress_summary?: SubjectGoalSummary;
   worksheet_summary?: WorksheetSummary;
   weekly_summary?: WeeklySummary;
@@ -135,8 +95,6 @@ const strikeReasonLabels: Record<string, string> = {
   study_time_missing: "공부시간 미제출",
   study_time_shortage: "공부시간 목표 미달",
   vocabulary_missing: "영단어 미응시",
-  mock_exam_missing: "모의고사 미응시",
-  mock_exam_late: "모의고사 지각",
   manual: "관리자 부여",
 };
 
@@ -368,42 +326,6 @@ export default function StudentSprintPage() {
                   );
                 })()}
               </div>
-            </section>
-
-            <section className="mb-8">
-              <SectionHeader title="SPRINT 모의고사" href="/student/sprint/mock-exam-assignments" />
-              {(() => {
-                const summary = data.mock_catalog_summary;
-                // 새 카탈로그 배정을 우선 표시하고, 없으면 백엔드가 넘겨준 기존 회차 요약(round)로 대체된다.
-                const assignment = summary?.assignment;
-                const round = summary?.round;
-                if (!summary?.available || summary.status === "none" || (!assignment && !round)) {
-                  return (
-                    <div className="min-w-0 rounded-[22px] bg-white/85 p-5 shadow-[0_12px_28px_rgba(71,104,143,0.12)] ring-1 ring-[#DFEAF6]">
-                      <div className="flex min-w-0 items-center gap-4"><div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-[#EAF5FF] text-[#2E8AEA]"><Icon name="exam" /></div><div className="min-w-0 flex-1"><p className="break-keep text-sm font-black text-[#2874E8]">예정 없음</p><p className="mt-1 break-keep text-lg font-black text-[#10213D]">예정된 모의고사가 없어요.</p></div></div>
-                    </div>
-                  );
-                }
-                const title = assignment ? assignment.title : round!.title;
-                const subtitle = assignment ? assignment.subject : "국어·수학·영어·탐구2";
-                const examDate = assignment ? assignment.exam_date : round!.exam_date;
-                const statusLabel = summary.status === "open" ? "응시 가능" : "응시 전";
-                return (
-                  <Link href={summary.path} className="block min-w-0 rounded-[22px] bg-white/95 p-5 shadow-[0_12px_28px_rgba(71,104,143,0.14)] ring-1 ring-[#DFEAF6]">
-                    <div className="flex min-w-0 items-center gap-4">
-                      <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-[#EAF5FF] text-[#2E8AEA]"><Icon name="exam" /></div>
-                      <div className="min-w-0 flex-1">
-                        <p className="break-keep text-sm font-black text-[#2874E8]">{title}</p>
-                        <p className="mt-1 break-keep text-lg font-black text-[#10213D]">{examDate}</p>
-                        <p className="mt-1 break-keep text-sm font-semibold text-[#6E7F99]">{subtitle} · {statusLabel}</p>
-                      </div>
-                      {summary.days_remaining !== undefined && summary.days_remaining >= 0 && (
-                        <div className="shrink-0 text-lg font-black text-[#2874E8]">{summary.days_remaining === 0 ? "D-DAY" : `D-${summary.days_remaining}`}</div>
-                      )}
-                    </div>
-                  </Link>
-                );
-              })()}
             </section>
 
             <section className="mb-8">

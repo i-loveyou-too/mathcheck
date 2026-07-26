@@ -97,6 +97,53 @@ export default function StudentSprintVocabularyPage() {
     }
   };
 
+  const sessionUrl = (sessionId: number, kind: "paper" | "answer-key") => (
+    studentId ? `${API_BASE_URL}/student/vocabulary/sessions/${sessionId}/${kind}?student_id=${studentId}` : ""
+  );
+
+  const ensureSession = async (day: Day) => {
+    if (!studentId) return null;
+    if (day.session_id) return day.session_id;
+    const session = await apiFetch<Session>("/student/vocabulary/sessions", {
+      method: "POST",
+      body: { student_id: studentId, study_date: day.date },
+    });
+    setData((current) => {
+      if (!current) return current;
+      const patchDay = (item: Day): Day => (
+        item.date === day.date ? { ...item, session_id: session.id, status: session.status === "submitted" ? "completed" : "in_progress" } : item
+      );
+      return {
+        ...current,
+        today_progress: current.today_progress ? patchDay(current.today_progress) : current.today_progress,
+        days: current.days.map(patchDay),
+      };
+    });
+    return session.id;
+  };
+
+  const openPdf = async (day: Day, kind: "paper" | "answer-key") => {
+    if (!studentId || day.status === "scheduled" || day.question_count === 0) return;
+    const popup = window.open("", "_blank", "noopener,noreferrer");
+    setStarting(true);
+    setError("");
+    try {
+      const sessionId = await ensureSession(day);
+      if (!sessionId) throw new Error("No session.");
+      const url = sessionUrl(sessionId, kind);
+      if (popup) {
+        popup.location.href = url;
+      } else {
+        window.location.href = url;
+      }
+    } catch (reason) {
+      popup?.close();
+      setError(reason instanceof ApiError ? reason.message : "PDF를 준비하지 못했습니다.");
+    } finally {
+      setStarting(false);
+    }
+  };
+
   if (!data) {
     return (
       <ScreenShell withBottomNav>
@@ -125,8 +172,9 @@ export default function StudentSprintVocabularyPage() {
   const today = data.today_progress;
   const completed = today.status === "completed";
   const actionLabel = completed ? `결과 보기 · ${today.score}점` : today.status === "in_progress" ? "이어가기" : today.status === "missed" ? "지난 시험 시작" : "오늘 시험 시작";
-  const paperUrl = today.session_id && studentId ? `${API_BASE_URL}/student/vocabulary/sessions/${today.session_id}/paper?student_id=${studentId}` : "";
-  const answerUrl = today.session_id && studentId ? `${API_BASE_URL}/student/vocabulary/sessions/${today.session_id}/answer-key?student_id=${studentId}` : "";
+  const canDownloadPdf = today.status !== "scheduled" && today.question_count > 0;
+  const paperUrl = today.session_id ? sessionUrl(today.session_id, "paper") : "";
+  const answerUrl = today.session_id ? sessionUrl(today.session_id, "answer-key") : "";
 
   return (
     <ScreenShell withBottomNav>
@@ -158,10 +206,20 @@ export default function StudentSprintVocabularyPage() {
           <button disabled={starting || today.status === "scheduled" || today.question_count === 0} onClick={() => void start(today)} className="relative mt-5 h-14 w-full rounded-[20px] bg-[#65E6BA] text-base font-black text-[#0D3B2E] shadow-lg transition active:scale-[.98] disabled:bg-white/15 disabled:text-white/40">
             {today.question_count === 0 ? "오늘 배정된 단어가 없어요" : starting ? "시험 준비 중..." : actionLabel}
           </button>
-          {today.session_id && (
+          {canDownloadPdf && (
             <div className="relative mt-3 grid grid-cols-2 gap-2">
-              <a href={paperUrl} target="_blank" className="rounded-2xl bg-white/95 px-4 py-3 text-center text-sm font-black text-[#2874E8]">문제지 PDF</a>
-              {data.challenge.allow_student_answer_pdf ? <a href={answerUrl} target="_blank" className="rounded-2xl bg-white/95 px-4 py-3 text-center text-sm font-black text-[#19A879]">정답지 PDF</a> : <span className="rounded-2xl bg-white/10 px-4 py-3 text-center text-sm font-black text-white/45">정답지 비공개</span>}
+              {today.session_id ? (
+                <a href={paperUrl} target="_blank" className="rounded-2xl bg-white/95 px-4 py-3 text-center text-sm font-black text-[#2874E8]">문제지 PDF</a>
+              ) : (
+                <button type="button" disabled={starting} onClick={() => void openPdf(today, "paper")} className="rounded-2xl bg-white/95 px-4 py-3 text-center text-sm font-black text-[#2874E8] disabled:opacity-50">문제지 PDF</button>
+              )}
+              {data.challenge.allow_student_answer_pdf ? (
+                today.session_id ? (
+                  <a href={answerUrl} target="_blank" className="rounded-2xl bg-white/95 px-4 py-3 text-center text-sm font-black text-[#19A879]">정답지 PDF</a>
+                ) : (
+                  <button type="button" disabled={starting} onClick={() => void openPdf(today, "answer-key")} className="rounded-2xl bg-white/95 px-4 py-3 text-center text-sm font-black text-[#19A879] disabled:opacity-50">정답지 PDF</button>
+                )
+              ) : <span className="rounded-2xl bg-white/10 px-4 py-3 text-center text-sm font-black text-white/45">정답지 비공개</span>}
             </div>
           )}
         </section>

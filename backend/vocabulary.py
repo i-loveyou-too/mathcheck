@@ -17,6 +17,7 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+import admin_auth
 import models
 from database import get_db
 from study_dates import get_study_date
@@ -534,6 +535,11 @@ class StudentActionIn(BaseModel):
     student_id: int
 
 
+class GradingActionIn(BaseModel):
+    action: Literal["mark_correct", "mark_incorrect", "restore_auto"]
+    reason: str | None = Field(default=None, max_length=500)
+
+
 def storage_path_from_input(storage_path: str) -> Path:
     root = Path.cwd().resolve()
     candidate = (root / storage_path).resolve()
@@ -824,7 +830,21 @@ def new_word_count_for_date(db: Session, challenge: models.VocabularyChallenge, 
     ).scalar() or 0
 
 
-def serialize_session(db: Session, session: models.VocabularyTestSession, include_result: bool = False) -> dict:
+def final_is_correct(answer: models.VocabularyTestAnswer | None) -> bool:
+    """최종판정: manual_is_correct가 있으면 그 값, 없으면 자동채점 원본(is_correct)."""
+    if answer is None:
+        return False
+    if answer.manual_is_correct is not None:
+        return bool(answer.manual_is_correct)
+    return bool(answer.is_correct)
+
+
+def serialize_session(
+    db: Session,
+    session: models.VocabularyTestSession,
+    include_result: bool = False,
+    for_admin: bool = False,
+) -> dict:
     questions = db.query(models.VocabularyTestQuestion).filter(
         models.VocabularyTestQuestion.session_id == session.id
     ).order_by(models.VocabularyTestQuestion.order_index).all()
@@ -842,10 +862,22 @@ def serialize_session(db: Session, session: models.VocabularyTestSession, includ
             "input_answer": answer.input_answer if answer else "",
         }
         if include_result and session.status == "submitted":
+            # is_correct는 하위 호환을 위해 최종판정(수동 수정 반영)을 그대로 담는다.
+            # 학생용 응답에는 관리자 내부 정보(사유/수정자)를 노출하지 않는다.
             item.update({
                 "accepted_answers": question.accepted_answers_snapshot,
-                "is_correct": bool(answer and answer.is_correct),
+                "is_correct": final_is_correct(answer),
             })
+            if for_admin:
+                item.update({
+                    "response_id": answer.id if answer else None,
+                    "auto_is_correct": bool(answer.is_correct) if answer else False,
+                    "final_is_correct": final_is_correct(answer),
+                    "is_manual_override": bool(answer and answer.manual_is_correct is not None),
+                    "manual_reason": answer.manual_reason if answer else None,
+                    "manual_graded_by": answer.manual_graded_by if answer else None,
+                    "manual_graded_at": answer.manual_graded_at if answer else None,
+                })
         items.append(item)
     challenge = db.get(models.VocabularyChallenge, session.challenge_id)
     student = db.get(models.Student, session.student_id)
@@ -1376,7 +1408,7 @@ def admin_result(session_id: int, db: Session = Depends(get_db)):
     session = db.get(models.VocabularyTestSession, session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Vocabulary result not found.")
-    return serialize_session(db, session, include_result=True)
+    return serialize_session(db, session, include_result=True, for_admin=True)
 
 
 def active_challenge(db: Session, student_id: int, study_date: date):
@@ -1500,6 +1532,129 @@ def note_query(db: Session, session: models.VocabularyTestSession, question: mod
     if question.word_source_type == "word_bank":
         return query.filter(models.VocabularyWrongNote.bank_word_id == question.bank_word_id)
     return query.filter(models.VocabularyWrongNote.word_id == question.word_id)
+
+
+def recompute_session_totals(db: Session, session: models.VocabularyTestSession) -> None:
+    """세션 전체를 다시 제출시키지 않고 최종판정 기준으로 정답 수/점수를 갱신한다."""
+    questions = db.query(models.VocabularyTestQuestion).filter_by(session_id=session.id).all()
+    answers = {
+        row.question_id: row for row in db.query(models.VocabularyTestAnswer).filter_by(session_id=session.id).all()
+    }
+    correct_count = sum(1 for question in questions if final_is_correct(answers.get(question.id)))
+    session.correct_count = correct_count
+    session.total_count = len(questions)
+    session.score = round(correct_count * 100 / len(questions)) if questions else 0
+
+
+def apply_manual_grading_note_sync(
+    db: Session,
+    session: models.VocabularyTestSession,
+    question: models.VocabularyTestQuestion,
+    answer: models.VocabularyTestAnswer,
+    previous_final: bool,
+    new_final: bool,
+) -> None:
+    """수동 채점 수정으로 최종판정이 바뀔 때만 오답노트를 갱신한다.
+
+    note_query가 student_id + word_source_type + word_id/bank_word_id로 정확히 하나의
+    (학생, 단어) 조합만 조회하므로 다른 학생이나 다른 단어의 기존 데이터는 절대 건드릴 수 없다.
+    동일 판정으로의 반복 수정(no-op 토글)은 wrong_count를 중복 증가시키지 않는다.
+    """
+    if previous_final == new_final:
+        return
+    note = note_query(db, session, question).first()
+    if new_final:
+        # 오답 -> 정답: 채점 오류였던 것으로 간주하고 즉시 해소 처리한다.
+        if note is not None:
+            note.status = "mastered"
+            note.resolved_at = datetime.now(timezone.utc)
+        return
+    # 정답 -> 오답
+    if note is not None:
+        note.latest_wrong_answer = answer.input_answer
+        if session.study_date >= note.latest_wrong_date:
+            note.latest_wrong_date = session.study_date
+        note.wrong_count += 1
+        note.status = "unresolved"
+        note.resolved_at = None
+    else:
+        db.add(models.VocabularyWrongNote(
+            student_id=session.student_id,
+            word_id=question.word_id,
+            bank_word_id=question.bank_word_id,
+            word_source_type=question.word_source_type,
+            latest_wrong_answer=answer.input_answer,
+            first_wrong_date=session.study_date,
+            latest_wrong_date=session.study_date,
+            wrong_count=1,
+            status="unresolved",
+        ))
+
+
+@router.patch("/admin/vocabulary-attempts/{session_id}/responses/{answer_id}/grading")
+def admin_update_manual_grading(
+    session_id: int,
+    answer_id: int,
+    payload: GradingActionIn,
+    db: Session = Depends(get_db),
+    admin: models.Admin = Depends(admin_auth.require_admin),
+):
+    session = db.get(models.VocabularyTestSession, session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="채점 대상 시험을 찾을 수 없습니다.")
+    if session.status != "submitted":
+        raise HTTPException(status_code=400, detail="제출되지 않은 시험은 수동 채점할 수 없습니다.")
+    answer = db.get(models.VocabularyTestAnswer, answer_id)
+    if answer is None or answer.session_id != session.id:
+        raise HTTPException(status_code=404, detail="해당 시험에 속한 응답을 찾을 수 없습니다.")
+    question = db.get(models.VocabularyTestQuestion, answer.question_id)
+    if question is None:
+        raise HTTPException(status_code=404, detail="문항을 찾을 수 없습니다.")
+
+    previous_final = final_is_correct(answer)
+    auto_value = bool(answer.is_correct)
+    now = datetime.now(timezone.utc)
+
+    if payload.action == "mark_correct":
+        new_final = True
+        answer.manual_is_correct = True
+        answer.manual_reason = payload.reason
+        answer.manual_graded_by = admin.id
+        answer.manual_graded_at = now
+    elif payload.action == "mark_incorrect":
+        new_final = False
+        answer.manual_is_correct = False
+        answer.manual_reason = payload.reason
+        answer.manual_graded_by = admin.id
+        answer.manual_graded_at = now
+    else:
+        new_final = auto_value
+        answer.manual_is_correct = None
+        answer.manual_reason = None
+        answer.manual_graded_by = None
+        answer.manual_graded_at = None
+
+    db.add(models.VocabularyManualGradingLog(
+        answer_id=answer.id,
+        previous_final=previous_final,
+        new_final=new_final,
+        auto_is_correct=auto_value,
+        action=payload.action,
+        reason=payload.reason,
+        admin_id=admin.id,
+    ))
+
+    if previous_final != new_final:
+        apply_manual_grading_note_sync(db, session, question, answer, previous_final, new_final)
+
+    recompute_session_totals(db, session)
+    db.commit()
+    db.refresh(answer)
+    db.refresh(session)
+
+    full = serialize_session(db, session, include_result=True, for_admin=True)
+    updated_question = next((item for item in full["questions"] if item["id"] == question.id), None)
+    return {"question": updated_question, "session": full}
 
 
 def submit_session(db: Session, session: models.VocabularyTestSession):

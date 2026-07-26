@@ -1,3 +1,4 @@
+import asyncio
 from unittest import TestCase
 
 from fastapi import HTTPException, Response
@@ -87,3 +88,56 @@ class StudentCookieAuthTests(TestCase):
         self.assertNotIn(self.student.phone, cookie)
         cookie_value = cookie.split("aimon_student_session=", 1)[1].split(";", 1)[0]
         self.assertNotEqual(cookie_value, str(self.student.id))
+
+
+class StudentSessionMiddlewarePathTests(TestCase):
+    def test_sprint_exam_result_get_does_not_touch_student_session(self):
+        path = "/student/sprint-exam-v2/attempts/17/result"
+        self.assertTrue(main.is_sprint_exam_result_read_path("GET", path))
+        self.assertFalse(main.is_sprint_exam_result_read_path("POST", path))
+        self.assertFalse(
+            main.is_sprint_exam_result_read_path(
+                "GET",
+                "/student/sprint-exam-v2/attempts/17",
+            )
+        )
+
+
+class StudentCorsMiddlewareTests(TestCase):
+    def test_student_auth_401_includes_credentialed_cors_headers(self):
+        async def call():
+            send_events = []
+
+            async def receive():
+                return {"type": "http.request", "body": b"", "more_body": False}
+
+            async def send(message):
+                send_events.append(message)
+
+            scope = {
+                "type": "http",
+                "asgi": {"version": "3.0"},
+                "http_version": "1.1",
+                "method": "GET",
+                "scheme": "http",
+                "path": "/student/sprint-exam-v2/assignments",
+                "raw_path": b"/student/sprint-exam-v2/assignments",
+                "query_string": b"",
+                "headers": [
+                    (b"host", b"localhost:8002"),
+                    (b"origin", b"http://localhost:3000"),
+                ],
+                "client": ("127.0.0.1", 12345),
+                "server": ("127.0.0.1", 8002),
+                "root_path": "",
+            }
+            await main.app(scope, receive, send)
+            return send_events
+
+        events = asyncio.run(call())
+        response_start = next(event for event in events if event["type"] == "http.response.start")
+        headers = dict(response_start["headers"])
+
+        self.assertEqual(response_start["status"], 401)
+        self.assertEqual(headers[b"access-control-allow-origin"], b"http://localhost:3000")
+        self.assertEqual(headers[b"access-control-allow-credentials"], b"true")

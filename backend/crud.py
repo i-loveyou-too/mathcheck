@@ -94,6 +94,10 @@ _CANONICAL_SUBJECT_TO_LEGACY = {
 TEXTBOOK_TYPE_OPTIONS = ["problem", "mock_exam"]
 
 
+class TextbookItemCountError(ValueError):
+    pass
+
+
 def normalize_textbook_subject(value: Optional[str]) -> Optional[str]:
     if not value:
         return None
@@ -2859,6 +2863,13 @@ def replace_textbook_sections(db: Session, textbook_id: int, sections: list) -> 
 
     if target_item_numbers:
         target_set = set(target_item_numbers)
+        active_existing_numbers = {item.item_number for item in existing_items if item.is_active}
+        removed_numbers = sorted(active_existing_numbers - target_set)
+        if removed_numbers:
+            first_removed = removed_numbers[0]
+            raise TextbookItemCountError(
+                f"체크 기록 보호를 위해 기존 활성 문항을 section 범위에서 제외할 수 없습니다. 제외된 첫 문항: {first_removed}번"
+            )
 
         for item_number in target_item_numbers:
             existing_item = existing_by_number.get(item_number)
@@ -2990,30 +3001,31 @@ def create_textbook_with_items(db: Session, payload) -> MathTextbook:
 
 
 def sync_textbook_item_count(db: Session, textbook: MathTextbook, new_item_count: int) -> None:
-    """Grows or shrinks a flat (structure_type="none") textbook's MathTextbookItem rows to
-    match new_item_count, by item_number — never touches items within the overlap range.
+    """Grow a flat textbook's active item rows to exactly 1..new_item_count.
 
-    Growing only adds the missing tail numbers (existing items and their
-    MathStudentItemProgress rows are left completely alone). Shrinking only removes the tail
-    numbers beyond new_item_count, and only after confirming none of them carry student
-    progress — MathTextbookItem.progress_entries cascades on delete, so deleting an item with
-    real progress would silently destroy that student's completion record. If any of the
-    to-be-removed items have progress, the whole call raises (nothing is deleted) so the
-    caller can surface a clear error instead of partially applying the change.
+    Existing items and MathStudentItemProgress rows are never recreated. Decrease is rejected
+    because hiding/deleting tail items can make existing student checklist history disappear.
     """
+    if new_item_count < 1:
+        raise TextbookItemCountError("문항 수는 1 이상이어야 합니다.")
+
     existing_items = (
         db.query(MathTextbookItem)
         .filter(MathTextbookItem.textbook_id == textbook.id)
         .order_by(MathTextbookItem.item_number)
         .all()
     )
-    max_item_number = max((item.item_number for item in existing_items), default=0)
+    existing_by_number = {item.item_number: item for item in existing_items}
+    active_count = sum(1 for item in existing_items if item.is_active)
 
-    if new_item_count == max_item_number:
-        return
+    if new_item_count < active_count:
+        raise TextbookItemCountError(
+            f"기존 활성 문항이 {active_count}개입니다. 체크 기록 보호를 위해 문항 수를 {new_item_count}개로 줄일 수 없습니다."
+        )
 
-    if new_item_count > max_item_number:
-        for item_number in range(max_item_number + 1, new_item_count + 1):
+    for item_number in range(1, new_item_count + 1):
+        existing = existing_by_number.get(item_number)
+        if existing is None:
             db.add(
                 MathTextbookItem(
                     textbook_id=textbook.id,
@@ -3024,26 +3036,11 @@ def sync_textbook_item_count(db: Session, textbook: MathTextbook, new_item_count
                     is_active=True,
                 )
             )
-        return
-
-    items_to_remove = [item for item in existing_items if item.item_number > new_item_count]
-    if not items_to_remove:
-        return
-
-    item_ids_to_remove = [item.id for item in items_to_remove]
-    progress_count = (
-        db.query(func.count(MathStudentItemProgress.id))
-        .filter(MathStudentItemProgress.item_id.in_(item_ids_to_remove))
-        .scalar()
-        or 0
-    )
-    if progress_count > 0:
-        raise ValueError(
-            f"{new_item_count + 1}번 이후 문항에 학생 체크 기록이 있어 문항 수를 줄일 수 없습니다."
-        )
-
-    for item in items_to_remove:
-        db.delete(item)
+            continue
+        existing.title = existing.title or f"{item_number}번"
+        existing.item_type = existing.item_type or "problem"
+        existing.order_index = item_number
+        existing.is_active = True
 
 
 def update_textbook(db: Session, textbook_id: int, payload) -> Optional[MathTextbook]:
@@ -3104,12 +3101,18 @@ def update_textbook(db: Session, textbook_id: int, payload) -> Optional[MathText
         if "subject" not in update_data and canonical_subjects:
             textbook.subject = canonical_subject_to_legacy(canonical_subjects[0])
 
-    # Sections (when present) are the source of truth for the item list — item_count is a
-    # read-only derived value on that path (see compute_item_numbers_from_sections /
-    # replace_textbook_sections), so a stray item_count in this request is ignored rather than
-    # fighting the section union.
-    if item_count is not None and (textbook.structure_type or "none") == "none":
-        sync_textbook_item_count(db, textbook, item_count)
+    if item_count is not None:
+        sections = get_textbook_sections(db, textbook.id)
+        section_item_numbers = compute_item_numbers_from_sections(sections)
+        if section_item_numbers:
+            section_count = len(section_item_numbers)
+            if item_count != section_count:
+                raise TextbookItemCountError(
+                    f"이 교재는 section 문항 범위로 {section_count}개 문항이 정의되어 있습니다. 문항 수를 바꾸려면 section 범위를 먼저 수정해주세요."
+                )
+        else:
+            sync_textbook_item_count(db, textbook, item_count)
+
 
     db.commit()
     db.refresh(textbook)
