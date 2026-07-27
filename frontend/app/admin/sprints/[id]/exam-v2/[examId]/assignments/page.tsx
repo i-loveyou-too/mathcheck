@@ -152,14 +152,6 @@ export default function AdminSprintExamV2AssignmentsPage() {
         !profile.inquiry_subject_1 ||
         !profile.inquiry_subject_2),
   );
-  const examOutsideSprint = Boolean(
-    exam &&
-      sprint &&
-      (!exam.exam.exam_date ||
-        exam.exam.exam_date < sprint.start_date ||
-        exam.exam.exam_date > sprint.end_date),
-  );
-
   const assign = async () => {
     if (!sprint || !exam || !selected || existingAssignment) return;
     if (preview.warnings.length > 0) {
@@ -250,11 +242,6 @@ export default function AdminSprintExamV2AssignmentsPage() {
                 선택과목 정보가 없어 자동 배정할 수 없습니다.
               </p>
             )}
-            {examOutsideSprint && (
-              <p className="mt-3 rounded-md bg-red-50 px-3 py-2.5 text-xs font-black leading-5 text-red-700">
-                시험일이 현재 Sprint 기간 안에 있지 않습니다. 현재 배정 API는 sprint_program_id를 받지 않으므로 이 상태에서는 배정을 진행할 수 없습니다.
-              </p>
-            )}
 
             <dl className="mt-4 space-y-2 text-xs">
               {[
@@ -343,7 +330,7 @@ export default function AdminSprintExamV2AssignmentsPage() {
               <button
                 type="button"
                 onClick={() => void assign()}
-                disabled={saving || !selected || Boolean(existingAssignment) || preview.warnings.length > 0 || examOutsideSprint}
+                disabled={saving || !selected || Boolean(existingAssignment) || preview.warnings.length > 0}
                 className="mt-5 h-11 w-full rounded-md bg-[#2874E8] text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-45"
               >
                 {saving ? "배정 중..." : "선택 학생 배정"}
