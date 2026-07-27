@@ -43,7 +43,7 @@ export default function SubjectDetailPage() {
 
       {/* Subject progress card */}
       <div className="rounded-3xl bg-[#EEF2FF] p-6">
-        <p className="text-xs font-semibold uppercase tracking-widest text-[#818CF8]">과목 전체 진도</p>
+        <p className="text-xs font-semibold uppercase tracking-widest text-[#635BFF]">과목 전체 진도</p>
         <p className="mt-2 text-4xl font-black tracking-tight text-gray-900">
           {subject ? `${Math.round(subject.progress_percentage)}%` : "0%"}
         </p>
@@ -56,7 +56,7 @@ export default function SubjectDetailPage() {
       {/* Units */}
       <div>
         <h2 className="mb-4 text-lg font-bold text-gray-900">단원 목록</h2>
-        <div className="space-y-3">
+        <div className="space-y-3 md:grid md:grid-cols-2 md:gap-3 md:space-y-0 lg:grid-cols-2">
           {subject?.units.map((unit) => (
             <UnitCard
               completedTasks={unit.completed_tasks}

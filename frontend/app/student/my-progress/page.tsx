@@ -20,8 +20,8 @@ export default function StudentMyProgressPage() {
     <ScreenShell withBottomNav>
       <Header logoutType="student" subtitle="매일 해낸 기록이 나의 루틴이 돼요." title="갓생챌린지" />
 
-      <section className="rounded-2xl bg-white p-6 text-center shadow-card">
-        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#EEF2FF] text-2xl font-black text-[#3730A3]">
+      <section className="rounded-2xl bg-white p-6 text-center shadow-card md:mx-auto md:max-w-[520px]">
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#EEF2FF] text-2xl font-black text-[#635BFF]">
           %
         </div>
         <h2 className="mt-4 text-lg font-black text-[#17213B]">아직 준비중입니다.</h2>

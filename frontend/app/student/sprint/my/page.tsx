@@ -56,7 +56,7 @@ export default function StudentSprintMyPage() {
             <p className="text-sm font-black tracking-[0.18em] text-[#2874E8]">SPRINT MY</p>
             <h1 className="mt-1 text-3xl font-black tracking-[-0.05em] text-[#10213D]">나의 SPRINT</h1>
           </div>
-          <Link href="/student" className="rounded-full bg-white px-4 py-3 text-xs font-black text-[#285EB8] shadow-[0_8px_20px_rgba(60,94,140,0.18)]">
+          <Link href="/student" className="rounded-full bg-white px-4 py-3 text-xs font-black text-[#2874E8] shadow-[0_8px_20px_rgba(60,94,140,0.18)]">
             오늘도 해냄으로 전환
           </Link>
         </div>
@@ -75,7 +75,7 @@ export default function StudentSprintMyPage() {
               <p className="mt-2 text-sm font-semibold leading-6 text-[#6E7F99]">관리자가 SPRINT를 배정하면 이 화면에서 기간과 현재 DAY를 확인할 수 있습니다.</p>
             </div>
           ) : (
-            <div className="mt-5 grid gap-3">
+            <div className="mt-5 grid gap-3 md:grid-cols-[1.3fr_1fr] md:items-stretch">
               <div className="rounded-3xl bg-[#F1F7FF] p-5">
                 <p className="text-xs font-black text-[#2874E8]">참여 SPRINT</p>
                 <p className="mt-2 text-xl font-black text-[#10213D]">{program.title}</p>

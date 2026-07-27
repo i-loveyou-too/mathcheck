@@ -119,7 +119,7 @@ export default function StudentSubjectsPage() {
         title={STUDENT_PAGE_TITLES.subjects}
       />
 
-      <div className="space-y-3">
+      <div className="space-y-3 md:grid md:grid-cols-2 md:gap-3 md:space-y-0 lg:grid-cols-2">
         {subjectConfigs.map((subject) => {
           const prog = summary?.subjects.find((s) => subject.subjectKeys.includes(s.subject));
           const rate = Math.round(prog?.progress_rate ?? 0);

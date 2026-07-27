@@ -240,7 +240,7 @@ export default function StudentSprintVocabularyPage() {
             <h2 className="text-lg font-black text-[#10213D]">챌린지 진도</h2>
             <span className="text-xs font-bold text-[#8CA0BD]">총 {data.days.length}일</span>
           </div>
-          <div className="space-y-2">
+          <div className="space-y-2 md:grid md:grid-cols-2 md:gap-3 md:space-y-0">
             {data.days.map((day) => (
               <button key={day.date} disabled={day.status === "scheduled" || day.question_count === 0} onClick={() => void start(day)} className="flex w-full items-center gap-3 rounded-[20px] bg-white px-4 py-3 text-left shadow-sm ring-1 ring-[#E6F0FA] disabled:opacity-55">
                 <span className={`flex h-10 w-10 items-center justify-center rounded-2xl text-xs font-black ${day.status === "completed" ? "bg-[#DDF8EE] text-[#12815F]" : day.status === "missed" ? "bg-[#FFF0E8] text-[#E56B2F]" : "bg-[#F0F3F8] text-[#667085]"}`}>D{day.day_number}</span>

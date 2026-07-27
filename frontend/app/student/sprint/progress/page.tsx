@@ -179,7 +179,7 @@ export default function SprintProgressPage() {
 
         {!data.available || data.total === 0 ? (
           <section className="mt-8 rounded-[28px] bg-white/95 p-7 text-center shadow-[0_18px_36px_rgba(49,89,130,0.16)] ring-1 ring-[#DCEBFA]">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#EAF5FF] text-2xl font-black text-[#2E7BEA]">G</div>
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#EAF5FF] text-2xl font-black text-[#2874E8]">G</div>
             <h2 className="mt-5 text-xl font-black text-[#10213D]">등록된 목표가 없어요</h2>
             <p className="mt-3 text-sm font-semibold leading-6 text-[#6E7F99]">관리자가 목표를 등록하면 이곳에 표시됩니다.</p>
           </section>
@@ -202,9 +202,9 @@ export default function SprintProgressPage() {
                   <h2 className="text-lg font-black text-[#10213D]">{subjectSummary.subject}</h2>
                   <p className="text-sm font-bold text-[#6E7F99]">{subjectSummary.completed} / {subjectSummary.total} · {subjectSummary.completion_rate}%</p>
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-2 md:grid md:grid-cols-2 md:gap-3 md:space-y-0">
                   {data.goals.filter((goal) => goal.subject === subjectSummary.subject).map((goal) => (
-                    <div key={goal.id} className="space-y-2">
+                    <div key={goal.id} className="space-y-2 md:h-full">
                       <GoalCard goal={goal} onToggle={toggle} busy={busyId === goal.id} />
                       {goal.created_by_type === "student" && (
                         <div className="flex justify-end gap-2 px-1">

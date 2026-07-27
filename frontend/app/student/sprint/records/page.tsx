@@ -40,7 +40,7 @@ export default function SprintRecordsPage() {
               아직 완료한 목표가 없어요.
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-2 md:grid md:grid-cols-2 md:gap-3 md:space-y-0">
               {goalRecords.map((goal, index) => (
                 <div key={`${goal.title}-${index}`} className="flex items-center justify-between rounded-[18px] bg-white/95 px-4 py-3 shadow-sm ring-1 ring-[#DFEAF6]">
                   <div className="min-w-0">

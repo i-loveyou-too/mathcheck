@@ -210,6 +210,73 @@ SUIT 전역 적용(설계만 완료, 실제 적용은 Phase 0 실행 시), 디�
 ```
 (같은 패턴을 `today/page.tsx`, `curriculum/page.tsx`, `tracker/page.tsx`, `my-progress/page.tsx`, `lessons/page.tsx`, `lectures/[assignmentId]/page.tsx`, `units/[unitId]/page.tsx`, `subjects/[subjectId]/page.tsx`, `subjects/textbook-selection-page.tsx`, `textbooks/textbook-checklist-page.tsx`에 각 파일의 실제 리스트 wrapper를 찾아 동일하게 적용 — 각 파일은 착수 시 Read로 현재 wrapper className을 재확인한 뒤 위와 같은 형식으로 세부 체크리스트를 작성한다.)
 
+#### Color and Visual Token Pass
+
+grep으로 그룹 A·B·C(및 관련 공통 컴포넌트) 전체를 재조사한 결과. `today-purple-*` 계열은 하나의 값으로 일괄 치환하지 않고, 실제로 분화되어 쓰이던 용도를 그대로 인정한 뒤 대표 토큰명만 부여한다.
+
+- [ ] Strong text `#17213B`
+  - 대상 파일: `student/page.tsx`(11회), `today/page.tsx`(16회), `curriculum/page.tsx`(7회), `lectures/[assignmentId]/page.tsx`(14회), `lessons/page.tsx`(4회), `subjects/page.tsx`(2회), `subjects/textbook-selection-page.tsx`(2회), `tracker/page.tsx`(2회), `my-progress/page.tsx`(1회), `vocabulary/wrong-notes/page.tsx`(4회) 등 그룹 A·B·C 전역
+  - 현재: `text-[#17213B]` — grep 결과 이미 지배적이고 이탈값(`#10233F` 등) 없음
+  - 목표 역할: `today-strong-text` 대표 토큰. 통일 이미 완료 상태이므로 값 변경 없이 토큰명만 부여
+  - 변경 가능한 className: `text-[#17213B]` → `text-today-strong`(값 동일, 클래스명만 교체 후보)
+  - 유지할 semantic 색상: 해당 없음(순수 타이포 색)
+  - 검증: `grep -rn "text-\[#17213B\]" frontend/app/student` 카운트가 리디자인 전후 동일한지, `#10233F`류 근접 오탈값이 새로 생기지 않았는지 확인
+
+- [ ] `today-purple-primary` `#635BFF`
+  - 대상 파일: `frontend/components/curriculum-graph.tsx:58,317`(진행중 상태 텍스트/닷/배지), `frontend/app/student/curriculum/page.tsx:62,66,327,377,380`(노드 테두리, 도트, 아이콘 tone, 강조 텍스트, 배지), `frontend/app/student/today/page.tsx:581,589,601,648,653,657,676,695,697,726,749,751`(진행률 텍스트, `linear-gradient(90deg,#635BFF_0%,#7C71FF_100%)` 진행바)
+  - 현재: `text-[#635BFF]`, `bg-[#635BFF]`(닷/그라디언트), `border-[#635BFF]`
+  - 목표 역할: "진행 중(in_progress)" 상태를 나타내는 텍스트/도트/그라디언트 기준색. 대표 토큰으로 채택
+  - 변경 가능한 className: `text-[#635BFF]` → `text-brand-today-primary`, `bg-[#635BFF]` → `bg-brand-today-primary`(그라디언트는 `from-brand-today-primary`류) — 값 유지, 클래스명만 제안
+  - 유지할 semantic 색상: `curriculum-graph.tsx:57,59-61`의 `completed`(emerald), `planned`(slate), `paused`(amber), `skipped`(gray) 상태색은 절대 보라로 흡수하지 않음
+  - 검증: curriculum 그래프 5개 상태 배지 스크린샷 비교, `today/page.tsx` 진행률 텍스트/바 색이 리디자인 전후 동일 hex인지 확인
+
+- [ ] `today-purple-primary-alt` `#6D73FF`
+  - 대상 파일: `frontend/app/student/today/page.tsx:306,382,386,537,702,756,1105,1122,1297`(배지 텍스트·배경, 완료 체크 버튼 border+bg+`shadow-[0_4px_10px_rgba(109,115,255,0.22)]`, hover 텍스트), `frontend/app/student/lectures/[assignmentId]/page.tsx:282,326`(진행 배지, `isDone` 삼항의 미완료 분기)
+  - 현재: `text-[#6D73FF]`, `bg-[#6D73FF]`, `border-[#6D73FF]`
+  - 목표 역할: `#635BFF`와 상호 교체적으로 쓰이던 근접값. 이번 Phase에서는 **즉시 통일하지 않음** — "카드/배지/버튼" 계열은 `#6D73FF`(today-purple-primary-alt), "그래프/진행률 텍스트" 계열은 `#635BFF`(today-purple-primary)로 역할만 문서화하고 값은 유지. 장기적으로만 통일 후보로 남긴다
+  - 변경 가능한 className: `text-[#6D73FF]`/`bg-[#6D73FF]` → `text-brand-today-primary-alt`/`bg-brand-today-primary-alt`(값 유지, 이름만)
+  - 유지할 semantic 색상: `today/page.tsx:1297`의 `item.key === "done" ? "bg-orange-50 text-orange-500" : ...` 삼항에서 `done` 분기(주황)는 별개 상태 색이므로 보라 계열과 병합하지 않음
+  - 검증: `today/page.tsx`의 완료 체크 버튼(`:537`) hover/active 색이 리디자인 전후 동일한지 클릭 테스트
+
+- [ ] `today-purple-icon` `#6366F1`(수1) / `#8B5CF6`(수2)
+  - 대상 파일: `frontend/app/student/page.tsx:86,98`(`studentSubjectCards[].ringColor`), `frontend/app/student/subjects/page.tsx:65,77`(`subjectConfigs[].ringColor`)
+  - 현재: `ringColor: "#6366F1"`, `ringColor: "#8B5CF6"` — Tailwind className이 아니라 `CircularProgress`에 전달되는 JS 문자열 값(inline style 경로로 소비됨). `iconBg`는 별도로 `bg-indigo-50`/`bg-violet-50` Tailwind 기본 클래스 사용
+  - 목표 역할: 과목별 원형 진행률 링 색 고정 유지(수1=인디고, 수2=바이올렛). 참고로 `subjects/page.tsx:89` 확통은 `#10B981`(에메랄드)로 브랜드 보라 클러스터 밖의 semantic 계열이라 그대로 둠
+  - 변경 가능한 className: 해당 없음(className이 아닌 JS 상수) — 실행 단계에서 `ringColor` 상수 테이블 자체를 토큰 참조로 바꿀지만 결정, 이번 문서는 계획만
+  - 유지할 semantic 색상: `iconBg`의 `bg-indigo-50`/`bg-violet-50`/`bg-emerald-50` Tailwind 클래스는 그대로
+  - 검증: `student/page.tsx`·`subjects/page.tsx` 과목 카드 3개의 원형 링 색이 리디자인 후에도 동일한지 확인
+
+- [ ] 이탈값 `#5C63FF` (`frontend/app/student/lessons/page.tsx:46`)
+  - 대상 파일: `frontend/app/student/lessons/page.tsx:46`
+  - 현재: `text-[#5C63FF]` — 흰 배경 pill 버튼("← 홈") 텍스트, 이 페이지에서 유일한 1회성 사용. 페이지의 다른 강조색은 `#0E9F6E`(LESSONS 라벨), `#17213B`(타이틀)로 오히려 초록/네이비 계열
+  - 목표 역할: `today-purple-primary`(`#635BFF`) 또는 `today-purple-primary-alt`(`#6D73FF`)로 흡수 통합하는 후보 — 새 토큰을 만들지 않고 기존 클러스터로 정리
+  - 변경 가능한 className: `text-[#5C63FF]` → `text-[#635BFF]`(today-purple-primary) 후보로 명시(치환은 실행 안 함)
+  - 유지할 semantic 색상: `#0F2E24`/`#4ADE80`/`#7FE9AD`(다음 수업 카드, 이 페이지 고유 초록 톤이므로 보라 정리와 무관), `statusStyles`(`:19-22`)의 파랑/회색/빨강/주황 상태색
+  - 검증: 치환 후 "← 홈" 버튼 색이 다른 오늘도 해냄 페이지 백버튼과 맞는지 육안 비교
+
+- [ ] `today-purple-weak-bg` 계열 (`#EEF2FF`, `#F1EDFF`, `#F1F0FF`)
+  - 대상 파일: `frontend/components/curriculum-graph.tsx:58,306,317`(진행중 배지/카드 배경), `frontend/app/student/today/page.tsx:581,589,601,676,726`(배지 배경), `frontend/app/student/my-progress/page.tsx:24`(준비중 아이콘 원형 배경 + `text-[#3730A3]`), `frontend/app/student/subjects/[subjectId]/page.tsx:45-46`(과목 진도 히어로 카드 배경 + `text-[#818CF8]` 라벨)
+  - 현재: `bg-[#F1EDFF]`, `bg-[#F1F0FF]`, `bg-[#EEF2FF]` — 미세하게 다른 값이 페이지마다 혼재
+  - 목표 역할: 전부 "약한 배경(weak background)" 역할로 동일. 값 차이(EEF2FF/F1EDFF/F1F0FF)는 그대로 유지하고 역할만 `today-purple-weak-bg` 토큰으로 통일 문서화(강제 치환 금지)
+  - 변경 가능한 className: 각 `bg-[#...]`에 `bg-brand-today-weak` 토큰 클래스명만 부여(값 유지)
+  - 유지할 semantic 색상: 페어링된 텍스트 색(`F1EDFF`+`#635BFF`, `F1F0FF`+`#6D73FF`, `EEF2FF`+`#3730A3`/`#818CF8`)은 그대로 — 배경만 통일하고 텍스트까지 강제로 맞추지 않음
+  - 검증: 배경색 계열을 억지로 통일했을 때 인접 텍스트와의 대비가 깨지지 않는지 육안 확인
+
+- [ ] 신규 발견: `frontend/components/student-card.tsx`는 실제로 `/student/**`에서 쓰이지 않음
+  - 대상 파일: `frontend/components/student-card.tsx:53,101`(`bg-[#EEF2FF] text-[#5C5FFF]` 아이콘 원형), import 확인 결과 `frontend/app/admin/students/page.tsx:8` 한 곳에서만 사용되고 `href`도 `/admin/students/${id}`로 고정됨(`:50,97`)
+  - 현재: 기존 `StudentUIDesignSystem.md` 6절이 이 파일을 "오늘도 해냄 보라 토큰" 근거로 인용했으나, 실제로는 학생 화면이 아닌 관리자 학생 목록 페이지 전용 컴포넌트임이 이번 grep으로 확인됨
+  - 목표 역할: Phase 1 색상 정리 대상에서 제외. 관리자 페이지 영역이라 이번 학생 UI 리디자인 범위 밖
+  - 변경 가능한 className: 해당 없음(범위 밖)
+  - 유지할 semantic 색상: 그대로(수정 안 함)
+  - 검증: `grep -rn "student-card" frontend/app/student` 결과 0건 재확인. 참고로 `frontend/components/subject-card.tsx`(`#EEF2FF` 계열 테마 보유)도 소스 어디에서도 import되지 않는 미사용 컴포넌트임을 확인(`grep -rn "components/subject-card" frontend` 결과 `tsconfig.tsbuildinfo` 빌드 캐시 1건뿐, 실제 페이지 import 0건) — `curriculum/page.tsx:77`에 동명의 지역 함수 `SubjectCard`가 별도로 존재해 혼동 여지가 있었음. 두 컴포넌트 모두 이번 색상 정리 대상에서 제외
+
+- [ ] 버튼/탭/배지/아이콘/약한 배경 적용 계획 요약
+  - 버튼(완료 체크·CTA): `today/page.tsx:537,702,756` 등에서 `#6D73FF` 배경/보더 사용 — 리디자인 후에도 "액션 버튼" 역할 유지, 값 유지
+  - 활성 탭: 그룹 A·B·C에는 세그먼트/칩 탭 패턴이 없음(19절 탭 패턴은 SPRINT·영단어에서만 발견) — 해당 없음, 신규 탭 도입 시 SPRINT `chip-scroll`/`segment` 패턴 재사용 검토
+  - 배지: "진행 중" 배지는 `#F1EDFF`/`#F1F0FF` 약한 배경 + `#635BFF`/`#6D73FF` 텍스트 조합 유지, 완료 배지는 `#DCFCE7`/`#16A34A`(emerald) semantic 유지
+  - 아이콘: `ringColor`(`#6366F1`/`#8B5CF6`) 값 유지, 역할(과목 구분)도 유지
+  - 약한 배경: `today-purple-weak-bg` 토큰 문서화만, 값 통일 안 함
+
 ### Phase 2 — SPRINT 일반 화면
 SPRINT 홈, 내 정보, 인증, 기록, 진도, 공부시간, 플래너, 착석, 문제지 제출, 영단어 목록과 오답 (그룹 D·E, G 중 목록/오답).
 
@@ -229,6 +296,57 @@ SPRINT 홈, 내 정보, 인증, 기록, 진도, 공부시간, 플래너, 착석,
   - 검증: 태블릿에서 2열, 상태 배지 색이 그대로인지 확인
 ```
 (`sprint/page.tsx`, `sprint/proofs/page.tsx`, `sprint/records/page.tsx`, `sprint/progress/page.tsx`, `sprint/study-time/page.tsx`, `sprint/planner/page.tsx`+`proof-form.tsx`, `sprint/seat-check/page.tsx`, `sprint/vocabulary/page.tsx`, `sprint/vocabulary/wrong-notes/page.tsx`, `vocabulary/wrong-notes/page.tsx`, `sprint/coming-soon.tsx`도 착수 시 각 파일의 실제 리스트/그리드 wrapper를 Read로 재확인 후 동일 형식으로 세부화한다.)
+
+#### Color and Visual Token Pass
+
+`sprint-primary #2874E8` / `sprint-weak-bg #EAF5FF` / `sprint-strong-text #10213D` 확정값을 기준으로 그룹 D·E 전체를 grep 재조사했다. `#3182f6`(Toss blue)는 `frontend` 전체에서 0건 확인됨(정상).
+
+- [ ] 확정 팔레트 재확인 — `#2874E8`/`#EAF5FF`/`#10213D`
+  - 대상 파일: `sprint/my/page.tsx:56-95`, `sprint/proofs/page.tsx:10-22`, `sprint/records/page.tsx:31-47`, `sprint/progress/page.tsx:38-214`, `sprint/study-time/page.tsx:203-263`, `sprint/proof-form.tsx:27-31,69-75,275-357`, `sprint/worksheets/page.tsx:85-97`, `sprint/worksheets/[id]/page.tsx:211-345`, `sprint-bottom-nav.tsx:42`
+  - 현재: 버튼 배경(`bg-[#2874E8]`), 링크/라벨 텍스트(`text-[#2874E8]`), 약한 배경(`bg-[#EAF5FF]`), 진한 타이틀(`text-[#10213D]`) — 확정값과 정확히 일치, 이탈 없음
+  - 목표 역할: `sprint-primary`/`sprint-weak-bg`/`sprint-strong-text` 그대로 채택, 값 변경 없음
+  - 변경 가능한 className: 없음(이미 확정값과 일치) — 원한다면 `bg-[#2874E8]` → `bg-brand-sprint-primary` 토큰 클래스명만 부여
+  - 유지할 semantic 색상: 해당 없음(브랜드 primary 자체)
+  - 검증: `grep -rn "#2874E8\|#EAF5FF\|#10213D" frontend/app/student/sprint` 카운트가 리디자인 전후 동일한지 확인
+
+- [ ] 근접 파생값 `#2E8AEA` (아이콘 텍스트, hover/눌림 추정)
+  - 대상 파일: `sprint/page.tsx:177,283,300,313,320,338,346,369` — 전부 `bg-[#EAF5FF] text-[#2E8AEA]` 조합으로 원형 아이콘 배지 안 아이콘 색
+  - 현재: `text-[#2E8AEA]` — SPRINT 홈 화면에만 8회 집중 사용, 다른 D·E 파일에는 나타나지 않음(grep 결과 `sprint/page.tsx` 단일 파일)
+  - 목표 역할: `sprint-primary`의 아이콘 전용 진한 변형(`sprint-primary-strong` 후보)으로 정리 — SPRINT 홈의 원형 아이콘 배지에서만 쓰는 역할로 문서화, 값 유지
+  - 변경 가능한 className: `text-[#2E8AEA]` → `text-brand-sprint-primary-strong`(값 유지, 이름만)
+  - 유지할 semantic 색상: 같은 파일의 `#EAF5FF` 약한 배경은 그대로
+  - 검증: SPRINT 홈 아이콘 배지 8곳 색이 리디자인 전후 동일 hex인지 확인
+
+- [ ] 근접 파생값 `#2E74E8` (SPRINT 워드마크/DAY 숫자)
+  - 대상 파일: `sprint/page.tsx:230`(`<h1>SPRINT</h1>` 워드마크, `drop-shadow-[0_8px_16px_rgba(47,116,232,0.18)]` 동반), `sprint/page.tsx:251`(`DAY {day_number}` 큰 숫자)
+  - 현재: `text-[#2E74E8]` — SPRINT 홈 최상단 히어로 타이포에만 2회 사용
+  - 목표 역할: `sprint-primary`의 대형 타이포(히어로 워드마크) 전용 변형으로 인정, 통합하지 않고 그대로 유지 — 단일 파일·단일 용도라 흡수 리스크가 낮음
+  - 변경 가능한 className: `text-[#2E74E8]` → `text-brand-sprint-hero`(값 유지)
+  - 유지할 semantic 색상: 해당 없음
+  - 검증: SPRINT 홈 워드마크·DAY 숫자 색과 그림자가 리디자인 전후 동일한지 확인
+
+- [ ] 근접 파생값 `#145FDB` (결과 페이지 대형 점수 텍스트)
+  - 대상 파일: `sprint/exams/attempts/[attemptId]/result/page.tsx:381,393,437,442,589`
+  - 현재: `text-[#145FDB]` — 결과 페이지의 대형 점수/등급 숫자, `:589`는 현재 등급컷 하이라이트(`border-[#2874E8] bg-[#EAF5FF] text-[#145FDB]`)
+  - 목표 역할: `sprint-primary`보다 진한 "강조 숫자" 전용 변형(`sprint-primary-strong`)으로 `#2E8AEA`와 함께 동일 역할군으로 문서화 — Phase 3(결과 페이지)과 겹치는 파일이므로 여기서는 존재만 확인하고 실제 정합화 계획은 Phase 3 섹션에서 다룬다
+  - 변경 가능한 className: 해당 없음(Phase 3에서 다룸)
+  - 유지할 semantic 색상: 해당 없음
+  - 검증: Phase 3 참고
+
+- [ ] `#3182f6`(Toss blue) 사용 여부
+  - 대상 파일: 전체 `frontend/` 검색
+  - 현재: `grep -rn "#3182[fF]6" frontend` 결과 0건 — 사용처 없음, 정상
+  - 목표 역할: 앞으로도 도입 금지(디자인시스템 문서 3·29절과 일치)
+  - 변경 가능한 className: 없음
+  - 유지할 semantic 색상: 해당 없음
+  - 검증: Phase 5 최종 감사에서 재확인(아래 5절 참고)
+
+- [ ] 버튼/탭/카드 링/배지/안내 상자 적용 계획
+  - 버튼: primary CTA는 `bg-[#2874E8]` 흰 텍스트(`sprint/study-time/page.tsx:256`, `sprint/worksheets/[id]/page.tsx:345` 등), 보조/임시저장 버튼은 `bg-[#EAF5FF] text-[#2874E8]`(`study-time/page.tsx:255`) — 역할 그대로 유지, 값 유지
+  - 탭: 그룹 D·E에는 별도 탭 없음(칩/세그먼트 탭은 Phase 3 OMR·Phase 4 영단어에만 존재) — 해당 없음
+  - 카드 링: `ring-1 ring-[#DFEAF6]`(다수 카드, 예: `worksheets/page.tsx:93`, `study-time/page.tsx:236`)와 `ring-1 ring-[#DCEBFA]`(히어로급 카드, 예: `sprint/my/page.tsx:66`, `records/page.tsx:13,17,21`) 두 값이 카드 크기에 따라 이미 분화되어 쓰임 — 그대로 유지, "일반 카드"/"히어로 카드" 역할만 문서화
+  - 배지: 상태 배지는 `proof-form.tsx:27-31`의 4색 tone map(`not_submitted/draft`=`#2874E8`+`#EAF5FF`, `pending`=`#E18A00`+`#FFF6E2`, `approved`=`#17895E`+`#EAF8F1`, `rejected`=`#E25050`+`#FFF0F0`) 그대로 semantic 유지 — SPRINT 파랑으로 흡수하지 않음
+  - 안내 상자: 현재 그룹 D·E에는 별도 안내/경고 박스가 드묾(주로 Phase 3 OMR 상세 페이지의 `#FFF8E8`/`#9A6500` 유의사항 박스) — Phase 3에서 다룸
 
 ### Phase 3 — SPRINT 모의고사
 시험 목록, 시험 상세 및 시작, OMR 응시, 제출 확인, 제출 완료, 결과 및 해설 (그룹 F).
@@ -264,6 +382,50 @@ SPRINT 홈, 내 정보, 인증, 기록, 진도, 공부시간, 플래너, 착석,
   - 검증: 기존 스냅샷과 시각적으로 큰 차이 없는지 확인(이미 목표 상태에 가장 가까운 페이지)
 ```
 
+#### Color and Visual Token Pass
+
+Phase 2와 동일한 SPRINT 색 체계(`#2874E8`/`#EAF5FF`/`#10213D`)를 전제로 목록·상세·OMR·제출모달·결과 4개 화면을 각각 grep 재조사했다. 정답/오답/경고/비활성 semantic 색상은 SPRINT 브랜드색으로 흡수하지 않고 그대로 유지한다.
+
+- [ ] 목록(`sprint/exams/page.tsx`) — 상태 배지 4색
+  - 대상 파일: `sprint/exams/page.tsx:60-63`(`statusTone` 함수)
+  - 현재: `available/started`=`bg-[#EAF5FF] text-[#2874E8]`, `submitted/completed`=`bg-[#FFF6E2] text-[#D68B00]`, `scored`=`bg-[#EAF8F1] text-[#17895E]`, `voided/expired`=`bg-[#FFF0F0] text-[#E25050]`
+  - 목표 역할: `available/started`만 `sprint-primary`/`sprint-weak-bg`(브랜드색), 나머지 3개(대기/완료/무효)는 semantic 상태색 — 절대 브랜드 파랑으로 흡수하지 않음
+  - 변경 가능한 className: `bg-[#EAF5FF] text-[#2874E8]` → `bg-brand-sprint-weak text-brand-sprint-primary`(값 유지) — 나머지 3색은 className 변경 대상에서 제외(semantic 고정)
+  - 유지할 semantic 색상: `#FFF6E2`/`#D68B00`(대기), `#EAF8F1`/`#17895E`(완료/채점), `#FFF0F0`/`#E25050`(무효/만료) 전부
+  - 검증: 목록의 4가지 상태 배지 스크린샷 비교, 배지 색으로 상태를 구분하는 사용자 시나리오(대기 중 vs 채점완료) 육안 확인
+
+- [ ] 상세(`sprint/exams/[assignmentId]/page.tsx`) — 안내 상자 + 비활성 버튼
+  - 대상 파일: `sprint/exams/[assignmentId]/page.tsx:61-64`(4색 tone map, 목록과 동일 구조), `:157`(유의사항 안내 상자 `bg-[#FFF8E8] text-[#9A6500]`), `:185`(비활성 버튼 `bg-[#B8C4D6]`)
+  - 현재: 배정 과목 배지는 `bg-[#F2F7FF] text-[#2874E8]`(브랜드 약한 배경 변형), 유의사항 박스는 `#FFF8E8`/`#9A6500`(경고 semantic), 응시 불가 버튼은 `bg-[#B8C4D6]` 고정 비활성색
+  - 목표 역할: 배정 과목 배지는 `sprint-weak-bg` 파생(`#F2F7FF`)으로 문서화만 하고 값 유지, 유의사항 박스는 `state-warning` semantic으로 고정, 비활성 버튼은 `state-disabled`(`#B8C4D6`) semantic으로 고정
+  - 변경 가능한 className: 배정 과목 배지만 `bg-brand-sprint-weak-alt`(값 유지) 후보 — 유의사항 박스·비활성 버튼은 변경 대상 아님
+  - 유지할 semantic 색상: `#FFF8E8`/`#9A6500`(경고), `#B8C4D6`(비활성) 절대 유지
+  - 검증: 시험 시작 불가 상태(비활성 버튼)와 시작 가능 상태(브랜드 파랑 버튼)가 색으로 명확히 구분되는지 확인
+
+- [ ] OMR 응시(`sprint/exams/attempts/[attemptId]/page.tsx`) — 선택 상태 + 미응답 경고
+  - 대상 파일: `:222`(과목 칩 탭 활성/비활성), `:283`(객관식 원형 선택지 활성/비활성), `:315`(제출 확인 모달의 "미응답" 카운트)
+  - 현재: 칩 탭 활성 = `bg-[#2874E8] text-white`, 비활성 = `bg-white text-[#52637D] ring-1 ring-[#DFEAF6]`; 선택지 활성 = `bg-[#2874E8] text-white ring-[#2874E8]`, 비활성 = `bg-white text-[#617089] ring-[#B9C7DA]`; 미응답 카운트는 `progress.unanswered > 0 ? "text-[#E25050]" : "text-[#17895E]"`(0건이면 초록, 남아있으면 빨강)
+  - 목표 역할: 칩 탭·선택지의 "선택됨" 상태는 `sprint-primary` 브랜드색 그대로 유지(이건 semantic이 아니라 브랜드 인터랙션 색), 미응답 카운트의 빨강/초록만 진짜 semantic(경고/정상)이므로 절대 건드리지 않음
+  - 변경 가능한 className: `bg-[#2874E8] text-white`(선택됨) → `bg-brand-sprint-primary text-white`(값 유지) — 미응답 카운트 색상 로직은 변경 대상 아님(className도 조건부 삼항 그대로 유지)
+  - 유지할 semantic 색상: `text-[#E25050]`(미응답 있음)/`text-[#17895E]`(미응답 없음) 절대 유지, 조건(`unanswered > 0`) 자체도 불변
+  - 검증: 답안 선택 시 선택지 색이 브랜드 파랑으로 정확히 바뀌는지, 제출 확인 모달에서 미응답 0건일 때 초록으로 바뀌는지 수동 확인(28절 기능 보호 원칙 위배 없음 — 색상 값만 확인, 조건 로직은 손대지 않음)
+
+- [ ] 제출 확인 모달 — 브랜드색만 사용, semantic 없음
+  - 대상 파일: `:319-320`(모달 내 "이전으로"/"제출하기" 버튼)
+  - 현재: "이전으로" = `border-[#C7D5E8] text-[#2874E8]`, "제출하기" = `bg-[#2874E8] text-white`
+  - 목표 역할: 둘 다 `sprint-primary` 브랜드색 — semantic 색 없음, 그대로 유지
+  - 변경 가능한 className: `text-[#2874E8]`/`bg-[#2874E8]` → 토큰 클래스명만(값 유지)
+  - 유지할 semantic 색상: 해당 없음(모달 자체는 브랜드색만 사용)
+  - 검증: 모바일 바텀시트/데스크톱 중앙모달 두 변형 모두에서 버튼 색이 동일한지 확인
+
+- [ ] 결과(`sprint/exams/attempts/[attemptId]/result/page.tsx`) — 정답/오답/등급컷
+  - 대상 파일: `:178`(정답/오답 판정 함수 `bg-[#EAF8F1] text-[#17895E]` / `bg-[#FFF0F0] text-[#D94343]`), `:214`(제출 대기/오류 안내 `bg-[#FFF6E2] text-[#A86B00]` / `bg-[#FFF0F0] text-[#D94343]`), `:465-466`(정답/오답 카운트 텍스트 `text-[#17895E]`/`text-[#D94343]`), `:534,562`(정답 텍스트 자체는 `text-[#2874E8]` 브랜드 파랑 — 개수가 아니라 "정답이 무엇인지" 보여주는 값이라 브랜드색 사용), `:589`(현재 등급컷 하이라이트 `border-[#2874E8] bg-[#EAF5FF] text-[#145FDB]`), `:381,393,437,442`(대형 점수 숫자 `text-[#145FDB]`)
+  - 현재: 정답/오답 판정은 `#17895E`(초록)/`#D94343`(빨강) semantic, 정답 "값" 표시는 `#2874E8`(브랜드), 대형 점수·등급컷은 `#145FDB`(브랜드 강조 변형)
+  - 목표 역할: 정답/오답 판정(개수, 배지, 정오답 라벨)은 절대 SPRINT 브랜드색으로 흡수하지 않고 semantic 유지. 반면 "정답이 무엇인가"를 보여주는 값 텍스트와 점수/등급컷 대형 숫자는 브랜드 강조 계열(`#2874E8`/`#145FDB`)로 이미 일관되게 쓰이고 있으므로 그대로 유지 — 이 둘을 혼동해서 하나로 합치지 않는다
+  - 변경 가능한 className: `text-[#145FDB]` → `text-brand-sprint-primary-strong`(Phase 2에서 정의한 `#2E8AEA`와 같은 역할군, 값은 유지) — 정답/오답 판정 색상은 변경 대상 아님
+  - 유지할 semantic 색상: `#EAF8F1`/`#17895E`(정답), `#FFF0F0`/`#D94343`(오답), `#FFF6E2`/`#A86B00`(대기 notice) 전부 절대 유지
+  - 검증: 정답/오답 개수가 실제 채점 결과와 색상이 일치하는지, 등급컷 표에서 현재 등급이 브랜드 파랑으로 하이라이트되는지 수동 확인
+
 ### Phase 4 — 영단어 시험 화면
 일반 영단어 test/result, SPRINT 영단어 test/result.
 
@@ -284,6 +446,43 @@ SPRINT 홈, 내 정보, 인증, 기록, 진도, 공부시간, 플래너, 착석,
 ```
 (`sprint/vocabulary/test/[sessionId]/page.tsx`, `sprint/vocabulary/result/[sessionId]/page.tsx`도 동일 패턴 — 이쪽은 이미 정상 포맷팅이라 diff가 더 명확할 것)
 
+#### Color and Visual Token Pass
+
+4개 파일을 다시 Read해서 `#17213B`+`#45D3A2`+`#19A879` 팔레트의 정확한 위치를 재확인했다. 원칙: **SPRINT 파랑(`#2874E8` 등)으로 무조건 흡수하지 않는다** — 영단어는 `/student/vocabulary/**`(오늘도 해냄 경로)와 `/student/sprint/vocabulary/**`(SPRINT 경로) 양쪽에서 동일한 다크 네이비+민트그린 팔레트를 그대로 공유하는 독립 서브 브랜드이기 때문이다(디자인시스템 문서 4·8절에서 이미 "제3의 서브 팔레트"로 인정됨). 이 팔레트를 SPRINT 블루나 오늘도 해냄 보라 어느 쪽으로도 재흡수하면 두 화면이 서로 다른 브랜드처럼 보이게 되는 시각적 퇴행이 발생한다.
+
+- [ ] 팔레트 유지 확인 — `#17213B`(다크 네이비)
+  - 대상 파일: `vocabulary/test/[sessionId]/page.tsx:18-19`(헤더 타이틀, 문항 번호, 입력값, 제출 버튼 배경), `vocabulary/result/[sessionId]/page.tsx:19-22`(상단 스코어 카드 배경, 문항별 결과 타이틀, 토글 버튼 활성 배경), `sprint/vocabulary/test/[sessionId]/page.tsx:89,90,101,106`(동일 역할), `sprint/vocabulary/result/[sessionId]/page.tsx:61,75,79,97`(동일 역할)
+  - 현재: `bg-[#17213B]`(스코어 카드/제출 버튼), `text-[#17213B]`(타이틀/입력 텍스트) — 4개 파일 전부 동일
+  - 목표 역할: `vocab-card-dark`/`vocab-strong-text` 그대로 유지, 변경 없음
+  - 변경 가능한 className: 없음(값 유지) — 토큰 클래스명만 `bg-vocab-dark`/`text-vocab-dark` 부여 가능
+  - 유지할 semantic 색상: 해당 없음(팔레트 자체가 유지 대상)
+  - 검증: 4개 파일의 `#17213B` 사용 위치가 리디자인 전후 1:1로 동일한지 diff 확인
+
+- [ ] 팔레트 유지 확인 — `#45D3A2`/`#19A879`(민트그린)
+  - 대상 파일: `vocabulary/test/[sessionId]/page.tsx:18`(진행률 바 채움 `bg-[#45D3A2]`, 저장 상태 텍스트 `text-[#19A879]`, 입력창 포커스 `focus:border-[#45D3A2]`), `sprint/vocabulary/test/[sessionId]/page.tsx:86,89,92`(동일 역할), `vocabulary/result/[sessionId]/page.tsx:20,22`(점수 원형 링 `border-[#65E6BA]`, 정답 문항 왼쪽 보더 `border-l-[#45D3A2]`), `sprint/vocabulary/result/[sessionId]/page.tsx:69,99,106`(점수 링 `#65E6BA`, 정답 배지 `bg-[#E3F7EF] text-[#12815F]`)
+  - 현재: 진행바/포커스 = `#45D3A2`, 저장 상태 텍스트 = `#19A879`, 점수 링 = `#65E6BA`(민트 계열 근접값, 두 result 페이지 공통), 정답 텍스트/배지 = `#12815F`
+  - 목표 역할: `vocab-accent-fill`(`#45D3A2`)/`vocab-accent-text`(`#19A879`, `#12815F`) 그대로 유지. `#65E6BA`는 기존 디자인시스템 문서(8절)의 `vocab-accent-fill` 표에 누락돼 있던 값이라 이번에 추가 확인 — 점수 원형 링 전용 변형으로 별도 인정하고 값 유지. 추가로 `frontend/app/student/sprint/vocabulary/page.tsx:193,206`(영단어 챌린지 목록 페이지, Phase 2 그룹 G 소속)에서도 동일한 `#65E6BA`가 장식용 blur와 CTA 버튼 배경으로 쓰이는 것을 확인 — Phase 4 범위(test/result 4개 파일) 밖이지만 같은 영단어 서브 브랜드이므로 이 값도 함께 `vocab-accent-fill-alt`로 인정하고 흡수·변경하지 않는다
+  - 변경 가능한 className: 없음(값 유지)
+  - 유지할 semantic 색상: 정답=민트/초록 계열, 오답=코랄/빨강 계열(`#F27A63`, `#E15B45`, `#D95D48`) 절대 유지
+  - 검증: 정답/오답 문항 카드의 좌측 보더·배지 색이 리디자인 전후 동일한지 확인
+
+- [ ] 일반 영단어 vs SPRINT 영단어 색상 비교 — 대체로 동일, 세부 차이 2건 발견
+  - 대상 파일: `vocabulary/result/[sessionId]/page.tsx:22` vs `sprint/vocabulary/result/[sessionId]/page.tsx:99,106`
+  - 현재(차이 1 — 문항별 정답/오답 배지): 일반 버전은 Tailwind 기본 클래스 `bg-emerald-50 text-emerald-600`/`bg-red-50 text-red-500` 사용(`:22`), SPRINT 버전은 커스텀 hex `bg-[#E3F7EF] text-[#12815F]`/`bg-[#FDEAE6] text-[#E15B45]` 사용(`:99`) — 육안으로는 거의 동일해 보이나 실제 값이 다름
+  - 현재(차이 2 — "내 답안" 텍스트 색): 일반 버전은 `text-[#12815F]`/`text-[#D95D48]`(`:22`), SPRINT 버전은 `text-[#12815F]`/`text-[#E15B45]`(`:106`) — 정답 쪽은 동일하나 오답 쪽 hex가 `#D95D48` vs `#E15B45`로 다름
+  - 목표 역할: 두 값 다 "오답 semantic"이라는 역할은 동일하므로 강제 통일하지 않고 각 화면의 기존 값을 유지 — 단, 이번 조사로 발견된 사실이므로 향후 혼란 방지를 위해 `vocab-wrong` 토큰 표에 두 값 다 명시적으로 등재해둔다(디자인시스템 문서 8절 `vocab-wrong` 행에 `#D95D48`은 있으나 `#E15B45`와의 파일별 구분은 없었음)
+  - 변경 가능한 className: 없음(항목별 개별 판단 — 일괄 치환 금지 원칙에 따라 두 값 유지)
+  - 유지할 semantic 색상: 두 값 모두 "오답" 역할이므로 유지
+  - 검증: 두 result 페이지를 나란히 열어 오답 카드 텍스트 색조 차이가 육안으로 식별되는지 확인(식별 안 되면 통일 우선순위 낮음, 식별되면 향후 통일 후보로 재논의)
+
+- [ ] 오늘도 해냄 보라색 이탈 발견 — `#9EA9FF`, `#6478FF`
+  - 대상 파일: `vocabulary/result/[sessionId]/page.tsx:20`(스코어 카드 상단 라벨 `text-[#9EA9FF]`), `:21`(오답노트 보기 버튼 `text-[#6478FF]`), `sprint/vocabulary/result/[sessionId]/page.tsx:62,73`(동일 위치, 동일 값)
+  - 현재: `#9EA9FF`(다크 카드 위 보라빛 라벨 텍스트), `#6478FF`(흰 배경 카드 위 버튼 텍스트) — 두 값 다 영단어 서브 팔레트 문서(디자인시스템 8절)에 없는 신규 발견값. 오늘도 해냄 `today-purple-*` 클러스터(`#635BFF`/`#6D73FF`/`#6366F1`/`#8B5CF6`)와 색상이 근접하지만 정확히 일치하는 값은 없음
+  - 목표 역할: 이 두 값은 오늘도 해냄 보라색이 영단어 화면에 "새어 들어온" 것이 아니라, 두 영단어 화면(`vocabulary`/`sprint/vocabulary`) 모두에서 동일하게 쓰이는 **영단어 전용 보조 강조색**으로 판단됨(양쪽에 대칭적으로 존재하고 SPRINT 파랑과도 다름) — 새 토큰 `vocab-accent-purple`로 별도 인정하고 유지, `today-purple-*`로도 `sprint-*`로도 흡수하지 않음
+  - 변경 가능한 className: `text-[#9EA9FF]` → `text-vocab-accent-purple`, `text-[#6478FF]` → `text-vocab-accent-purple-strong`(값 유지, 이름만 부여 후보)
+  - 유지할 semantic 색상: 해당 없음(브랜드 보조색)
+  - 검증: `grep -rn "#9EA9FF\|#6478FF" frontend/app/student` 결과가 영단어 4개 파일 밖(예: SPRINT 일반 화면이나 오늘도 해냄 대시보드)에 나타나지 않는지 확인 — 나타나면 진짜 오염이므로 재분류 필요
+
 ### Phase 5 — 정리 및 검수
 중복 className 정리, 사용하지 않는 스타일 확인, viewport별 시각 검수, 기능 회귀 테스트.
 
@@ -295,6 +494,32 @@ SPRINT 홈, 내 정보, 인증, 기록, 진도, 공부시간, 플래너, 착석,
   - 유지: `error`/`assignments` 등 상태 판정 로직
   - 검증: 치환 전후 렌더링 결과(텍스트, 색상)가 동일한지 스냅샷 비교
 ```
+
+#### Color and Visual Token Pass
+
+**경고: 이 단계에서는 대규모 색상 재설계를 금지한다.** Phase 5는 Phase 1~4에서 이미 정리된 토큰이 실제로 지켜졌는지 확인하는 감사(audit) 단계이며, 여기서 새로운 색상 결정을 내리거나 값을 일괄 통일하지 않는다. 아래는 조사/검색 계획만 작성한다.
+
+- [ ] 남은 임의 hex 전수 검색
+  - 방법: `grep -rn "bg-\[#\|text-\[#\|ring-\[#\|border-\[#" frontend/app/student` 로 학생 화면 전체의 임의값 클래스를 전수 나열
+  - 목적: Phase 1~4에서 다루지 않은 파일(예: `sprint/coming-soon.tsx`, `textbooks/textbook-checklist-page.tsx`, `vocabulary/wrong-notes/page.tsx`, `sprint/vocabulary/wrong-notes/page.tsx`)에 이번 Pass에서 놓친 브랜드색이 없는지 확인
+  - 판단 기준: 새로 나온 hex가 `StudentUIDesignSystem.md` 5~8절 토큰 표에 이미 있는 값이면 통과, 없는 신규 값이면 개별 항목으로 재조사(일괄 처리 금지)
+
+- [ ] 브랜드 간 색상 오염 교차 확인
+  - 방법 1(오늘도 해냄 파일에 SPRINT 블루 오염 여부): `grep -rln "#2874E8\|#EAF5FF\|#10213D\|#2E8AEA\|#2E74E8\|#145FDB" frontend/app/student/{page.tsx,today,curriculum,tracker,my-progress,subjects,textbooks,units,lessons,lectures}` 형태로 오늘도 해냄 경로(그룹 A·B·C)만 지정해서 SPRINT 파랑 계열이 나오는지 확인
+  - 방법 2(SPRINT 파일에 오늘도 해냄 퍼플 오염 여부): `grep -rln "#635BFF\|#6D73FF\|#6366F1\|#8B5CF6\|#5C63FF" frontend/app/student/sprint` 로 SPRINT 경로 전체(모의고사·영단어 제외 여부는 별도 판단, `/sprint/vocabulary/**`는 영단어 서브팔레트 예외이므로 결과 해석 시 감안)에서 오늘도 해냄 보라색이 나오는지 확인
+  - 판단 기준: 두 grep 모두 0건이어야 정상. 단 `/student/sprint/vocabulary/**`는 영단어 서브팔레트(`#17213B`/`#45D3A2`/`#19A879`/`#9EA9FF`/`#6478FF`/`#65E6BA`)가 정상적으로 존재하므로 오염으로 오판하지 않는다(Phase 4 참고)
+
+- [ ] 토큰 표 밖 신규 색상 확인(diff 기반)
+  - 방법: Phase 1~4 실제 적용 커밋이 생기면 `git diff --stat`으로 변경 파일을 확인한 뒤, 각 변경 파일에서 `git diff | grep -oE "#[0-9A-Fa-f]{6}"` 로 diff에 새로 등장한 hex만 추출
+  - 판단 기준: 추출된 hex가 `StudentUIDesignSystem.md` 5~8절 토큰 표(중립/오늘도 해냄/SPRINT/semantic/영단어)에 전부 포함되는지 확인. 표에 없는 값이 diff에 등장하면 "새 색상 추측 도입"으로 간주하고 되돌린다
+
+- [ ] 중복값(육안 구분 불가 근접 hex) 정리 방법
+  - 방법: 이미 확정된 사례(`#10213D` vs 사용 안 하는 `#10233F`)처럼, 6자리 hex를 RGB로 분해해 각 채널 차이가 5 이하인 값 쌍을 찾는 스크립트(`grep -oE "#[0-9A-Fa-f]{6}" frontend/app/student -r | sort -u`로 유니크 hex 목록을 뽑은 뒤 수작업 또는 스크립트로 채널 거리 비교) 실행을 계획만 해둔다
+  - 판단 기준: 채널 거리가 작더라도 이번 Pass에서 이미 "역할이 분화되어 있다"고 판단한 값(예: `#635BFF` vs `#6D73FF`, `#2874E8` vs `#2E74E8`)은 통합 대상에서 제외 — 진짜 오탈자성 근접값(예: 같은 위치에서 실수로 다른 값이 들어간 경우)만 통일 후보로 남긴다
+  - 이번 Pass에서 이미 발견한 근접쌍 목록(참고용, Phase 5에서 재확인만): `#635BFF`/`#6D73FF`(오늘도 해냄), `#2874E8`/`#2E74E8`/`#2E8AEA`/`#2E7BEA`/`#145FDB`(SPRINT), `#12815F`(오답/정답 텍스트, 파일 간 오답 쪽만 `#D95D48` vs `#E15B45`로 다름 — Phase 4 참고), `#45D3A2`/`#65E6BA`(영단어)
+
+- [ ] Phase 5 완료 조건
+  - 위 4개 grep/diff 절차를 실제로 실행해서 결과를 기록하는 것까지가 Phase 5의 색상 작업 범위이며, 그 결과로 발견된 개별 항목의 실제 값 변경은 각 항목이 속한 Phase(1~4)로 되돌려보내 개별 판단한다. Phase 5 자체에서 색상 값을 확정하거나 일괄 치환하지 않는다
 
 ## 18. 단계별 변경 파일
 

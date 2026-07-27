@@ -35,7 +35,7 @@ type CurriculumListItem = {
 };
 
 const SUBJECT_STYLES: { bg: string; text: string; icon: string }[] = [
-  { bg: "bg-[#EEF2FF]", text: "text-[#5C5FFF]", icon: "🧮" },
+  { bg: "bg-[#EEF2FF]", text: "text-[#635BFF]", icon: "🧮" },
   { bg: "bg-[#EFF6FF]", text: "text-[#2563EB]", icon: "Aa" },
   { bg: "bg-[#F5F3FF]", text: "text-[#7C3AED]", icon: "📖" },
   { bg: "bg-[#FFF7ED]", text: "text-[#EA580C]", icon: "🔬" },
@@ -176,7 +176,7 @@ function SubjectCard({
 function NodeDetailPanel({ node, onClose }: { node: CurriculumNodeData; onClose: () => void }) {
   const style = STATUS_STYLES[node.status];
   return (
-    <div className="fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-[430px] px-5 pb-28">
+    <div className="fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-[430px] px-5 pb-28 md:max-w-[760px] lg:max-w-[1180px]">
       <div className="rounded-[24px] border border-[#EEF2FF] bg-white p-5 shadow-[0_-8px_30px_rgba(15,23,42,0.12)]">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
@@ -309,7 +309,7 @@ export default function StudentCurriculumPage() {
           <button
             className={cn(
               "flex items-center justify-center gap-1.5 rounded-2xl py-2.5 text-sm font-black transition",
-              filter === option.value ? "bg-[#EEF2FF] text-[#4F46E5]" : "text-[#98A2B3] hover:bg-[#F8FAFC]",
+              filter === option.value ? "bg-[#EEF2FF] text-[#635BFF]" : "text-[#98A2B3] hover:bg-[#F8FAFC]",
             )}
             key={option.value}
             onClick={() => setFilter(option.value)}

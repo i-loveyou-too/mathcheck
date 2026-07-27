@@ -264,7 +264,7 @@ export default function StudentSprintWorksheetDetailPage() {
             <div className="mt-4">
               <p className="break-keep text-xs font-black text-[#6E7F99]">{method === "pdf" ? "제출한 PDF" : "제출한 사진"}</p>
               {method === "images" ? (
-                <div className="mt-2 grid grid-cols-3 gap-2">
+                <div className="mt-2 grid grid-cols-3 gap-2 md:grid-cols-4 lg:grid-cols-6">
                   {submission!.files.map((file) => (
                     <div key={file.id} className="relative aspect-square overflow-hidden rounded-2xl bg-[#F5F8FC]">
                       <img src={fileUrl(file.id)} alt="풀이 사진" className="h-full w-full object-cover" />
@@ -291,7 +291,7 @@ export default function StudentSprintWorksheetDetailPage() {
             <div className="mt-4">
               <p className="break-keep text-xs font-black text-[#6E7F99]">사진으로 제출 ({uploadedCount + pendingImages.length}/{MAX_IMAGES})</p>
               {previewUrls.length > 0 && (
-                <div className="mt-2 grid grid-cols-3 gap-2">
+                <div className="mt-2 grid grid-cols-3 gap-2 md:grid-cols-4 lg:grid-cols-6">
                   {previewUrls.map((url, index) => (
                     <div key={url} className="relative aspect-square overflow-hidden rounded-2xl bg-[#F5F8FC]">
                       <img src={url} alt="선택한 사진" className="h-full w-full object-cover" />

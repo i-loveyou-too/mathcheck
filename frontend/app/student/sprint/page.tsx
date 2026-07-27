@@ -159,7 +159,7 @@ function EmptyState({ data }: { data: Dashboard }) {
   const desc = data.empty_state === "upcoming_only" && data.upcoming ? `${data.upcoming.start_date}에 ${data.upcoming.title}가 시작됩니다.` : "관리자가 SPRINT를 배정하면 이곳에서 현황을 볼 수 있어요.";
   return (
     <div className="rounded-[28px] bg-white/90 p-7 text-center shadow-[0_14px_34px_rgba(58,96,140,0.12)] ring-1 ring-[#DCEBFA]">
-      <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[#EAF5FF] text-[#2E7BEA]"><Icon name="target" /></div>
+      <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[#EAF5FF] text-[#2874E8]"><Icon name="target" /></div>
       <h2 className="text-xl font-black text-[#10213D]">{title}</h2>
       <p className="mt-2 text-sm font-semibold leading-6 text-[#6E7F99]">{desc}</p>
     </div>
@@ -174,7 +174,7 @@ function ProofCard({ title, icon, proof }: { title: string; icon: "seat" | "plan
   const card = (
     <div className="h-full min-w-0 rounded-[22px] bg-white/95 p-5 shadow-[0_12px_28px_rgba(71,104,143,0.14)] ring-1 ring-[#DFEAF6]">
       <div className="flex items-start gap-4">
-        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#EAF5FF] text-[#2E8AEA]"><Icon name={icon} /></div>
+        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#EAF5FF] text-[#2874E8]"><Icon name={icon} /></div>
         <div className="min-w-0 flex-1">
           <p className="break-keep font-black text-[#10213D]">{title}</p>
           <p className="mt-1 break-keep text-sm font-semibold text-[#40516D]">{proof?.deadline_time ? `${proof.deadline_time}까지` : unavailable ? "기능 준비 중" : "마감 없음"}</p>
@@ -227,7 +227,7 @@ export default function StudentSprintPage() {
       <div className="-mx-5 -mt-7 min-h-screen bg-[radial-gradient(circle_at_50%_-5%,#D9F6FF_0,#EEF9FF_34%,#F8FBFF_68%)] px-5 pb-10 pt-9">
         <header className="mb-7 flex flex-col gap-4 min-[430px]:flex-row min-[430px]:items-start min-[430px]:justify-between">
           <div className="min-w-0">
-            <h1 className="text-[3.2rem] font-black leading-none tracking-[-0.08em] text-[#2E74E8] drop-shadow-[0_8px_16px_rgba(47,116,232,0.18)]">SPRINT</h1>
+            <h1 className="text-[3.2rem] font-black leading-none tracking-[-0.08em] text-[#2874E8] drop-shadow-[0_8px_16px_rgba(40,116,232,0.18)]">SPRINT</h1>
             <p className="mt-2 break-keep text-lg font-bold tracking-[-0.04em] text-[#244A80]">오늘의 기록이 목표를 완성해요</p>
           </div>
           <div className="flex shrink-0 items-center justify-between gap-3 min-[430px]:flex-col min-[430px]:items-end">
@@ -235,7 +235,7 @@ export default function StudentSprintPage() {
               <Icon name="bell" />
               <span className="absolute right-0 top-0 h-3 w-3 rounded-full bg-[#F25E72]" />
             </div>
-            <Link href="/student" className="order-1 whitespace-nowrap break-keep rounded-full bg-white px-4 py-3 text-sm font-black text-[#285EB8] shadow-[0_8px_20px_rgba(60,94,140,0.18)] min-[430px]:order-none">↔ 오늘도 해냄으로 전환</Link>
+            <Link href="/student" className="order-1 whitespace-nowrap break-keep rounded-full bg-white px-4 py-3 text-sm font-black text-[#2874E8] shadow-[0_8px_20px_rgba(60,94,140,0.18)] min-[430px]:order-none">↔ 오늘도 해냄으로 전환</Link>
           </div>
         </header>
 
@@ -246,17 +246,17 @@ export default function StudentSprintPage() {
         ) : (
           <>
             <section className="relative mb-8 overflow-hidden rounded-[24px] bg-white/95 p-5 shadow-[0_18px_36px_rgba(49,89,130,0.18)] ring-1 ring-[#DCEBFA]">
-              <div className="grid grid-cols-1 gap-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-[1.2fr_1fr_1fr] md:items-end">
                 <div>
-                  <p className="text-3xl font-black tracking-[-0.05em] text-[#2E74E8] break-keep">DAY {program.day_info.day_number || "-"}</p>
+                  <p className="text-3xl font-black tracking-[-0.05em] text-[#2874E8] break-keep">DAY {program.day_info.day_number || "-"}</p>
                   <p className="mt-2 text-lg font-bold text-[#183050] break-keep">{program.day_info.status === "scheduled" ? `시작까지 ${program.day_info.days_remaining}일` : program.day_info.status === "completed" ? "SPRINT 종료" : `종료까지 ${program.day_info.days_remaining}일 남았어요!`}</p>
                 </div>
-                <div className="border-t border-[#E3EDF8] pt-4">
+                <div className="border-t border-[#E3EDF8] pt-4 md:border-l md:border-t-0 md:pl-4 md:pt-0">
                   <p className="text-sm font-bold text-[#29415F] break-keep">전체 진행률</p>
                   <p className="mt-3 text-2xl font-black text-[#10213D]">{progress === null ? "-" : `${progress}%`}</p>
                   <div className="mt-3 h-2 rounded-full bg-[#DDE4EF]"><div className="h-full rounded-full bg-[#2874E8]" style={{ width: `${progress ?? 0}%` }} /></div>
                 </div>
-                <div>
+                <div className="md:border-l md:border-[#E3EDF8] md:pl-4">
                   <p className="text-sm font-bold text-[#29415F] break-keep">스트라이크</p>
                   <p className="mt-3 text-2xl font-black text-[#10213D]">{data.strike_summary?.effective ?? 0} / {data.strike_summary?.threshold ?? "-"}</p>
                   <div className="mt-3 grid grid-cols-3 gap-1.5">
@@ -275,12 +275,12 @@ export default function StudentSprintPage() {
 
             <section className="mb-8">
               <SectionHeader title="오늘의 인증" href="/student/sprint/proofs" />
-              <div className="grid grid-cols-1 gap-3">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                 <ProofCard title="착석 인증" icon="seat" proof={data.proof_summaries?.seat_check} />
                 <ProofCard title="플래너 인증" icon="planner" proof={data.proof_summaries?.planner} />
                 <Link href="/student/sprint/study-time" className="min-w-0 rounded-[22px] bg-white/95 p-5 shadow-[0_12px_28px_rgba(71,104,143,0.14)] ring-1 ring-[#DFEAF6]">
                   <div className="flex items-start gap-4">
-                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#EAF5FF] text-[#2E8AEA]"><Icon name="timer" /></div>
+                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#EAF5FF] text-[#2874E8]"><Icon name="timer" /></div>
                     <div className="min-w-0 flex-1"><p className="break-keep font-black text-[#10213D]">공부시간</p><p className="mt-1 break-keep text-sm font-semibold text-[#40516D]">목표 {studyGoal ? minutesText(studyGoal) : "미설정"}</p></div>
                   </div>
                   <div className="my-4 h-px bg-[#E9F0F8]" />
@@ -293,12 +293,12 @@ export default function StudentSprintPage() {
 
             <section className="mb-8">
               <SectionHeader title="오늘의 학습" href="/student/sprint/vocabulary" />
-              <div className="grid grid-cols-1 gap-3 min-[520px]:grid-cols-2 min-[520px]:gap-4">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-4">
                 {vocabulary?.available ? (
                   <Link href={sprintVocabularyPath} className="min-w-0 rounded-[22px] bg-white/95 p-5 shadow-[0_12px_28px_rgba(71,104,143,0.14)] ring-1 ring-[#DFEAF6]">
                     <div className="flex items-center justify-between gap-3">
-                      <div className="flex min-w-0 flex-1 items-center gap-4"><div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#EAF5FF] text-[#2E8AEA]"><Icon name="book" /></div><div className="min-w-0 flex-1"><p className="break-keep font-black text-[#10213D]">영단어 챌린지</p><p className="mt-1 break-keep text-sm font-semibold text-[#40516D]">DAY {vocabulary.day_number} · {vocabulary.question_count ?? "-"}문항</p></div></div>
-                      {vocabulary.latest_score !== null && vocabulary.latest_score !== undefined ? <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full border-[7px] border-[#2E7BEA] text-lg font-black text-[#2874E8]">{vocabulary.latest_score}점</div> : null}
+                      <div className="flex min-w-0 flex-1 items-center gap-4"><div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#EAF5FF] text-[#2874E8]"><Icon name="book" /></div><div className="min-w-0 flex-1"><p className="break-keep font-black text-[#10213D]">영단어 챌린지</p><p className="mt-1 break-keep text-sm font-semibold text-[#40516D]">DAY {vocabulary.day_number} · {vocabulary.question_count ?? "-"}문항</p></div></div>
+                      {vocabulary.latest_score !== null && vocabulary.latest_score !== undefined ? <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full border-[7px] border-[#2874E8] text-lg font-black text-[#2874E8]">{vocabulary.latest_score}점</div> : null}
                     </div>
                     <div className="mt-5 break-keep rounded-2xl bg-[#2874E8] px-4 py-3 text-center font-black text-white">{vocabulary.status === "draft" ? "이어하기" : vocabulary.status === "submitted" ? "결과 보기" : "시험 시작"}</div>
                   </Link>
@@ -310,14 +310,14 @@ export default function StudentSprintPage() {
                   if (!progress?.available || progress.total === 0) {
                     return (
                       <div className="min-w-0 rounded-[22px] bg-white/80 p-5 shadow-[0_12px_28px_rgba(71,104,143,0.10)] ring-1 ring-[#DFEAF6]">
-                        <div className="flex min-w-0 items-center gap-4"><div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#EAF5FF] text-[#2E8AEA]"><Icon name="goals" /></div><div className="min-w-0 flex-1"><p className="break-keep font-black text-[#10213D]">SPRINT 진도표</p><p className="mt-1 break-keep text-sm font-semibold text-[#8CA0BD]">등록된 목표가 없습니다</p></div></div>
+                        <div className="flex min-w-0 items-center gap-4"><div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#EAF5FF] text-[#2874E8]"><Icon name="goals" /></div><div className="min-w-0 flex-1"><p className="break-keep font-black text-[#10213D]">SPRINT 진도표</p><p className="mt-1 break-keep text-sm font-semibold text-[#8CA0BD]">등록된 목표가 없습니다</p></div></div>
                         <p className="mt-3 break-keep text-xs font-semibold text-[#8CA0BD]">관리자가 목표를 등록하면 여기에 표시됩니다.</p>
                       </div>
                     );
                   }
                   return (
                     <Link href="/student/sprint/progress" className="min-w-0 rounded-[22px] bg-white/95 p-5 shadow-[0_12px_28px_rgba(71,104,143,0.14)] ring-1 ring-[#DFEAF6]">
-                      <div className="flex min-w-0 items-center gap-4"><div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#EAF5FF] text-[#2E8AEA]"><Icon name="goals" /></div><div className="min-w-0 flex-1"><p className="break-keep font-black text-[#10213D]">SPRINT 진도표</p><p className="mt-1 break-keep text-sm font-semibold text-[#8CA0BD]">{progress.completed} / {progress.total} 완료 · {progress.completion_rate}%</p></div></div>
+                      <div className="flex min-w-0 items-center gap-4"><div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#EAF5FF] text-[#2874E8]"><Icon name="goals" /></div><div className="min-w-0 flex-1"><p className="break-keep font-black text-[#10213D]">SPRINT 진도표</p><p className="mt-1 break-keep text-sm font-semibold text-[#8CA0BD]">{progress.completed} / {progress.total} 완료 · {progress.completion_rate}%</p></div></div>
                       {progress.next_goal && (
                         <p className="mt-3 truncate break-keep text-xs font-bold text-[#2874E8]">다음 목표: {progress.next_goal.title} · {progress.next_goal.target_date}까지</p>
                       )}
@@ -335,7 +335,7 @@ export default function StudentSprintPage() {
                 if (!worksheet?.available || worksheet.assigned_count === 0) {
                   return (
                     <div className="min-w-0 rounded-[22px] bg-white/85 p-5 shadow-[0_12px_28px_rgba(71,104,143,0.12)] ring-1 ring-[#DFEAF6]">
-                      <div className="flex min-w-0 items-center gap-4"><div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-[#EAF5FF] text-[#2E8AEA]"><Icon name="doc" /></div><div className="min-w-0 flex-1"><p className="break-keep text-sm font-black text-[#2874E8]">배정 없음</p><p className="mt-1 break-keep text-lg font-black text-[#10213D]">배정된 문제지가 아직 없어요.</p></div></div>
+                      <div className="flex min-w-0 items-center gap-4"><div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-[#EAF5FF] text-[#2874E8]"><Icon name="doc" /></div><div className="min-w-0 flex-1"><p className="break-keep text-sm font-black text-[#2874E8]">배정 없음</p><p className="mt-1 break-keep text-lg font-black text-[#10213D]">배정된 문제지가 아직 없어요.</p></div></div>
                     </div>
                   );
                 }
@@ -343,7 +343,7 @@ export default function StudentSprintPage() {
                 return (
                   <Link href={worksheet.path} className="block min-w-0 rounded-[22px] bg-white/95 p-5 shadow-[0_12px_28px_rgba(71,104,143,0.14)] ring-1 ring-[#DFEAF6]">
                     <div className="flex min-w-0 items-center gap-4">
-                      <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-[#EAF5FF] text-[#2E8AEA]"><Icon name="doc" /></div>
+                      <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-[#EAF5FF] text-[#2874E8]"><Icon name="doc" /></div>
                       <div className="min-w-0 flex-1">
                         <p className="break-keep text-sm font-black text-[#2874E8]">배정 {worksheet.assigned_count}건</p>
                         <p className="mt-1 break-keep text-lg font-black text-[#10213D]">{cta}</p>
@@ -366,7 +366,7 @@ export default function StudentSprintPage() {
                   ["영단어 평균", weekly?.vocabulary_average_score === null || weekly?.vocabulary_average_score === undefined ? "-" : `${weekly.vocabulary_average_score}점`, "book"],
                 ].map(([label, value, icon]) => (
                   <div key={label} className="border-b border-r border-[#DFEAF6] p-4 text-center last:border-r-0 sm:border-b-0">
-                    <div className="mx-auto mb-2 flex h-9 w-9 items-center justify-center text-[#2E8AEA]"><Icon name={icon as "clock"} /></div>
+                    <div className="mx-auto mb-2 flex h-9 w-9 items-center justify-center text-[#2874E8]"><Icon name={icon as "clock"} /></div>
                     <p className="break-keep text-xs font-bold text-[#29415F]">{label}</p>
                     <p className="mt-2 break-keep text-xl font-black text-[#10213D]">{value}</p>
                   </div>

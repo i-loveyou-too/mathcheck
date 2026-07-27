@@ -269,7 +269,7 @@ export function TextbookChecklistPage({
 
       <section className="rounded-3xl bg-white p-5 shadow-card">
         <h2 className="text-base font-bold text-indigo-500">진도 요약</h2>
-        <div className="mt-3 grid grid-cols-2 gap-3">
+        <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
           <div className="rounded-2xl bg-[#EEF2FF] p-4">
             <p className="text-xl leading-none">📋</p>
             <p className="mt-2 text-xs font-semibold text-indigo-400">전체</p>
@@ -304,7 +304,7 @@ export function TextbookChecklistPage({
           <p className="text-sm font-semibold text-gray-400">표시할 문제가 없습니다.</p>
         ) : null}
 
-        <div className="space-y-3">
+        <div className="space-y-3 md:grid md:grid-cols-2 md:gap-3 md:space-y-0 lg:grid-cols-3">
           {visibleItems.map((item) => {
             const selectedStatus = item.status;
 

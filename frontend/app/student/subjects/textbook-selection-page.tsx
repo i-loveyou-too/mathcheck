@@ -206,7 +206,7 @@ export function TextbookSelectionPage({
             {loadError}
           </div>
         ) : deepLearningBooks.length > 0 ? (
-          <div className="space-y-3">
+          <div className="space-y-3 md:grid md:grid-cols-2 md:gap-3 md:space-y-0 lg:grid-cols-3">
             {deepLearningBooks.map((book) => (
               <TextbookCardItem
                 done={book.done}

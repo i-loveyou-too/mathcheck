@@ -142,7 +142,7 @@ export default function UnitChecklistPage() {
       {/* Task checklist */}
       <div>
         <h2 className="mb-4 text-lg font-bold text-gray-900">학습 체크리스트</h2>
-        <div className="space-y-3">
+        <div className="space-y-3 md:grid md:grid-cols-2 md:gap-3 md:space-y-0 lg:grid-cols-2">
           {tasks.map((task) => (
             <TaskCheckbox
               checked={task.is_done}

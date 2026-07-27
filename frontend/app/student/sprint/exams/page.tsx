@@ -96,10 +96,10 @@ export default function StudentSprintExamAssignmentsPage() {
 
         {error && <p className="mt-5 break-keep rounded-2xl bg-red-50 px-4 py-3 text-sm font-bold text-red-600">{error}</p>}
 
-        <div className="mt-6 space-y-3">
-          {assignments === null && !error && <p className="py-12 text-center text-sm font-bold text-[#8CA0BD]">배정된 시험을 불러오는 중...</p>}
+        <div className="mt-6 space-y-3 md:grid md:grid-cols-2 md:gap-3 md:space-y-0 lg:gap-4">
+          {assignments === null && !error && <p className="py-12 text-center text-sm font-bold text-[#8CA0BD] md:col-span-2">배정된 시험을 불러오는 중...</p>}
           {assignments?.length === 0 && (
-            <section className="rounded-[28px] bg-white/90 p-8 text-center shadow-[0_18px_36px_rgba(49,89,130,0.14)] ring-1 ring-[#DCEBFA]">
+            <section className="rounded-[28px] bg-white/90 p-8 text-center shadow-[0_18px_36px_rgba(49,89,130,0.14)] ring-1 ring-[#DCEBFA] md:col-span-2">
               <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-[#EAF5FF] text-2xl font-black text-[#2874E8]">OMR</div>
               <h2 className="mt-5 break-keep text-xl font-black text-[#10213D]">배정된 모의고사가 없습니다.</h2>
               <p className="mt-2 break-keep text-sm font-semibold leading-6 text-[#6E7F99]">관리자가 시험을 배정하면 이곳에서 응시할 수 있습니다.</p>
@@ -112,7 +112,7 @@ export default function StudentSprintExamAssignmentsPage() {
               <Link
                 key={assignment.id}
                 href={`/student/sprint/exams/${assignment.id}`}
-                className="block rounded-[24px] bg-white/95 p-5 shadow-[0_14px_32px_rgba(71,104,143,0.14)] ring-1 ring-[#DFEAF6]"
+                className="block h-full rounded-[24px] bg-white/95 p-5 shadow-[0_14px_32px_rgba(71,104,143,0.14)] ring-1 ring-[#DFEAF6]"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -123,7 +123,7 @@ export default function StudentSprintExamAssignmentsPage() {
                   </div>
                   <span className={`shrink-0 break-keep rounded-full px-3 py-1.5 text-xs font-black ${statusTone(latest?.status ?? assignment.computed_status)}`}>{badge}</span>
                 </div>
-                <div className="mt-4 grid grid-cols-2 gap-2 text-xs font-bold text-[#6E7F99]">
+                <div className="mt-4 grid grid-cols-1 gap-2 text-xs font-bold text-[#6E7F99] sm:grid-cols-2">
                   <div className="rounded-2xl bg-[#F6FAFF] px-3 py-2">시작 {formatDateTime(assignment.available_from)}</div>
                   <div className="rounded-2xl bg-[#F6FAFF] px-3 py-2">마감 {formatDateTime(assignment.due_at)}</div>
                 </div>

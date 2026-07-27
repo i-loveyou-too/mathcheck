@@ -290,12 +290,12 @@ export default function StudentDashboardPage() {
       </div>
 
       <section className="relative overflow-hidden rounded-[30px] bg-[#121C3D] px-5 py-4 text-white shadow-[0_22px_52px_rgba(15,23,42,0.24)]">
-        <div className="pointer-events-none absolute -right-10 top-8 h-32 w-32 rounded-full bg-[#776BFF]/18 blur-3xl" />
+        <div className="pointer-events-none absolute -right-10 top-8 h-32 w-32 rounded-full bg-[#635BFF]/18 blur-3xl" />
 
         <div className="relative flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-sm font-semibold text-white/90">
-              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#6E73FF] text-sm">
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#635BFF] text-sm">
                 ✓
               </span>
               <span>오늘 할 일</span>
@@ -306,7 +306,7 @@ export default function StudentDashboardPage() {
                 "불러오는 중..."
               ) : todayTasks.length > 0 ? (
                 <>
-                  오늘미션 <span className="text-[#9B98FF]">{todayRemaining}개</span> 남았어요
+                  오늘미션 <span className="text-[#C9C6FF]">{todayRemaining}개</span> 남았어요
                 </>
               ) : (
                 "오늘미션이 없어요"
@@ -356,14 +356,14 @@ export default function StudentDashboardPage() {
               </div>
             <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-white/18">
               <div
-                className="h-full rounded-full bg-[linear-gradient(90deg,#6E73FF_0%,#9B87FF_100%)] transition-all duration-500"
+                className="h-full rounded-full bg-[linear-gradient(90deg,#635BFF_0%,#7C71FF_100%)] transition-all duration-500"
                 style={{ width: `${todayTaskSummary.completion_rate}%` }}
               />
             </div>
           </div>
 
           <Link
-            className="inline-flex h-11 items-center justify-center rounded-[20px] bg-[linear-gradient(135deg,#6C73FF_0%,#8D84FF_100%)] px-5 text-[15px] font-black text-white shadow-[0_14px_26px_rgba(110,100,255,0.3)] transition hover:brightness-105"
+            className="inline-flex h-11 items-center justify-center rounded-[20px] bg-[linear-gradient(135deg,#635BFF_0%,#7C71FF_100%)] px-5 text-[15px] font-black text-white shadow-[0_14px_26px_rgba(99,91,255,0.3)] transition hover:brightness-105"
             href="/student/today"
           >
             시작하기 →
@@ -373,12 +373,12 @@ export default function StudentDashboardPage() {
 
       <section className="rounded-[28px] border border-[#EEF2FF] bg-white px-6 py-5 shadow-card">
         <div className="flex items-center gap-4">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#EEF2FF] text-lg text-[#6D72FF]">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#EEF2FF] text-lg text-[#635BFF]">
             📘
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-lg font-black text-[#17213B]">9월 모의고사 {ddayInfo.label}</p>
-            <p className="mt-1 text-sm font-semibold text-[#7B88F8]">2026년 9월 2일 시행</p>
+            <p className="mt-1 text-sm font-semibold text-[#635BFF]">2026년 9월 2일 시행</p>
           </div>
         </div>
 
@@ -445,7 +445,7 @@ export default function StudentDashboardPage() {
           )}
         </div>
 
-        <div className="space-y-3">
+        <div className="space-y-3 md:grid md:grid-cols-2 md:gap-3 md:space-y-0 lg:grid-cols-2">
           {subjectCards.map((subject) => (
             <Link
               className="block rounded-3xl bg-white p-5 shadow-card transition hover:-translate-y-0.5"

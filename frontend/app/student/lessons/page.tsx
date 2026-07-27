@@ -43,7 +43,7 @@ export default function StudentLessonsPage() {
     <ScreenShell withBottomNav>
       <div className="flex items-center justify-between pt-2">
         <div><p className="text-sm font-black tracking-[0.15em] text-[#0E9F6E]">LESSONS</p><h1 className="mt-0.5 text-[1.8rem] font-black text-[#17213B]">수업 일정</h1></div>
-        <Link href="/student" className="rounded-full bg-white px-3 py-2 text-xs font-black text-[#5C63FF] shadow-sm">← 홈</Link>
+        <Link href="/student" className="rounded-full bg-white px-3 py-2 text-xs font-black text-[#635BFF] shadow-sm">← 홈</Link>
       </div>
 
       {/* 다음 수업 */}
@@ -74,7 +74,7 @@ export default function StudentLessonsPage() {
         {upcoming.length === 0 ? (
           <div className="rounded-[20px] bg-white p-6 text-center text-sm font-bold text-[#98A2B3] shadow-card">표시할 수업이 없어요.</div>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-2 md:grid md:grid-cols-2 md:gap-3 md:space-y-0 lg:grid-cols-2">
             {upcoming.map((ev, i) => (
               <div key={`${ev.event_date}-${ev.id ?? i}`} className={`flex items-center gap-3 rounded-[18px] bg-white px-4 py-3 shadow-sm ${ev.status === "cancelled" ? "opacity-60" : ""}`}>
                 <div className="flex h-11 w-11 shrink-0 flex-col items-center justify-center rounded-2xl bg-[#F0F5F2] text-[#0E9F6E]">

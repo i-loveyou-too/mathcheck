@@ -60,11 +60,11 @@ export default function SprintVocabularyWrongNotesPage() {
         <div className="mt-4 grid grid-cols-3 rounded-2xl bg-white p-1 shadow-sm">
           {([["all", "전체"], ["unresolved", "미해결"], ["mastered", "익힘 완료"]] as [Filter, string][]).map(([value, label]) => <button key={value} onClick={() => setFilter(value)} className={`rounded-xl py-2.5 text-xs font-black ${filter === value ? "bg-[#17213B] text-white" : "text-[#8A94A8]"}`}>{label}</button>)}
         </div>
-        <div className="mt-4 space-y-3">
+        <div className="mt-4 space-y-3 md:grid md:grid-cols-2 md:gap-3 md:space-y-0">
           {loading && <p className="py-8 text-center text-sm font-bold text-[#98A2B3]">불러오는 중...</p>}
           {!loading && notes.length === 0 && <div className="rounded-[24px] bg-white p-8 text-center"><p className="text-lg font-black text-[#17213B]">해당하는 오답이 없어요.</p><p className="mt-2 text-sm text-[#98A2B3]">깔끔합니다. 이 흐름 그대로 가요.</p></div>}
           {notes.map((note) => (
-            <article key={note.id} className="rounded-[22px] bg-white p-5 shadow-[0_12px_28px_rgba(71,104,143,0.12)] ring-1 ring-[#DFEAF6]">
+            <article key={note.id} className="h-full rounded-[22px] bg-white p-5 shadow-[0_12px_28px_rgba(71,104,143,0.12)] ring-1 ring-[#DFEAF6]">
               <div className="flex items-start justify-between"><div><h2 className="text-xl font-black text-[#17213B]">{note.english}</h2><p className="mt-1 text-sm font-bold text-[#19A879]">{note.accepted_answers.join(" · ")}</p></div><span className={`rounded-full px-2.5 py-1 text-[11px] font-black ${note.status === "mastered" ? "bg-emerald-50 text-emerald-600" : "bg-orange-50 text-orange-600"}`}>{note.status === "mastered" ? "익힘 완료" : "미해결"}</span></div>
               <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 border-t border-[#F0F2F5] pt-3 text-xs text-[#8A94A8]"><span>최근 오답 <b className="text-[#D95D48]">{note.latest_wrong_answer || "빈 답안"}</b></span><span>틀린 횟수 <b>{note.wrong_count}회</b></span><span>{note.latest_wrong_date}</span></div>
             </article>

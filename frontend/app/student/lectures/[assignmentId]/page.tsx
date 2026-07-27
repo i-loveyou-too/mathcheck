@@ -230,7 +230,7 @@ export default function StudentLectureDetailPage() {
         </div>
       </section>
 
-      <section className="flex gap-3">
+      <section className="grid grid-cols-3 gap-3">
         <StatTile icon="✅" label="완료 강의" value={`${detail.completed_lecture_count}강`} />
         <StatTile icon="⏰" label="남은 강의" value={`${detail.remaining_lecture_count}강`} />
         <StatTile icon="📅" label="남은 수강일" value={`${remainingDays}일`} />
@@ -242,7 +242,7 @@ export default function StudentLectureDetailPage() {
         <div className="mb-3 flex items-center justify-between gap-3">
           <h2 className="text-base font-black text-[#17213B]">오늘의 강의</h2>
           {todayTasks.length > 0 ? (
-            <span className="rounded-full bg-[#EEF2FF] px-3 py-1 text-xs font-black text-[#4F46E5]">오늘</span>
+            <span className="rounded-full bg-[#EEF2FF] px-3 py-1 text-xs font-black text-[#635BFF]">오늘</span>
           ) : null}
         </div>
         {todayTasks.length === 0 ? (
@@ -252,7 +252,7 @@ export default function StudentLectureDetailPage() {
             {todayTasks.map((task) => (
               <div key={task.id}>
                 <p className="mb-2 text-xs font-bold text-[#98A1B3]">오늘은 {rangeLabel(task)}</p>
-                <div className="grid grid-cols-1 gap-2">
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                   {task.lecture_items.map((item) => {
                     const key = `${task.id}-${item.lecture_number}`;
                     return (
@@ -279,7 +279,7 @@ export default function StudentLectureDetailPage() {
                             {item.title}
                           </span>
                         </div>
-                        <span className={cn("rounded-full px-2.5 py-1 text-[11px] font-black", item.is_done ? "bg-[#DCFCE7] text-[#16A34A]" : "bg-[#F1F0FF] text-[#6D73FF]")}>
+                        <span className={cn("rounded-full px-2.5 py-1 text-[11px] font-black", item.is_done ? "bg-[#DCFCE7] text-[#16A34A]" : "bg-[#F1F0FF] text-[#635BFF]")}>
                           {item.is_done ? "완료" : "예정"}
                         </span>
                       </button>
@@ -294,7 +294,7 @@ export default function StudentLectureDetailPage() {
 
       <section className="rounded-[28px] border border-[#EEF2FF] bg-white p-5 shadow-card">
         <h2 className="mb-3 text-base font-black text-[#17213B]">전체 수강 일정</h2>
-        <div className="space-y-2">
+        <div className="space-y-2 lg:grid lg:grid-cols-2 lg:gap-3 lg:space-y-0">
           {sortedTasks.map((task) => {
             const isToday = task.task_date === today;
             const isDone = task.status === "done";
@@ -318,12 +318,12 @@ export default function StudentLectureDetailPage() {
                   <div className="min-w-0">
                     <p className={cn("text-sm font-black", isDone ? "text-[#16A34A]" : "text-[#17213B]")}>
                       {formatMonthDay(task.task_date ?? assignment.start_date)}
-                      {isToday ? <span className="ml-2 rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-black text-[#4F46E5]">오늘</span> : null}
+                      {isToday ? <span className="ml-2 rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-black text-[#635BFF]">오늘</span> : null}
                     </p>
                     <p className="mt-0.5 text-xs font-bold text-[#8A94A8]">{rangeLabel(task)}</p>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
-                    <span className={cn("rounded-full px-2.5 py-1 text-[11px] font-black", isDone ? "bg-[#DCFCE7] text-[#16A34A]" : "bg-[#F1F0FF] text-[#6D73FF]")}>
+                    <span className={cn("rounded-full px-2.5 py-1 text-[11px] font-black", isDone ? "bg-[#DCFCE7] text-[#16A34A]" : "bg-[#F1F0FF] text-[#635BFF]")}>
                       {doneCount}/{totalCount} {isDone ? "완료" : "예정"}
                     </span>
                     <span className="text-xs font-black text-[#98A1B3]">{isExpanded ? "▲" : "▼"}</span>
@@ -367,7 +367,7 @@ export default function StudentLectureDetailPage() {
 
       <section className="rounded-[28px] border border-[#EEF2FF] bg-white p-5 shadow-card">
         <h2 className="mb-3 text-base font-black text-[#17213B]">강의 정보</h2>
-        <div className="grid grid-cols-2 gap-3 text-xs">
+        <div className="grid grid-cols-2 gap-3 text-xs md:grid-cols-3">
           <div>
             <p className="font-bold text-[#98A1B3]">📖 전체 강의 수</p>
             <p className="mt-1 text-sm font-black text-[#17213B]">{assignment.total_lectures}강</p>

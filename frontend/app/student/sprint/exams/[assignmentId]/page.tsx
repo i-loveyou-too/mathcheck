@@ -172,7 +172,7 @@ export default function StudentSprintExamAssignmentDetailPage() {
           )}
         </div>
 
-        <div className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom))] left-1/2 z-30 w-full max-w-[430px] -translate-x-1/2 px-5">
+        <div className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom))] left-1/2 z-30 w-full max-w-[430px] -translate-x-1/2 px-5 md:max-w-[760px] lg:max-w-[1180px] lg:px-6">
           {active ? (
             <Link href={`/student/sprint/exams/attempts/${active.id}`} className="block h-14 rounded-[20px] bg-[#2874E8] text-center text-base font-black leading-[3.5rem] text-white shadow-[0_16px_35px_rgba(40,116,232,0.28)]">OMR 이어서 입력</Link>
           ) : latest?.status === "submitted" ? (

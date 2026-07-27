@@ -66,11 +66,11 @@ function NoActiveSprint({ router }: { router: ReturnType<typeof useRouter> }) {
   return (
     <ScreenShell withBottomNav>
       <div className="-mx-5 -mt-7 min-h-screen bg-[radial-gradient(circle_at_50%_-5%,#D9F6FF_0,#EEF9FF_34%,#F8FBFF_68%)] px-5 pb-36 pt-10">
-        <div className="mt-10 rounded-[28px] bg-white/95 p-8 text-center shadow-[0_18px_36px_rgba(49,89,130,0.16)] ring-1 ring-[#DCEBFA]">
+        <div className="mx-auto mt-10 max-w-[640px] rounded-[28px] bg-white/95 p-8 text-center shadow-[0_18px_36px_rgba(49,89,130,0.16)] ring-1 ring-[#DCEBFA]">
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#EAF5FF] text-2xl">🏃</div>
           <h2 className="mt-5 break-keep text-xl font-black text-[#10213D]">참여 중인 SPRINT가 없습니다</h2>
           <p className="mt-2 break-keep text-sm text-[#6E7F99]">활성화된 SPRINT가 있을 때만 인증을 제출할 수 있어요.</p>
-          <div className="mt-6 flex flex-col gap-2">
+          <div className="mt-6 grid gap-2 sm:grid-cols-2">
             <button onClick={() => router.push("/student/sprint")} className="h-12 break-keep rounded-2xl bg-[#2874E8] text-sm font-black text-white">SPRINT 홈으로 돌아가기</button>
             <button onClick={() => router.push("/student")} className="h-12 break-keep rounded-2xl bg-[#EAF5FF] text-sm font-black text-[#2874E8]">오늘도 해냄으로 전환</button>
           </div>
@@ -320,7 +320,7 @@ export function ProofForm({ proofType }: { proofType: ProofType }) {
           </div>
 
           {uploadedCount > 0 && (
-            <div className="mt-3 grid grid-cols-3 gap-2">
+            <div className="mt-3 grid grid-cols-3 gap-2 md:grid-cols-4 lg:grid-cols-6">
               {data!.submission!.images.map((image) => (
                 <div key={image.id} className="relative aspect-square overflow-hidden rounded-2xl">
                   <img src={imageUrl(image.id)} alt="proof" className="h-full w-full object-cover" />
@@ -335,7 +335,7 @@ export function ProofForm({ proofType }: { proofType: ProofType }) {
           {pendingFiles.length > 0 && (
             <div className="mt-3">
               <p className="mb-1.5 break-keep text-xs font-bold text-[#8CA0BD]">업로드 대기 중</p>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-3 gap-2 md:grid-cols-4 lg:grid-cols-6">
                 {previewUrls.map((url, index) => (
                   <div key={url} className="relative aspect-square overflow-hidden rounded-2xl ring-2 ring-[#2874E8]/40">
                     <img src={url} alt="preview" className="h-full w-full object-cover" />
@@ -362,7 +362,7 @@ export function ProofForm({ proofType }: { proofType: ProofType }) {
         {data?.submission && data.submission.attempts.length > 0 && (
           <section className="mt-4 rounded-[28px] bg-white/95 p-5 shadow-[0_12px_28px_rgba(71,104,143,0.14)] ring-1 ring-[#DFEAF6]">
             <h2 className="break-keep text-lg font-black text-[#10213D]">제출 이력</h2>
-            <div className="mt-3 space-y-2">
+            <div className="mt-3 space-y-2 md:grid md:grid-cols-2 md:gap-3 md:space-y-0">
               {data.submission.attempts.slice().reverse().map((attempt) => (
                 <div key={attempt.id} className="flex items-center justify-between gap-2 rounded-xl border border-[#EAF0FA] px-3 py-2">
                   <div className="min-w-0">

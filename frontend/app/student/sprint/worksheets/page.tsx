@@ -79,7 +79,7 @@ export default function StudentSprintWorksheetsPage() {
 
         {error && <p className="mt-4 break-keep rounded-2xl bg-red-50 px-4 py-3 text-sm font-bold text-red-600">{error}</p>}
 
-        <div className="mt-6 space-y-3">
+        <div className="mt-6 space-y-3 md:grid md:grid-cols-2 md:gap-3 md:space-y-0">
           {assignments === null && !error && <p className="break-keep text-center text-sm font-bold text-[#8CA0BD]">불러오는 중...</p>}
           {assignments?.length === 0 && (
             <div className="rounded-[24px] bg-white/85 p-8 text-center shadow-[0_12px_28px_rgba(71,104,143,0.12)] ring-1 ring-[#DFEAF6]">

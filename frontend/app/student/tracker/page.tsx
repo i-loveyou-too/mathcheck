@@ -138,7 +138,7 @@ export default function StudentTrackerPage() {
 
       {/* Hero 카드 */}
       <section
-        className="relative overflow-hidden rounded-[28px] shadow-[0_8px_40px_rgba(130,110,200,0.15)]"
+        className="relative overflow-hidden rounded-[28px] shadow-[0_8px_40px_rgba(130,110,200,0.15)] md:mx-auto md:w-full md:max-w-[760px]"
         style={{
           background: "linear-gradient(120deg, #FFE5D5 0%, #EDE8FF 55%, #D9D0FF 100%)",
         }}
@@ -207,7 +207,7 @@ export default function StudentTrackerPage() {
       </section>
 
       {/* 월간 챌린지 기록 */}
-      <section className="rounded-3xl bg-white p-5 shadow-card">
+      <section className="rounded-3xl bg-white p-5 shadow-card md:mx-auto md:w-full md:max-w-[760px]">
         <div className="flex items-center justify-between gap-3">
           <div>
             <h2 className="text-xl font-black text-[#17213B]">{month}월 챌린지 기록</h2>
@@ -312,7 +312,7 @@ export default function StudentTrackerPage() {
       </section>
 
       {/* 격려 카드 */}
-      <div className="flex items-center gap-4 rounded-3xl bg-gradient-to-r from-orange-50 to-pink-50 p-4">
+      <div className="flex items-center gap-4 rounded-3xl bg-gradient-to-r from-orange-50 to-pink-50 p-4 md:mx-auto md:w-full md:max-w-[760px]">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-orange-100 text-lg">
           🔥
         </div>
