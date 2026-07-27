@@ -172,18 +172,20 @@ export default function StudentSprintExamAttemptPage() {
     const done = submitted;
     return (
       <ScreenShell withBottomNav>
-        <div className="-mx-5 -mt-7 min-h-screen bg-[radial-gradient(circle_at_50%_-5%,#D9F6FF_0,#EEF9FF_34%,#F8FBFF_68%)] px-5 pb-36 pt-10">
-          <section className="mt-16 rounded-[28px] bg-white/95 p-8 text-center shadow-[0_18px_36px_rgba(49,89,130,0.16)] ring-1 ring-[#DCEBFA]">
-            <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full border-4 border-[#18A566] text-4xl font-black text-[#18A566]">✓</div>
-            <h1 className="mt-6 break-keep text-2xl font-black text-[#10213D]">제출이 완료되었습니다.</h1>
-            <p className="mt-2 break-keep text-sm font-bold leading-6 text-[#6E7F99]">채점과 결과 공개가 끝나면 결과 화면에서 확인할 수 있습니다.</p>
-            <div className="mt-6 rounded-2xl bg-[#F6FAFF] p-4 text-left text-sm">
+        <div className="-mx-5 -mt-7 min-h-screen bg-[radial-gradient(circle_at_50%_-5%,#D9F6FF_0,#EEF9FF_34%,#F8FBFF_68%)] px-5 pb-36 pt-10 sm:px-6 lg:px-8">
+          <section className="mx-auto mt-14 max-w-xl rounded-[28px] bg-white/95 p-6 text-center shadow-[0_18px_36px_rgba(49,89,130,0.14)] ring-1 ring-[#DCEBFA] sm:p-8">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#EAF8F1] text-3xl font-black text-[#18A566] ring-1 ring-[#CFEEDD]">✓</div>
+            <h1 className="mt-5 break-keep text-2xl font-black text-[#10213D]">제출이 완료되었습니다.</h1>
+            <p className="mx-auto mt-2 max-w-sm break-keep text-sm font-bold leading-6 text-[#6E7F99]">자동채점 결과를 확인할 수 있어요. 결과 상태를 열어 점수와 문항별 결과를 확인하세요.</p>
+            <div className="mt-6 rounded-[22px] bg-[#F6FAFF] p-4 text-left text-sm ring-1 ring-[#E7F0FB]">
               <div className="flex justify-between gap-4"><span className="font-bold text-[#6E7F99]">시험명</span><span className="text-right font-black text-[#10213D]">{data.exam.title}</span></div>
-              <div className="mt-2 flex justify-between gap-4"><span className="font-bold text-[#6E7F99]">응답</span><span className="font-black text-[#10213D]">{done?.answered_count ?? progress.answered} / {done?.total_question_count ?? progress.total}</span></div>
-              <div className="mt-2 flex justify-between gap-4"><span className="font-bold text-[#6E7F99]">제출 시간</span><span className="font-black text-[#10213D]">{formatTime(done?.submitted_at ?? data.attempt.submitted_at)}</span></div>
+              <div className="mt-3 flex justify-between gap-4"><span className="font-bold text-[#6E7F99]">응답</span><span className="font-black text-[#10213D]">{done?.answered_count ?? progress.answered} / {done?.total_question_count ?? progress.total}</span></div>
+              <div className="mt-3 flex justify-between gap-4"><span className="font-bold text-[#6E7F99]">제출 시간</span><span className="font-black text-[#10213D]">{formatTime(done?.submitted_at ?? data.attempt.submitted_at)}</span></div>
             </div>
-            <Link href={`/student/sprint/exams/attempts/${attemptId}/result`} className="mt-6 block h-12 rounded-2xl border border-[#A9CBFA] text-sm font-black leading-[3rem] text-[#2874E8]">결과 상태 확인</Link>
-            <Link href={`/student/sprint/exams/${data.assignment.id}`} className="mt-3 block h-12 rounded-2xl bg-[#2874E8] text-sm font-black leading-[3rem] text-white">시험 상세로 돌아가기</Link>
+            <div className="mt-6 grid gap-2 sm:grid-cols-2">
+              <Link href={`/student/sprint/exams/attempts/${attemptId}/result`} className="flex h-12 items-center justify-center rounded-2xl bg-[#2874E8] text-sm font-black text-white shadow-[0_12px_28px_rgba(40,116,232,0.22)]">결과 상태 확인</Link>
+              <Link href={`/student/sprint/exams/${data.assignment.id}`} className="flex h-12 items-center justify-center rounded-2xl border border-[#A9CBFA] bg-white text-sm font-black text-[#2874E8]">시험 상세로 돌아가기</Link>
+            </div>
           </section>
         </div>
       </ScreenShell>
@@ -213,22 +215,32 @@ export default function StudentSprintExamAttemptPage() {
         {error && <p className="mt-4 break-keep rounded-2xl bg-red-50 px-4 py-3 text-sm font-bold text-red-600">{error}</p>}
         {notice && <p className="mt-4 break-keep rounded-2xl bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700">{notice}</p>}
 
-        <section className="sticky top-0 z-20 -mx-5 mt-5 bg-[#EFF9FF]/95 px-5 py-3 backdrop-blur">
-          <div className="flex gap-2 overflow-x-auto pb-1">
+        <div className="lg:grid lg:grid-cols-[300px_minmax(0,1fr)] lg:gap-6">
+        <section className="sticky top-0 z-20 -mx-5 mt-5 bg-[#EFF9FF]/95 px-5 py-3 backdrop-blur lg:sticky lg:top-6 lg:mx-0 lg:self-start lg:rounded-[28px] lg:bg-white/95 lg:p-4 lg:shadow-[0_14px_32px_rgba(71,104,143,0.14)] lg:ring-1 lg:ring-[#DFEAF6]">
+          <div className="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0">
             {data.papers.map((paper, index) => (
               <button
                 key={paper.assignment_paper_id}
                 onClick={() => setActivePaperIndex(index)}
-                className={`shrink-0 rounded-2xl px-4 py-2 text-sm font-black ${index === activePaperIndex ? "bg-[#2874E8] text-white" : "bg-white text-[#52637D] ring-1 ring-[#DFEAF6]"}`}
+                className={`shrink-0 rounded-2xl px-4 py-2 text-sm font-black lg:w-full lg:text-left ${index === activePaperIndex ? "bg-[#2874E8] text-white" : "bg-white text-[#52637D] ring-1 ring-[#DFEAF6]"}`}
               >
                 {paper.subject_name}
               </button>
             ))}
           </div>
+          <div className="mt-4 hidden rounded-2xl bg-[#F6FAFF] p-4 ring-1 ring-[#EAF0FA] lg:block">
+            <p className="text-xs font-black text-[#2874E8]">OMR PROGRESS</p>
+            <p className="mt-2 text-2xl font-black text-[#10213D]">{progress.answered} / {progress.total}</p>
+            <p className="mt-1 break-keep text-xs font-bold text-[#6E7F99]">미응답 {progress.unanswered}문항</p>
+            <div className="mt-3 h-2 rounded-full bg-[#DDE4EF]">
+              <div className="h-full rounded-full bg-[#2874E8]" style={{ width: `${progress.total ? (progress.answered / progress.total) * 100 : 0}%` }} />
+            </div>
+          </div>
+          <p className="mt-4 hidden break-keep rounded-2xl bg-[#FFF8E8] px-4 py-3 text-xs font-bold leading-5 text-[#9A6500] lg:block">종이 시험지를 보면서 앱에서는 답안만 체크해 제출합니다.</p>
         </section>
 
         {activePaper && (
-          <section className="mt-4 rounded-[26px] bg-white/95 p-5 shadow-[0_14px_32px_rgba(71,104,143,0.14)] ring-1 ring-[#DFEAF6]">
+          <section className="mt-4 min-w-0 rounded-[26px] bg-white/95 p-5 shadow-[0_14px_32px_rgba(71,104,143,0.14)] ring-1 ring-[#DFEAF6] lg:mt-5 lg:p-6">
             <div className="mb-4 flex items-center justify-between gap-3">
               <div>
                 <h2 className="break-keep text-lg font-black text-[#10213D]">{activePaper.subject_name}</h2>
@@ -248,7 +260,7 @@ export default function StudentSprintExamAttemptPage() {
                   </div>
                 </div>
                 {activeListeningEmbedUrl ? (
-                  <div className="aspect-video overflow-hidden rounded-2xl bg-black">
+                  <div className="aspect-video overflow-hidden rounded-2xl bg-black lg:max-w-[560px]">
                     <iframe
                       title={`${activePaper.subject_name} listening video`}
                       src={activeListeningEmbedUrl}
@@ -272,7 +284,7 @@ export default function StudentSprintExamAttemptPage() {
                   <div key={question.id} className="grid grid-cols-[2.25rem_1fr] items-center gap-2 border-t border-[#EDF2F8] py-3 first:border-t-0">
                     <div className="text-center text-sm font-black text-[#10213D]">{question.question_no}</div>
                     {choices.length > 0 ? (
-                      <div className="grid grid-cols-5 gap-2">
+                      <div className="grid max-w-[280px] grid-cols-5 gap-2 sm:max-w-[320px]">
                         {choices.map((value) => {
                           const active = selected.includes(value);
                           return (
@@ -280,7 +292,7 @@ export default function StudentSprintExamAttemptPage() {
                               key={value}
                               onClick={() => void saveAnswer(question, active ? [] : [value])}
                               disabled={savingQuestionIds.has(question.id)}
-                              className={`aspect-square rounded-full text-sm font-black ring-1 transition disabled:opacity-55 ${active ? "bg-[#2874E8] text-white ring-[#2874E8]" : "bg-white text-[#617089] ring-[#B9C7DA]"}`}
+                              className={`aspect-square max-h-11 max-w-11 rounded-full text-sm font-black ring-1 transition disabled:opacity-55 ${active ? "bg-[#2874E8] text-white ring-[#2874E8]" : "bg-white text-[#617089] ring-[#B9C7DA]"}`}
                               aria-label={`${question.question_no}번 ${value}번`}
                             >
                               {value}
@@ -293,7 +305,7 @@ export default function StudentSprintExamAttemptPage() {
                         defaultValue={selected[0] ?? ""}
                         onBlur={(event) => void saveAnswer(question, event.target.value.trim() ? [event.target.value.trim()] : [])}
                         disabled={savingQuestionIds.has(question.id)}
-                        className="h-11 rounded-2xl border border-[#C7D5E8] bg-white px-4 text-sm font-bold text-[#10213D] outline-none focus:border-[#2874E8]"
+                        className="h-11 max-w-[260px] rounded-2xl border border-[#C7D5E8] bg-white px-4 text-sm font-bold text-[#10213D] outline-none focus:border-[#2874E8]"
                         placeholder="주관식 답안"
                       />
                     )}
@@ -304,26 +316,30 @@ export default function StudentSprintExamAttemptPage() {
             </div>
           </section>
         )}
+        </div>
 
         {showConfirm && (
-          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/35 px-4 pb-4">
-            <section className="w-full max-w-[430px] rounded-[28px] bg-white p-5 shadow-2xl">
-              <h2 className="break-keep text-xl font-black text-[#10213D]">제출 전 확인</h2>
-              <div className="mt-4 rounded-2xl bg-[#F6FAFF] p-4 text-sm">
+          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 md:items-center md:p-6">
+            <section className="w-full rounded-t-[28px] bg-white p-5 shadow-2xl md:max-w-md md:rounded-[28px] md:p-6">
+              <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-[#DCEBFA] md:hidden" />
+              <p className="text-xs font-black tracking-[0.16em] text-[#2874E8]">SUBMIT CHECK</p>
+              <h2 className="mt-1 break-keep text-xl font-black text-[#10213D]">제출 전 확인</h2>
+              <p className="mt-2 break-keep text-sm font-bold leading-6 text-[#6E7F99]">제출 후에는 학생 화면에서 답안을 수정할 수 없습니다.</p>
+              <div className="mt-4 rounded-[22px] bg-[#F6FAFF] p-4 text-sm ring-1 ring-[#E7F0FB]">
                 <div className="flex justify-between"><span className="font-bold text-[#6E7F99]">전체 문항</span><span className="font-black text-[#10213D]">{progress.total}</span></div>
-                <div className="mt-2 flex justify-between"><span className="font-bold text-[#6E7F99]">선택 완료</span><span className="font-black text-[#10213D]">{progress.answered}</span></div>
-                <div className="mt-2 flex justify-between"><span className="font-bold text-[#6E7F99]">미응답</span><span className={`font-black ${progress.unanswered > 0 ? "text-[#E25050]" : "text-[#17895E]"}`}>{progress.unanswered}</span></div>
+                <div className="mt-3 flex justify-between"><span className="font-bold text-[#6E7F99]">선택 완료</span><span className="font-black text-[#10213D]">{progress.answered}</span></div>
+                <div className="mt-3 flex justify-between"><span className="font-bold text-[#6E7F99]">미응답</span><span className={`font-black ${progress.unanswered > 0 ? "text-[#E25050]" : "text-[#17895E]"}`}>{progress.unanswered}</span></div>
               </div>
               {progress.unanswered > 0 && <p className="mt-3 break-keep rounded-2xl bg-[#FFF6E2] px-4 py-3 text-xs font-bold leading-5 text-[#9A6500]">빈 문항이 있습니다. 그래도 제출할 수 있지만, 제출 후에는 수정할 수 없습니다.</p>}
               <div className="mt-5 grid grid-cols-2 gap-2">
-                <button onClick={() => setShowConfirm(false)} className="h-12 rounded-2xl border border-[#C7D5E8] text-sm font-black text-[#2874E8]">이전으로</button>
-                <button disabled={submitting || isSaving} onClick={() => void submit()} className="h-12 rounded-2xl bg-[#2874E8] text-sm font-black text-white disabled:opacity-45">{submitting ? "제출 중..." : isSaving ? "답안 저장 중" : "제출하기"}</button>
+                <button onClick={() => setShowConfirm(false)} className="h-12 rounded-2xl border border-[#C7D5E8] bg-white text-sm font-black text-[#2874E8]">이전으로</button>
+                <button disabled={submitting || isSaving} onClick={() => void submit()} className="h-12 rounded-2xl bg-[#2874E8] text-sm font-black text-white shadow-[0_12px_28px_rgba(40,116,232,0.22)] disabled:opacity-45">{submitting ? "제출 중..." : isSaving ? "답안 저장 중" : "제출하기"}</button>
               </div>
             </section>
           </div>
         )}
 
-        <div className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom))] left-1/2 z-30 w-full max-w-[430px] -translate-x-1/2 px-5">
+        <div className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom))] left-1/2 z-30 w-full max-w-[430px] -translate-x-1/2 px-5 md:max-w-[760px] lg:max-w-[1180px] lg:px-6">
           <button
             onClick={() => setShowConfirm(true)}
             disabled={isSaving}

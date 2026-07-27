@@ -181,7 +181,7 @@ function questionTone(question: QuestionResult) {
 function StudentResultShell({ children }: { children: ReactNode }) {
   return (
     <main className="min-h-screen bg-[#EEF2F6]">
-      <div className="relative mx-auto min-h-screen w-full max-w-[430px] bg-[#F6FAFF] shadow-[0_0_60px_rgba(0,0,0,0.07)] md:max-w-[760px] lg:max-w-[1180px] lg:shadow-none">
+      <div className="relative mx-auto min-h-screen w-full max-w-[430px] bg-[radial-gradient(circle_at_50%_-5%,#D9F6FF_0,#EEF9FF_34%,#F8FBFF_68%)] shadow-[0_0_60px_rgba(0,0,0,0.07)] md:max-w-[760px] lg:max-w-[1180px] lg:shadow-none">
         <div className="w-full px-4 pb-32 pt-8 sm:px-5 sm:pt-10 lg:px-6">
           {children}
         </div>
@@ -201,7 +201,7 @@ function ResultState({
 }) {
   return (
     <StudentResultShell>
-      <section className="mx-auto mt-12 max-w-xl rounded-lg border border-[#DCEBFA] bg-white p-7 text-center sm:p-9">
+      <section className="mx-auto mt-12 max-w-xl rounded-[28px] bg-white/95 p-7 text-center shadow-[0_18px_36px_rgba(49,89,130,0.14)] ring-1 ring-[#DCEBFA] sm:p-9">
         {loading ? (
           <>
             <div className="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-[#DCEBFA] border-t-[#2874E8]" />
@@ -221,13 +221,13 @@ function ResultState({
               <button
                 type="button"
                 onClick={onRetry}
-                className="h-11 rounded-lg bg-[#2874E8] px-6 text-sm font-black text-white"
+                className="h-11 rounded-2xl bg-[#2874E8] px-6 text-sm font-black text-white shadow-[0_12px_28px_rgba(40,116,232,0.22)]"
               >
                 다시 불러오기
               </button>
               <Link
                 href="/student/sprint/exams"
-                className="h-11 rounded-lg border border-[#B7D3F6] px-6 text-center text-sm font-black leading-[42px] text-[#2874E8]"
+                className="h-11 rounded-2xl border border-[#B7D3F6] bg-white px-6 text-center text-sm font-black leading-[42px] text-[#2874E8]"
               >
                 시험 목록
               </Link>
@@ -336,7 +336,7 @@ export default function StudentSprintExamResultPage() {
           </span>
         </div>
 
-        <header className="mt-5 rounded-lg border border-[#DCEBFA] bg-white p-5 sm:p-6">
+        <header className="mt-5 rounded-[28px] bg-white/95 p-5 shadow-[0_14px_32px_rgba(71,104,143,0.12)] ring-1 ring-[#DCEBFA] sm:p-6">
           <p className="text-xs font-black tracking-[0.16em] text-[#2874E8]">SPRINT EXAM RESULT</p>
           <h1 className="mt-2 break-keep text-2xl font-black sm:text-3xl">SPRINT 모의고사 결과</h1>
           <p className="mt-2 break-keep text-base font-black text-[#45546C]">{result.exam.title}</p>
@@ -366,10 +366,10 @@ export default function StudentSprintExamResultPage() {
                   key={score.score_group_id}
                   type="button"
                   onClick={() => setSelectedGroupId(score.score_group_id)}
-                  className={`min-w-0 rounded-lg border bg-white p-5 text-left transition ${
+                  className={`min-w-0 rounded-[24px] bg-white/95 p-5 text-left shadow-[0_10px_24px_rgba(71,104,143,0.10)] ring-1 transition ${
                     active
-                      ? "border-[#2874E8] ring-2 ring-[#C7DCFA]"
-                      : "border-[#DCEBFA] hover:border-[#8DBAF3]"
+                      ? "ring-2 ring-[#2874E8]"
+                      : "ring-[#DCEBFA] hover:ring-[#8DBAF3]"
                   }`}
                 >
                   <div className="flex min-w-0 items-center justify-between gap-3">
@@ -413,14 +413,14 @@ export default function StudentSprintExamResultPage() {
             </div>
 
             <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <article className="rounded-lg border border-[#DCEBFA] bg-white p-5 sm:p-6">
+              <article className="rounded-[24px] bg-white/95 p-5 shadow-[0_10px_24px_rgba(71,104,143,0.10)] ring-1 ring-[#DCEBFA] sm:p-6">
                 <p className="text-xs font-black text-[#8290A6]">점수</p>
                 <p className="mt-3 whitespace-nowrap text-4xl font-black text-[#2874E8] sm:text-5xl">
                   {selectedScore.raw_score}
                   <span className="ml-1 text-lg font-bold text-[#6E7F99]">/ {selectedScore.max_score}</span>
                 </p>
               </article>
-              <article className="rounded-lg border border-[#DCEBFA] bg-white p-5 sm:p-6">
+              <article className="rounded-[24px] bg-white/95 p-5 shadow-[0_10px_24px_rgba(71,104,143,0.10)] ring-1 ring-[#DCEBFA] sm:p-6">
                 <p className="text-xs font-black text-[#8290A6]">현재 등급</p>
                 <p className={`mt-3 break-keep text-3xl font-black ${
                   hasGradeCut(selectedScore) ? "text-[#2874E8]" : "text-[#667085]"
@@ -431,7 +431,7 @@ export default function StudentSprintExamResultPage() {
             </div>
 
             {hasGradeCut(selectedScore) ? (
-              <article className="mt-4 rounded-lg border border-[#BFD8F8] bg-white p-5 sm:p-7">
+              <article className="mt-4 rounded-[24px] bg-white/95 p-5 shadow-[0_10px_24px_rgba(71,104,143,0.10)] ring-1 ring-[#BFD8F8] sm:p-7">
                 <p className="text-sm font-black text-[#45546C]">다음 등급까지 얼마나 남았을까?</p>
                 {selectedScore.grade === 1 ? (
                   <p className="mt-4 break-keep text-2xl font-black text-[#145FDB] sm:text-3xl">
@@ -467,14 +467,14 @@ export default function StudentSprintExamResultPage() {
                 ["미응답", selectedCounts.blank, "text-[#9A6500]"],
                 ["정답률", `${answerRate}%`, "text-[#10213D]"],
               ].map(([label, value, tone]) => (
-                <div key={label} className="rounded-lg border border-[#DCEBFA] bg-white p-4 text-center">
+                <div key={label} className="rounded-[20px] bg-white/95 p-4 text-center shadow-[0_8px_18px_rgba(71,104,143,0.08)] ring-1 ring-[#DCEBFA]">
                   <p className="whitespace-nowrap text-xs font-bold text-[#8290A6]">{label}</p>
                   <p className={`mt-1 whitespace-nowrap text-xl font-black ${tone}`}>{value}</p>
                 </div>
               ))}
             </div>
 
-            <article className="mt-4 rounded-lg border border-[#DCEBFA] bg-white p-5 sm:p-6">
+            <article className="mt-4 rounded-[24px] bg-white/95 p-5 shadow-[0_10px_24px_rgba(71,104,143,0.10)] ring-1 ring-[#DCEBFA] sm:p-6">
               <h3 className="text-base font-black">시험 정보</h3>
               <dl className="mt-4 grid grid-cols-1 gap-x-8 gap-y-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
                 {[
@@ -493,7 +493,7 @@ export default function StudentSprintExamResultPage() {
               </dl>
             </article>
 
-            <article className="mt-4 overflow-hidden rounded-lg border border-[#DCEBFA] bg-white">
+            <article className="mt-4 overflow-hidden rounded-[24px] bg-white/95 shadow-[0_10px_24px_rgba(71,104,143,0.10)] ring-1 ring-[#DCEBFA]">
               <div className="border-b border-[#EDF2F8] px-5 py-4 sm:px-6">
                 <h3 className="text-base font-black">문항별 결과</h3>
               </div>
@@ -502,12 +502,12 @@ export default function StudentSprintExamResultPage() {
                 {selectedQuestions.map((question) => (
                   <div
                     key={question.question_id}
-                    className={`rounded-lg border p-4 ${
+                    className={`rounded-[20px] p-4 ring-1 ${
                       !question.submitted_answer?.length
-                        ? "border-[#F2D79A] bg-[#FFF9EC]"
+                        ? "bg-[#FFF9EC] ring-[#F2D79A]"
                         : question.is_correct
-                          ? "border-[#DCEBFA] bg-white"
-                          : "border-[#F4CACA] bg-[#FFF7F7]"
+                          ? "bg-white ring-[#DCEBFA]"
+                          : "bg-[#FFF7F7] ring-[#F4CACA]"
                     }`}
                   >
                     <div className="flex items-center justify-between gap-3">
@@ -540,7 +540,7 @@ export default function StudentSprintExamResultPage() {
 
               <div className="hidden md:block">
                 <table className="w-full table-fixed text-left text-sm">
-                  <thead className="bg-[#F7FAFE] text-xs text-[#718097]">
+                  <thead className="bg-[#F6FAFF] text-xs text-[#718097]">
                     <tr>
                       <th className="w-[11%] px-4 py-3">문항</th>
                       <th className="w-[11%] px-3 py-3">배점</th>
@@ -575,7 +575,7 @@ export default function StudentSprintExamResultPage() {
               </div>
             </article>
 
-            <article className="mt-4 rounded-lg border border-[#DCEBFA] bg-white p-5 sm:p-6">
+            <article className="mt-4 rounded-[24px] bg-white/95 p-5 shadow-[0_10px_24px_rgba(71,104,143,0.10)] ring-1 ring-[#DCEBFA] sm:p-6">
               <h3 className="text-base font-black">등급컷</h3>
               {hasGradeCut(selectedScore) ? (
                 <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-5">
@@ -584,10 +584,10 @@ export default function StudentSprintExamResultPage() {
                     return (
                       <div
                         key={`${cut.type}-${cut.grade}`}
-                        className={`rounded-lg border px-3 py-2.5 text-center ${
+                        className={`rounded-2xl px-3 py-2.5 text-center ring-1 ${
                           current
-                            ? "border-[#2874E8] bg-[#EAF5FF] text-[#145FDB]"
-                            : "border-[#E2EAF3] bg-[#FAFCFF] text-[#52627A]"
+                            ? "bg-[#EAF5FF] text-[#145FDB] ring-[#2874E8]"
+                            : "bg-[#FAFCFF] text-[#52627A] ring-[#E2EAF3]"
                         }`}
                       >
                         <p className="whitespace-nowrap text-xs font-black">{cut.grade}등급</p>
@@ -603,14 +603,14 @@ export default function StudentSprintExamResultPage() {
               )}
             </article>
 
-            <article className="mt-4 rounded-lg border border-[#DCEBFA] bg-white p-5 sm:p-6">
+            <article className="mt-4 rounded-[24px] bg-white/95 p-5 shadow-[0_10px_24px_rgba(71,104,143,0.10)] ring-1 ring-[#DCEBFA] sm:p-6">
               <h3 className="text-base font-black">다시 응시하기</h3>
               <p className="mt-2 break-keep text-sm font-semibold leading-6 text-[#6E7F99]">
                 재응시는 관리자 승인 후 시험 상세 화면에서 시작할 수 있어요. 기존 결과는 그대로 보존됩니다.
               </p>
               <Link
                 href={`/student/sprint/exams/${result.attempt.assignment_id}`}
-                className="mt-4 inline-flex h-11 w-full items-center justify-center rounded-lg border border-[#A9CBFA] px-5 text-sm font-black text-[#2874E8] sm:w-auto"
+                className="mt-4 inline-flex h-11 w-full items-center justify-center rounded-2xl border border-[#A9CBFA] bg-white px-5 text-sm font-black text-[#2874E8] sm:w-auto"
               >
                 시험 상세로 이동
               </Link>
