@@ -21,6 +21,10 @@ export default function RootLayout({
           href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css"
           rel="stylesheet"
         />
+        <link
+          href="https://cdn.jsdelivr.net/gh/sunn-us/SUIT/fonts/variable/woff2/SUIT-Variable.css"
+          rel="stylesheet"
+        />
       </head>
       <body>{children}</body>
     </html>

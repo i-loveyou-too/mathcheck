@@ -25,7 +25,7 @@ export function StudentBottomNav() {
   ] as const;
 
   return (
-    <nav className="fixed bottom-4 left-1/2 z-20 w-[calc(100%-1.5rem)] max-w-[430px] -translate-x-1/2 px-2">
+    <nav className="fixed bottom-4 left-1/2 z-20 w-[calc(100%-1.5rem)] max-w-[430px] -translate-x-1/2 px-2 md:max-w-[760px] lg:max-w-[1180px]">
       <div className="rounded-[1.8rem] bg-[#0F172A] px-2 py-3 shadow-nav">
         <div className="grid grid-cols-5 gap-1">
           {items.map((item) => (

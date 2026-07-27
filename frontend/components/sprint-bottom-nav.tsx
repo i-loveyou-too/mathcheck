@@ -29,7 +29,7 @@ export function SprintBottomNav() {
   const pathname = usePathname();
 
   return (
-    <nav className="fixed bottom-0 left-1/2 z-40 w-full max-w-[430px] -translate-x-1/2 rounded-t-[26px] bg-white/95 px-1 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-2 shadow-[0_-10px_30px_rgba(25,58,100,0.16)] backdrop-blur">
+    <nav className="fixed bottom-0 left-1/2 z-40 w-full max-w-[430px] -translate-x-1/2 rounded-t-[26px] bg-white/95 px-1 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-2 shadow-[0_-10px_30px_rgba(25,58,100,0.16)] backdrop-blur md:max-w-[760px] lg:max-w-[1180px]">
       <div className="grid grid-cols-5">
         {items.map((item) => {
           const active = isActive(pathname, item.href);

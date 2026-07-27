@@ -18,10 +18,10 @@
 
 :root {
   color-scheme: light;
-  --font-body: 'Pretendard Rounded', 'Pretendard Variable', 'Pretendard', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
+  --font-body: 'SUIT Variable', 'SUIT', 'Pretendard Rounded', 'Pretendard Variable', 'Pretendard', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
   --font-display: 'JalnanGothic', 'Cafe24Ssurround', var(--font-body);
   --font-button: 'JalnanGothic', var(--font-body);
-  --font-number: 'Pretendard Rounded', 'Pretendard Variable', 'Pretendard', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
+  --font-number: 'SUIT Variable', 'SUIT', 'Pretendard Rounded', 'Pretendard Variable', 'Pretendard', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
 }
 
 body {
