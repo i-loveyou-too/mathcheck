@@ -9,7 +9,7 @@ import { getStudyDate } from "@/lib/study-date";
 import { getStudent } from "@/lib/storage";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "");
-const MAX_IMAGES = 3;
+const MAX_IMAGES = 1;
 
 type ProofType = "planner" | "seat_check";
 type ImageItem = { id: number; original_filename: string | null };
@@ -347,7 +347,7 @@ export function ProofForm({ proofType }: { proofType: ProofType }) {
           )}
 
           {!locked && canAddMore && (
-            <input type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" multiple onChange={(event) => { addPendingFiles(event.target.files); event.target.value = ""; }} className="mt-4 block w-full text-sm" />
+            <input type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" onChange={(event) => { addPendingFiles(event.target.files); event.target.value = ""; }} className="mt-4 block w-full text-sm" />
           )}
           {!locked && pendingFiles.length > 0 && (
             <button disabled={busy} onClick={() => void uploadPendingPhotos()} className="mt-3 h-11 w-full break-keep rounded-2xl bg-[#10213D] text-sm font-black text-white disabled:opacity-40">{busy ? "업로드 중..." : "사진 올리기"}</button>

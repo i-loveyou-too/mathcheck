@@ -45,8 +45,8 @@ IMPLEMENTED_FEATURES = {
 
 STUDY_SUBMISSION_STATUSES = {"draft", "pending", "approved", "rejected", "cancelled"}
 MAX_STUDY_IMAGE_BYTES = 20 * 1024 * 1024  # 최신 스마트폰 카메라 사진(HEIC/고화소 JPEG) 기준으로 여유를 둔다.
-MAX_STUDY_IMAGE_COUNT = 3
-STORAGE_ROOT = Path("storage")
+MAX_STUDY_IMAGE_COUNT = 1
+STORAGE_ROOT = Path(__file__).resolve().parent / "storage"
 SPRINT_STUDY_STORAGE_ROOT = STORAGE_ROOT / "sprint-study"
 SEOUL_TZ = timezone(timedelta(hours=9))
 

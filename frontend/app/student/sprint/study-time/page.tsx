@@ -137,7 +137,7 @@ export default function StudentSprintStudyTimePage() {
 
   const uploadFiles = async (submission: Submission) => {
     if (!studentId || !API_BASE_URL || files.length === 0) return;
-    for (const file of files.slice(0, 3)) {
+    for (const file of files.slice(0, 1)) {
       const body = new FormData();
       body.append("file", file);
       const response = await fetch(`${API_BASE_URL}/student/sprint/study-time/${submission.id}/images?student_id=${studentId}`, {
@@ -243,7 +243,7 @@ export default function StudentSprintStudyTimePage() {
             {subjects.map((subject) => <label key={subject} className="break-keep text-xs font-bold text-[#6E7F99]">{subject}<input disabled={locked} type="number" min="0" value={breakdown[subject] ?? ""} onChange={(event) => setBreakdown({ ...breakdown, [subject]: event.target.value })} className="mt-1 h-10 w-full rounded-xl border border-[#DFEAF6] px-3 text-[#10213D] disabled:bg-[#F5F8FC]" placeholder="분" /></label>)}
           </div>
           <textarea disabled={locked} value={memo} onChange={(event) => setMemo(event.target.value)} rows={3} className="mt-4 w-full resize-none rounded-2xl border border-[#DFEAF6] p-3 text-sm text-[#10213D] outline-none disabled:bg-[#F5F8FC]" placeholder="메모" />
-          <input disabled={locked} type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" multiple onChange={(event) => setFiles(Array.from(event.target.files ?? []).slice(0, 3))} className="mt-4 block w-full text-sm" />
+          <input disabled={locked} type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" onChange={(event) => setFiles(Array.from(event.target.files ?? []).slice(0, 1))} className="mt-4 block w-full text-sm" />
           {files.length > 0 && <p className="mt-2 break-keep text-xs font-bold text-[#2874E8]">새 사진 {files.length}장 선택됨</p>}
           {reviewComment && (
             <div className={`mt-3 rounded-2xl border px-4 py-3 ${commentClassName}`}>

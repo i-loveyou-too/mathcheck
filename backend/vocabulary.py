@@ -122,7 +122,7 @@ def is_answer_correct(input_answer: str, accepted_answers: list[str]) -> bool:
     if raw_input in accepted_answers:  # 1) exact
         return True
     normalized_input = normalize_text(raw_input)
-    input_candidates = {normalized_input, strip_korean_particle(normalized_input)}
+    input_candidates = answer_candidate_set(raw_input)  # 학생이 여러 뜻을 구분자로 이어 쓴 경우도 정답과 동일하게 분해해 비교
     accepted_candidates: set[str] = set()
     for value in accepted_answers:
         accepted_candidates |= answer_candidate_set(value)
