@@ -269,23 +269,67 @@ export default function StudentDashboardPage() {
         <StudentLogoutButton onClick={handleLogout} />
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-4">
         <Link
           href="/student/sprint"
-          className="relative overflow-hidden rounded-[24px] bg-[#1B1533] px-4 py-4 text-white shadow-[0_14px_30px_rgba(27,21,51,0.28)] transition hover:-translate-y-0.5"
+          className="group relative overflow-hidden rounded-[28px] bg-[linear-gradient(135deg,#145FDB_0%,#2874E8_48%,#2E8AEA_100%)] p-5 text-white shadow-[0_18px_38px_rgba(40,116,232,0.24)] ring-1 ring-white/30 transition hover:-translate-y-0.5 md:min-h-[210px] md:p-6"
         >
-          <div className="pointer-events-none absolute -right-6 -top-6 h-20 w-20 rounded-full bg-[#FF6B4A]/30 blur-2xl" />
-          <p className="relative text-[10px] font-black tracking-[0.2em] text-[#FFB199]">SPRINT</p>
-          <p className="relative mt-2 text-base font-black leading-tight">집중 학습<br />관리</p>
-          <p className="relative mt-1 text-[11px] font-semibold text-white/55">두 번째 메인 서비스 →</p>
+          <div className="pointer-events-none absolute -right-10 -top-12 h-36 w-36 rounded-full bg-white/18 blur-3xl" />
+          <div className="pointer-events-none absolute left-1/2 top-8 h-16 w-44 -rotate-12 rounded-full bg-white/10 blur-xl" />
+          <div className="relative grid min-h-[176px] grid-cols-[minmax(0,1fr)_136px] items-center gap-3 md:grid-cols-[1fr_1fr] md:gap-4">
+            <div className="min-w-0">
+              <p className="text-xs font-black tracking-[0.18em] text-white/78">SPRINT</p>
+              <p className="mt-3 text-[1.55rem] font-black leading-tight tracking-tight md:text-[1.7rem]">
+                집중 학습 관리
+              </p>
+              <p className="mt-2 text-sm font-bold leading-relaxed text-white/78">
+                오늘의 인증과 학습을 관리해요
+              </p>
+              <div className="mt-5 inline-flex h-11 items-center gap-2 rounded-full bg-white px-4 text-sm font-black text-[#2874E8] shadow-[0_12px_26px_rgba(16,33,61,0.16)] transition group-hover:translate-x-0.5">
+                스프린트 메인 가기
+                <span className="text-lg leading-none">→</span>
+              </div>
+            </div>
+            <div className="relative h-[144px] min-w-0 md:h-[178px]">
+              <Image
+                alt="SPRINT 집중 학습 관리"
+                className="object-contain drop-shadow-[0_16px_26px_rgba(16,33,61,0.22)]"
+                fill
+                sizes="(min-width: 768px) 250px, 136px"
+                src="/sprint.png"
+              />
+            </div>
+          </div>
         </Link>
         <Link
           href="/student/lessons"
-          className="relative overflow-hidden rounded-[24px] bg-white px-4 py-4 shadow-card transition hover:-translate-y-0.5"
+          className="group relative overflow-hidden rounded-[28px] border border-[#DCEBFA] bg-[linear-gradient(135deg,#FFFFFF_0%,#F6FAFF_100%)] p-5 shadow-[0_18px_36px_rgba(71,104,143,0.12)] transition hover:-translate-y-0.5 md:min-h-[210px] md:p-6"
         >
-          <p className="text-[10px] font-black tracking-[0.15em] text-[#0E9F6E]">LESSONS</p>
-          <p className="mt-2 text-base font-black leading-tight text-[#17213B]">수업 일정</p>
-          <p className="mt-1 text-[11px] font-semibold text-[#98A2B3]">다음 수업 확인 →</p>
+          <div className="pointer-events-none absolute -right-12 -top-12 h-36 w-36 rounded-full bg-[#EAF5FF] blur-2xl" />
+          <div className="relative grid min-h-[176px] grid-cols-[minmax(0,1fr)_112px] items-center gap-3 md:grid-cols-[1fr_0.78fr] md:gap-4">
+            <div className="min-w-0">
+              <p className="text-xs font-black tracking-[0.18em] text-[#2874E8]">LESSONS</p>
+              <p className="mt-3 text-[1.5rem] font-black leading-tight tracking-tight text-[#10213D] md:text-[1.65rem]">
+                수업 일정
+              </p>
+              <p className="mt-2 text-sm font-bold leading-relaxed text-[#6E7F99]">
+                다음 수업을 확인하고 준비해요
+              </p>
+              <div className="mt-5 inline-flex h-11 items-center gap-2 rounded-full bg-[#2874E8] px-4 text-sm font-black text-white shadow-[0_12px_24px_rgba(40,116,232,0.22)] transition group-hover:translate-x-0.5">
+                수업 일정 확인하기
+                <span className="text-lg leading-none">→</span>
+              </div>
+            </div>
+            <div className="relative h-[126px] min-w-0 md:h-[154px]">
+              <Image
+                alt="수업 일정"
+                className="object-contain drop-shadow-[0_16px_24px_rgba(71,104,143,0.18)]"
+                fill
+                sizes="(min-width: 768px) 190px, 112px"
+                src="/calander.png"
+              />
+            </div>
+          </div>
         </Link>
       </div>
 
