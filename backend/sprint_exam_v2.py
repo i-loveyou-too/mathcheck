@@ -214,6 +214,15 @@ class SprintExamV2ScoreGroupResponse(BaseModel):
     papers: list[SprintExamV2PaperResponse]
     source_paper_score_sum: int
     assignment_max_score: int | None
+    solution_drive_file_id: str | None
+    solution_is_published: bool
+
+
+class SprintExamV2ScoreGroupSolutionInput(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    drive_link_or_id: str | None = None
+    is_published: bool = False
 
 
 class SprintExamV2ExamResponse(BaseModel):
@@ -342,5 +351,26 @@ def admin_update_sprint_exam_v2_exam(exam_id: int, payload: SprintExamV2UpdateRe
 def admin_delete_sprint_exam_v2_exam(exam_id: int, db: Session = Depends(get_db), _admin=Depends(admin_auth.require_admin)):
     try:
         return sprint_exam_v2_service.delete_exam(db, exam_id)
+    except Exception as exc:
+        _raise_http_error(exc)
+
+
+@router.patch(
+    "/admin/sprint-exam-v2/score-groups/{score_group_id}/solution",
+    response_model=SprintExamV2ScoreGroupResponse,
+)
+def admin_update_sprint_exam_v2_score_group_solution(
+    score_group_id: int,
+    payload: SprintExamV2ScoreGroupSolutionInput,
+    db: Session = Depends(get_db),
+    _admin=Depends(admin_auth.require_admin),
+):
+    try:
+        return sprint_exam_v2_service.update_score_group_solution(
+            db,
+            score_group_id,
+            drive_link_or_id=payload.drive_link_or_id,
+            is_published=payload.is_published,
+        )
     except Exception as exc:
         _raise_http_error(exc)

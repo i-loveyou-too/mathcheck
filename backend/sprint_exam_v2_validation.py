@@ -97,6 +97,30 @@ def normalize_youtube_url(value: Any, path: str) -> str | None:
     return url
 
 
+DRIVE_FILE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{10,100}$")
+DRIVE_FILE_URL_RE = re.compile(r"drive\.google\.com/file/d/([A-Za-z0-9_-]{10,100})")
+
+
+def extract_drive_file_id(value: Any, path: str) -> str | None:
+    """정답지 Drive 링크 입력을 파일 ID로 정규화한다.
+    지원 형식: /file/d/{ID}/view..., /file/d/{ID}/preview, 또는 순수 파일 ID."""
+    if value in (None, ""):
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    match = DRIVE_FILE_URL_RE.search(text)
+    if match:
+        return match.group(1)
+    if DRIVE_FILE_ID_RE.fullmatch(text):
+        return text
+    raise SprintExamV2DomainError(
+        "INVALID_DRIVE_LINK",
+        "Google Drive 링크 또는 파일 ID 형식이 올바르지 않습니다.",
+        path,
+    )
+
+
 def _normalize_positive_int(value: Any, code: str, message: str, path: str) -> int:
     if isinstance(value, bool):
         raise SprintExamV2DomainError(code, message, path)

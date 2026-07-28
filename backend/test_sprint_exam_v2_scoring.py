@@ -10,6 +10,8 @@ import models
 from sprint_exam_v2_scoring_service import (
     _recommend_question_combination,
     _score_summary_from_details,
+    _serialize_score,
+    _solution_viewer_payload,
 )
 from sprint_exam_v2_scoring_validation import (
     SprintExamV2ScoringDomainError,
@@ -125,3 +127,64 @@ class SprintExamV2ScoringValidationTests(TestCase):
         self.assertEqual(calculate_grade(89, cuts), 2)
         self.assertIsNone(calculate_grade(79, cuts))
         self.assertIsNone(calculate_grade(100, []))
+
+
+class SprintExamV2SolutionViewerTests(TestCase):
+    def test_available_when_published_with_file_id(self):
+        group = models.SprintExamV2ScoreGroup(solution_drive_file_id="1QSFHRputTIhBNkwJGw6tlmYW1xcKtiOW", solution_is_published=True)
+        payload = _solution_viewer_payload(group)
+        self.assertTrue(payload["solution_available"])
+        self.assertEqual(
+            payload["solution_viewer_url"],
+            "https://drive.google.com/file/d/1QSFHRputTIhBNkwJGw6tlmYW1xcKtiOW/preview",
+        )
+
+    def test_unavailable_when_not_published(self):
+        group = models.SprintExamV2ScoreGroup(solution_drive_file_id="ABC123", solution_is_published=False)
+        payload = _solution_viewer_payload(group)
+        self.assertFalse(payload["solution_available"])
+        self.assertIsNone(payload["solution_viewer_url"])
+
+    def test_unavailable_when_no_file_id(self):
+        group = models.SprintExamV2ScoreGroup(solution_drive_file_id=None, solution_is_published=True)
+        payload = _solution_viewer_payload(group)
+        self.assertFalse(payload["solution_available"])
+        self.assertIsNone(payload["solution_viewer_url"])
+
+    def test_unavailable_when_group_missing(self):
+        payload = _solution_viewer_payload(None)
+        self.assertFalse(payload["solution_available"])
+        self.assertIsNone(payload["solution_viewer_url"])
+
+    def test_serialize_score_includes_solution_fields_for_published_group(self):
+        group = models.SprintExamV2ScoreGroup(
+            score_group_code="social_culture_total",
+            score_group_name="사회문화",
+            solution_drive_file_id="1TiX6h5BGKXmZ1aDuXHvONr6NkOQzzGyQ",
+            solution_is_published=True,
+        )
+        group.grade_cuts = []
+        score = models.SprintExamV2Score(
+            score_group_id=1, raw_score=40, max_score=50, grade=2, scoring_version=1, correct_count=8, blank_count=0
+        )
+        payload = _serialize_score(score, group)
+        self.assertTrue(payload["solution_available"])
+        self.assertEqual(
+            payload["solution_viewer_url"],
+            "https://drive.google.com/file/d/1TiX6h5BGKXmZ1aDuXHvONr6NkOQzzGyQ/preview",
+        )
+
+    def test_serialize_score_hides_solution_when_math_has_no_file(self):
+        group = models.SprintExamV2ScoreGroup(
+            score_group_code="math_total",
+            score_group_name="수학",
+            solution_drive_file_id=None,
+            solution_is_published=False,
+        )
+        group.grade_cuts = []
+        score = models.SprintExamV2Score(
+            score_group_id=2, raw_score=30, max_score=50, grade=3, scoring_version=1, correct_count=6, blank_count=1
+        )
+        payload = _serialize_score(score, group)
+        self.assertFalse(payload["solution_available"])
+        self.assertIsNone(payload["solution_viewer_url"])

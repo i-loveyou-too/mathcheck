@@ -263,6 +263,16 @@ def _score_snapshot(score: models.SprintExamV2Score | None) -> dict[str, Any] | 
     }
 
 
+def _solution_viewer_payload(group: models.SprintExamV2ScoreGroup | None) -> dict[str, Any]:
+    available = bool(group and group.solution_drive_file_id and group.solution_is_published)
+    return {
+        "solution_available": available,
+        "solution_viewer_url": (
+            f"https://drive.google.com/file/d/{group.solution_drive_file_id}/preview" if available else None
+        ),
+    }
+
+
 def _serialize_score(score: models.SprintExamV2Score, group: models.SprintExamV2ScoreGroup | None = None) -> dict[str, Any]:
     group = group or score.score_group
     payload = {
@@ -276,6 +286,7 @@ def _serialize_score(score: models.SprintExamV2Score, group: models.SprintExamV2
         "correct_count": score.correct_count,
         "blank_count": score.blank_count,
     }
+    payload.update(_solution_viewer_payload(group))
     if group is not None:
         payload["grade_boundaries"] = _grade_boundaries(group)
         payload.update(_next_grade_payload(score, group, []))

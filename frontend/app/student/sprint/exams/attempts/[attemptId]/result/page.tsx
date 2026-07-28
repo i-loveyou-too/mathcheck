@@ -25,6 +25,8 @@ type Score = {
   recommended_total_score?: number | null;
   recommended_question_count?: number | null;
   grade_boundaries?: GradeBoundary[];
+  solution_available?: boolean;
+  solution_viewer_url?: string | null;
 };
 
 type QuestionResult = {
@@ -247,6 +249,8 @@ export default function StudentSprintExamResultPage() {
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState<LoadNotice | null>(null);
+  const [solutionOpen, setSolutionOpen] = useState(false);
+  const [solutionLoadState, setSolutionLoadState] = useState<"loading" | "loaded" | "error">("loading");
   const inFlightRequest = useRef<{ attemptId: number; promise: Promise<void> } | null>(null);
 
   const loadResult = useCallback(() => {
@@ -365,7 +369,11 @@ export default function StudentSprintExamResultPage() {
                 <button
                   key={score.score_group_id}
                   type="button"
-                  onClick={() => setSelectedGroupId(score.score_group_id)}
+                  onClick={() => {
+                    setSelectedGroupId(score.score_group_id);
+                    setSolutionOpen(false);
+                    setSolutionLoadState("loading");
+                  }}
                   className={`min-w-0 rounded-[24px] bg-white/95 p-5 text-left shadow-[0_10px_24px_rgba(71,104,143,0.10)] ring-1 transition ${
                     active
                       ? "ring-2 ring-[#2874E8]"
@@ -402,15 +410,63 @@ export default function StudentSprintExamResultPage() {
 
         {selectedScore && selectedCounts && (
           <section className="mt-8">
-            <div className="flex items-end justify-between gap-3 border-b border-[#DCEBFA] pb-3">
+            <div className="flex flex-wrap items-end justify-between gap-3 border-b border-[#DCEBFA] pb-3">
               <div className="min-w-0">
                 <p className="text-xs font-black text-[#2874E8]">과목 상세 결과</p>
                 <h2 className="mt-1 truncate text-xl font-black sm:text-2xl">
                   {selectedScore.score_group_name ?? selectedScore.score_group_code ?? "과목"}
                 </h2>
               </div>
-              <span className="shrink-0 text-xs font-bold text-[#8290A6]">응시 #{result.attempt.attempt_no}</span>
+              <div className="flex shrink-0 items-center gap-2">
+                {selectedScore.solution_available && selectedScore.solution_viewer_url && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSolutionOpen((current) => !current);
+                      setSolutionLoadState("loading");
+                    }}
+                    className={`h-9 rounded-full px-4 text-xs font-black transition ${
+                      solutionOpen ? "bg-[#10213D] text-white" : "bg-[#EAF5FF] text-[#2874E8]"
+                    }`}
+                  >
+                    {solutionOpen ? "해설지 닫기" : "해설지 보기"}
+                  </button>
+                )}
+                <span className="text-xs font-bold text-[#8290A6]">응시 #{result.attempt.attempt_no}</span>
+              </div>
             </div>
+
+            {selectedScore.solution_available && selectedScore.solution_viewer_url && solutionOpen && (
+              <article className="mt-4 overflow-hidden rounded-[24px] bg-white/95 p-4 shadow-[0_10px_24px_rgba(71,104,143,0.10)] ring-1 ring-[#DCEBFA] sm:p-5">
+                <p className="mb-3 text-sm font-black text-[#10213D]">
+                  {selectedScore.score_group_name ?? "과목"} 해설지
+                </p>
+                <div className="relative w-full overflow-hidden rounded-xl border border-[#DCEBFA] bg-[#F6FAFF]">
+                  {solutionLoadState === "loading" && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-[#F6FAFF]">
+                      <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#DCEBFA] border-t-[#2874E8]" />
+                    </div>
+                  )}
+                  {solutionLoadState === "error" ? (
+                    <div className="flex h-[50vh] min-h-[320px] w-full flex-col items-center justify-center gap-2 px-4 text-center">
+                      <p className="text-sm font-black text-[#D94343]">해설지를 불러오지 못했어요.</p>
+                      <p className="text-xs font-semibold text-[#8290A6]">잠시 후 다시 시도해주세요.</p>
+                    </div>
+                  ) : (
+                    <iframe
+                      key={selectedScore.solution_viewer_url}
+                      src={selectedScore.solution_viewer_url}
+                      title={`${selectedScore.score_group_name ?? "과목"} 해설지`}
+                      className="h-[70vh] min-h-[420px] w-full sm:h-[75vh] sm:min-h-[520px]"
+                      allow="autoplay"
+                      loading="lazy"
+                      onLoad={() => setSolutionLoadState("loaded")}
+                      onError={() => setSolutionLoadState("error")}
+                    />
+                  )}
+                </div>
+              </article>
+            )}
 
             <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
               <article className="rounded-[24px] bg-white/95 p-5 shadow-[0_10px_24px_rgba(71,104,143,0.10)] ring-1 ring-[#DCEBFA] sm:p-6">

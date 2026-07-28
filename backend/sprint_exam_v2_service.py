@@ -134,6 +134,8 @@ def serialize_score_group(group: models.SprintExamV2ScoreGroup) -> dict[str, Any
         "metadata": _json_or_empty(group.group_metadata),
         "grade_cuts": grade_cuts,
         "papers": papers,
+        "solution_drive_file_id": group.solution_drive_file_id,
+        "solution_is_published": group.solution_is_published,
     }
     result["source_paper_score_sum"] = sum(paper["paper_max_score"] for paper in papers)
     result["assignment_max_score"] = calculate_assignment_max_score(result)
@@ -349,6 +351,32 @@ def update_exam(db: Session, exam_id: int, payload: dict[str, Any]) -> dict[str,
     except Exception:
         db.rollback()
         raise
+
+
+def _load_score_group(db: Session, score_group_id: int) -> models.SprintExamV2ScoreGroup:
+    group = db.get(models.SprintExamV2ScoreGroup, score_group_id)
+    if group is None:
+        raise SprintExamV2NotFoundError("Sprint Exam V2 score group not found.")
+    return group
+
+
+def update_score_group_solution(
+    db: Session,
+    score_group_id: int,
+    *,
+    drive_link_or_id: str | None,
+    is_published: bool,
+) -> dict[str, Any]:
+    """과목(score group) 해설지 Drive 파일 ID/공개 여부만 갱신한다.
+    시험 구조(문항/정답/시험지) 전체 재생성 흐름(update_exam)과는 완전히 분리된, 별도의 최소 변경 경로다."""
+    from sprint_exam_v2_validation import extract_drive_file_id
+
+    group = _load_score_group(db, score_group_id)
+    file_id = extract_drive_file_id(drive_link_or_id, "drive_link_or_id")
+    group.solution_drive_file_id = file_id
+    group.solution_is_published = bool(is_published) if file_id else False
+    db.commit()
+    return serialize_score_group(group)
 
 
 def delete_exam(db: Session, exam_id: int) -> dict[str, Any]:

@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { getAdmin } from "@/lib/storage";
 import { ErrorPanel, ExamV2Shell, LoadingPanel, StatusBadge } from "../_components/exam-v2-shell";
-import type { AssignmentListItem, AssignmentListResponse, ExamV2Detail } from "../_lib/types";
+import type { AssignmentListItem, AssignmentListResponse, ExamV2Detail, ExamV2ScoreGroup } from "../_lib/types";
 import { assignmentStatusLabels, examStatusLabels, formatDate, formatDateTime, friendlyApiError, statusTone } from "../_lib/ui";
 
 export default function AdminSprintExamV2DetailPage() {
@@ -18,6 +18,9 @@ export default function AdminSprintExamV2DetailPage() {
   const [assignments, setAssignments] = useState<AssignmentListItem[]>([]);
   const [error, setError] = useState("");
   const [deleting, setDeleting] = useState(false);
+  const [solutionForm, setSolutionForm] = useState<Record<number, { value: string; publish: boolean }>>({});
+  const [solutionError, setSolutionError] = useState<Record<number, string>>({});
+  const [savingSolutionId, setSavingSolutionId] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setError("");
@@ -67,6 +70,66 @@ export default function AdminSprintExamV2DetailPage() {
       setError(friendlyApiError(reason, "시험을 삭제하지 못했습니다."));
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const solutionValue = (group: ExamV2ScoreGroup) => solutionForm[group.id ?? -1]?.value ?? group.solution_drive_file_id ?? "";
+  const solutionPublish = (group: ExamV2ScoreGroup) => solutionForm[group.id ?? -1]?.publish ?? group.solution_is_published;
+
+  const setSolutionField = (groupId: number, patch: Partial<{ value: string; publish: boolean }>) => {
+    setSolutionForm((current) => ({
+      ...current,
+      [groupId]: {
+        value: patch.value ?? current[groupId]?.value ?? "",
+        publish: patch.publish ?? current[groupId]?.publish ?? false,
+      },
+    }));
+  };
+
+  const saveSolution = async (group: ExamV2ScoreGroup) => {
+    if (!group.id) return;
+    const groupId = group.id;
+    setSavingSolutionId(groupId);
+    setSolutionError((current) => ({ ...current, [groupId]: "" }));
+    try {
+      await apiFetch(`/admin/sprint-exam-v2/score-groups/${groupId}/solution`, {
+        method: "PATCH",
+        body: { drive_link_or_id: solutionValue(group).trim() || null, is_published: solutionPublish(group) },
+      });
+      setSolutionForm((current) => {
+        const next = { ...current };
+        delete next[groupId];
+        return next;
+      });
+      await load();
+    } catch (reason) {
+      setSolutionError((current) => ({ ...current, [groupId]: friendlyApiError(reason, "해설지 저장에 실패했습니다.") }));
+    } finally {
+      setSavingSolutionId(null);
+    }
+  };
+
+  const clearSolution = async (group: ExamV2ScoreGroup) => {
+    if (!group.id) return;
+    const groupId = group.id;
+    if (!window.confirm("해설지 연결을 해제할까요? 학생 화면에서 더 이상 보이지 않습니다.")) return;
+    setSavingSolutionId(groupId);
+    setSolutionError((current) => ({ ...current, [groupId]: "" }));
+    try {
+      await apiFetch(`/admin/sprint-exam-v2/score-groups/${groupId}/solution`, {
+        method: "PATCH",
+        body: { drive_link_or_id: null, is_published: false },
+      });
+      setSolutionForm((current) => {
+        const next = { ...current };
+        delete next[groupId];
+        return next;
+      });
+      await load();
+    } catch (reason) {
+      setSolutionError((current) => ({ ...current, [groupId]: friendlyApiError(reason, "해설지 해제에 실패했습니다.") }));
+    } finally {
+      setSavingSolutionId(null);
     }
   };
 
@@ -193,11 +256,68 @@ export default function AdminSprintExamV2DetailPage() {
                             <td className="px-3 py-3 text-center font-black text-[#45546C]">{paper.paper_max_score}</td>
                             <td className="px-3 py-3 text-[#9A6B16]">업로드 API 미지원</td>
                             <td className="px-3 py-3 text-[#9A6B16]">{paper.subject_code === "english" ? "업로드 API 미지원" : "-"}</td>
-                            <td className="px-3 py-3 text-[#9A6B16]">업로드 API 미지원</td>
+                            <td className="px-3 py-3">
+                              {group.solution_drive_file_id ? (
+                                <span className={`rounded-full px-2 py-1 text-[11px] font-black ${group.solution_is_published ? "bg-[#EAF8F1] text-[#17895E]" : "bg-[#FFF6E2] text-[#9A6500]"}`}>
+                                  {group.solution_is_published ? "공개중" : "등록됨(비공개)"}
+                                </span>
+                              ) : (
+                                <span className="text-[#98A2B3]">미등록</span>
+                              )}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
+                  </div>
+
+                  <div className="mt-3 rounded-md border border-[#E5EBF2] bg-[#FAFCFE] p-3">
+                    <p className="text-xs font-black text-[#45546C]">해설지 (Google Drive)</p>
+                    <p className="mt-1 text-[11px] font-semibold leading-5 text-[#8290A6]">
+                      과목 전체(공통+선택 포함)에 적용되는 해설지 1개를 연결합니다. Drive 공유 링크(view/preview) 또는 파일 ID를 붙여넣으세요.
+                    </p>
+                    <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                      <input
+                        type="text"
+                        value={solutionValue(group)}
+                        onChange={(event) => group.id && setSolutionField(group.id, { value: event.target.value })}
+                        placeholder="https://drive.google.com/file/d/FILE_ID/view?usp=drive_link 또는 FILE_ID"
+                        className="h-9 w-full min-w-[260px] flex-1 rounded-md border border-[#DCE4ED] px-3 text-xs font-semibold text-[#17213B]"
+                      />
+                      <label className="flex shrink-0 items-center gap-1.5 text-xs font-black text-[#52627A]">
+                        <input
+                          type="checkbox"
+                          checked={solutionPublish(group)}
+                          onChange={(event) => group.id && setSolutionField(group.id, { publish: event.target.checked })}
+                          className="h-3.5 w-3.5 accent-[#2874E8]"
+                        />
+                        학생에게 공개
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => void saveSolution(group)}
+                        disabled={savingSolutionId === group.id}
+                        className="h-9 shrink-0 rounded-md bg-[#2874E8] px-3 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {savingSolutionId === group.id ? "저장 중..." : "저장"}
+                      </button>
+                      {group.solution_drive_file_id && (
+                        <button
+                          type="button"
+                          onClick={() => void clearSolution(group)}
+                          disabled={savingSolutionId === group.id}
+                          className="h-9 shrink-0 rounded-md border border-red-200 bg-white px-3 text-xs font-black text-red-600 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          연결 해제
+                        </button>
+                      )}
+                    </div>
+                    {solutionError[group.id ?? -1] && (
+                      <p className="mt-2 text-xs font-black text-red-600">{solutionError[group.id ?? -1]}</p>
+                    )}
+                    <p className="mt-2.5 text-[11px] font-semibold leading-5 text-[#B08200]">
+                      Google Drive에서 &lsquo;뷰어 및 댓글 작성자에게 다운로드, 인쇄, 복사 옵션 표시&rsquo;를 해제해야 다운로드 버튼이 제한됩니다.
+                    </p>
                   </div>
 
                   <details className="mt-3 rounded-md border border-[#E5EBF2] bg-[#FAFCFE]">

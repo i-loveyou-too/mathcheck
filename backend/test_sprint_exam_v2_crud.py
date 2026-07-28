@@ -293,3 +293,91 @@ class SprintExamV2ServiceTests(TestCase):
         dumped = request.model_dump(mode="json")
         self.assertEqual(dumped["total_score_group_count"], 99)
         self.assertEqual(dumped["score_groups"][0]["papers"][0]["question_count"], 999)
+
+
+class SprintExamV2ScoreGroupSolutionTests(TestCase):
+    def test_extract_drive_file_id_accepts_view_link(self):
+        from sprint_exam_v2_validation import extract_drive_file_id
+
+        self.assertEqual(
+            extract_drive_file_id(
+                "https://drive.google.com/file/d/1QSFHRputTIhBNkwJGw6tlmYW1xcKtiOW/view?usp=drive_link", "x"
+            ),
+            "1QSFHRputTIhBNkwJGw6tlmYW1xcKtiOW",
+        )
+
+    def test_extract_drive_file_id_accepts_preview_link(self):
+        from sprint_exam_v2_validation import extract_drive_file_id
+
+        self.assertEqual(
+            extract_drive_file_id("https://drive.google.com/file/d/1QSFHRputTIhBNkwJGw6tlmYW1xcKtiOW/preview", "x"),
+            "1QSFHRputTIhBNkwJGw6tlmYW1xcKtiOW",
+        )
+
+    def test_extract_drive_file_id_accepts_raw_id(self):
+        from sprint_exam_v2_validation import extract_drive_file_id
+
+        self.assertEqual(
+            extract_drive_file_id("1QSFHRputTIhBNkwJGw6tlmYW1xcKtiOW", "x"),
+            "1QSFHRputTIhBNkwJGw6tlmYW1xcKtiOW",
+        )
+
+    def test_extract_drive_file_id_treats_none_or_blank_as_disconnect(self):
+        from sprint_exam_v2_validation import extract_drive_file_id
+
+        self.assertIsNone(extract_drive_file_id(None, "x"))
+        self.assertIsNone(extract_drive_file_id("   ", "x"))
+
+    def test_extract_drive_file_id_rejects_garbage_input(self):
+        from sprint_exam_v2_validation import extract_drive_file_id
+
+        with self.assertRaises(SprintExamV2DomainError) as captured:
+            extract_drive_file_id("not a drive link", "x")
+        self.assertEqual(captured.exception.code, "INVALID_DRIVE_LINK")
+
+    def test_extract_drive_file_id_rejects_non_drive_domain(self):
+        from sprint_exam_v2_validation import extract_drive_file_id
+
+        with self.assertRaises(SprintExamV2DomainError) as captured:
+            extract_drive_file_id("https://example.com/file/d/1QSFHRputTIhBNkwJGw6tlmYW1xcKtiOW/view", "x")
+        self.assertEqual(captured.exception.code, "INVALID_DRIVE_LINK")
+
+    def test_update_score_group_solution_extracts_id_and_commits(self):
+        db = FakeDB()
+        group = type("Group", (), {"id": 5, "solution_drive_file_id": None, "solution_is_published": False})()
+        with patch.object(sprint_exam_v2_service, "_load_score_group", lambda *_: group), patch.object(
+            sprint_exam_v2_service,
+            "serialize_score_group",
+            lambda g: {"solution_drive_file_id": g.solution_drive_file_id, "solution_is_published": g.solution_is_published},
+        ):
+            result = sprint_exam_v2_service.update_score_group_solution(
+                db,
+                5,
+                drive_link_or_id="https://drive.google.com/file/d/1QSFHRputTIhBNkwJGw6tlmYW1xcKtiOW/view?usp=drive_link",
+                is_published=True,
+            )
+        self.assertEqual(group.solution_drive_file_id, "1QSFHRputTIhBNkwJGw6tlmYW1xcKtiOW")
+        self.assertTrue(group.solution_is_published)
+        self.assertEqual(db.commit_count, 1)
+        self.assertEqual(result["solution_drive_file_id"], "1QSFHRputTIhBNkwJGw6tlmYW1xcKtiOW")
+
+    def test_update_score_group_solution_clear_forces_unpublished(self):
+        db = FakeDB()
+        group = type("Group", (), {"id": 5, "solution_drive_file_id": "old", "solution_is_published": True})()
+        with patch.object(sprint_exam_v2_service, "_load_score_group", lambda *_: group), patch.object(
+            sprint_exam_v2_service, "serialize_score_group", lambda g: {}
+        ):
+            sprint_exam_v2_service.update_score_group_solution(db, 5, drive_link_or_id=None, is_published=True)
+        self.assertIsNone(group.solution_drive_file_id)
+        self.assertFalse(group.solution_is_published)
+        self.assertEqual(db.commit_count, 1)
+
+    def test_update_score_group_solution_rejects_invalid_link_without_committing(self):
+        db = FakeDB()
+        group = type("Group", (), {"id": 5, "solution_drive_file_id": None, "solution_is_published": False})()
+        with patch.object(sprint_exam_v2_service, "_load_score_group", lambda *_: group):
+            with self.assertRaises(SprintExamV2DomainError) as captured:
+                sprint_exam_v2_service.update_score_group_solution(db, 5, drive_link_or_id="garbage", is_published=True)
+        self.assertEqual(captured.exception.code, "INVALID_DRIVE_LINK")
+        self.assertEqual(db.commit_count, 0)
+        self.assertIsNone(group.solution_drive_file_id)

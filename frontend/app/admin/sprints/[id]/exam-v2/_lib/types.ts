@@ -41,6 +41,8 @@ export type ExamV2ScoreGroup = {
   papers: ExamV2Paper[];
   source_paper_score_sum: number;
   assignment_max_score: number | null;
+  solution_drive_file_id: string | null;
+  solution_is_published: boolean;
 };
 
 export type ExamV2Detail = {
