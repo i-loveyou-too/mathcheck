@@ -126,6 +126,8 @@ export type StudentTextbook = {
   id: number;
   textbook_key: string;
   subject: string | null;
+  series_id: number | null;
+  series_name: string | null;
   title: string;
   full_title: string;
   type: string;

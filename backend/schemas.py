@@ -615,6 +615,8 @@ class StudentTextbookResponse(BaseModel):
     id: int
     textbook_key: str
     subject: Optional[str] = None
+    series_id: Optional[int] = None
+    series_name: Optional[str] = None
     title: str
     full_title: str
     type: str

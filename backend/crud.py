@@ -232,6 +232,8 @@ def build_textbook_summary_payload(textbook: MathTextbook, item_count: int) -> d
         "id": textbook.id,
         "textbook_key": resolve_textbook_key(textbook),
         "subject": textbook.subject,
+        "series_id": textbook.series_id,
+        "series_name": textbook.series.korean_name if textbook.series else None,
         "title": textbook.title,
         "full_title": textbook.full_title,
         "type": textbook.type,
@@ -379,6 +381,26 @@ def get_active_textbooks_by_subject(db: Session, subject: str, student_id: int) 
         db.query(MathTextbook)
         .filter(
             MathTextbook.id.in_(tagged_textbook_ids),
+            MathTextbook.id.in_(visible_ids),
+        )
+        .order_by(MathTextbook.order_index, MathTextbook.id)
+        .all()
+    )
+    return build_student_textbook_payloads(db, textbooks)
+
+
+def get_active_mock_exam_textbooks(db: Session, student_id: int) -> list[dict]:
+    """수1/수2/확통과 달리 subject 태그가 아니라 기존 MathTextbook.type == 'mock_exam'로
+    구분되는 모의고사 교재를 학생 기준으로 조회한다. 새 필드/테이블을 추가하지 않고
+    관리자 교재 등록에서 이미 쓰던 type/series_id를 그대로 재사용한다."""
+    visible_ids = get_visible_textbook_ids(db, student_id)
+    if not visible_ids:
+        return []
+
+    textbooks = (
+        db.query(MathTextbook)
+        .filter(
+            MathTextbook.type == "mock_exam",
             MathTextbook.id.in_(visible_ids),
         )
         .order_by(MathTextbook.order_index, MathTextbook.id)
@@ -2615,11 +2637,27 @@ def build_student_item_progress_summary(db: Session, student_id: int) -> dict:
     )
     progress_map = {row.item_id: row.status for row in progress_rows}
 
+    # 모의고사는 수1/수2/확통과 달리 subject 태그가 아니라 기존 MathTextbook.type로
+    # 구분되므로, 위 subject 태그 집계와는 별도로 type 기준 텍스트북 id 집합을 구해
+    # 같은 방식으로 "모의고사" 버킷에 합산한다(새 필드 추가 없음).
+    mock_exam_textbook_ids = (
+        {
+            row.id
+            for row in db.query(MathTextbook.id).filter(
+                MathTextbook.id.in_(textbook_ids),
+                MathTextbook.type == "mock_exam",
+            )
+        }
+        if textbook_ids
+        else set()
+    )
+
     overall = {"total": 0, "done": 0, "partial": 0}
     subjects = {
         subject: {"total": 0, "done": 0, "partial": 0}
         for subject in STUDENT_PROGRESS_SUMMARY_SUBJECTS
     }
+    subjects["모의고사"] = {"total": 0, "done": 0, "partial": 0}
 
     for row in item_rows:
         status = progress_map.get(row.id, "not_started")
@@ -2642,6 +2680,14 @@ def build_student_item_progress_summary(db: Session, student_id: int) -> dict:
                 subject_bucket["done"] += 1
             elif status == "partial":
                 subject_bucket["partial"] += 1
+
+        if row.textbook_id in mock_exam_textbook_ids:
+            mock_exam_bucket = subjects["모의고사"]
+            mock_exam_bucket["total"] += 1
+            if status == "done":
+                mock_exam_bucket["done"] += 1
+            elif status == "partial":
+                mock_exam_bucket["partial"] += 1
 
     return {
         "student_id": student_id,

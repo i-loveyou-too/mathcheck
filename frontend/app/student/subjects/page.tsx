@@ -19,6 +19,14 @@ function BarChartIcon({ className }: { className?: string }) {
   );
 }
 
+function ExamIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
+      <path d="M6 2h9l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm8 1.5V8h4.5L14 3.5zM8 12h8v1.6H8V12zm0 3.6h8v1.6H8v-1.6zM8 8.4h4V10H8V8.4z" />
+    </svg>
+  );
+}
+
 function CircularProgress({
   value,
   ringColor,
@@ -90,6 +98,18 @@ const subjectConfigs = [
     trackColor: "#D1FAE5",
     barColor: "bg-emerald-400",
     barTrack: "bg-emerald-50",
+  },
+  {
+    title: "모의고사",
+    description: "시리즈별 모의고사 교재 진도를 확인해요.",
+    href: "/student/subjects/mock-exams",
+    subjectKeys: ["모의고사"],
+    iconBg: "bg-orange-50",
+    iconContent: <ExamIcon className="h-5 w-5 text-orange-400" />,
+    ringColor: "#F97316",
+    trackColor: "#FFEDD5",
+    barColor: "bg-orange-400",
+    barTrack: "bg-orange-50",
   },
 ];
 

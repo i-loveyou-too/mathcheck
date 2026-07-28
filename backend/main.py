@@ -588,6 +588,18 @@ def student_textbooks_by_subject(
 
 
 @app.get(
+    "/student/textbooks/mock-exams",
+    response_model=schemas.StudentTextbookListResponse,
+    tags=["Student"],
+)
+def student_mock_exam_textbooks(
+    student_id: int,
+    db: Session = Depends(get_db),
+):
+    return {"textbooks": crud.get_active_mock_exam_textbooks(db, student_id)}
+
+
+@app.get(
     "/student/textbooks/{textbook_key}",
     response_model=schemas.StudentTextbookResponse,
     tags=["Student"],
