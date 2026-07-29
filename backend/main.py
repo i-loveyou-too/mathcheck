@@ -303,6 +303,7 @@ def is_legacy_read_only_progress_path(method: str, path: str) -> bool:
         or path.startswith("/student/daily-tasks")
         or path.startswith("/student/weekly-tasks")
         or path.startswith("/student/today-tasks")
+        or path.startswith("/student/textbook-progress")
         or path.startswith("/units/")
         or path.startswith("/students/")
     )

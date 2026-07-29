@@ -168,28 +168,28 @@ textbooks/deep-*/page.tsx 5개 (TextbookChecklistPage 재사용)
 SUIT 전역 적용(설계만 완료, 실제 적용은 Phase 0 실행 시), 디자인 토큰 정리, 공통 responsive shell, 학생 하단 네비, SPRINT 하단 네비.
 
 ```md
-- [ ] `frontend/components/screen-shell.tsx`
+- [x] `frontend/components/screen-shell.tsx`
   - 현재: `max-w-[430px]`(`:11`), 바깥 `shadow-[0_0_60px_rgba(0,0,0,0.07)]`
   - 목표: `max-w-[430px] md:max-w-[760px] lg:max-w-[1180px] lg:shadow-none`
   - 수정 범위: outer wrapper의 className만
   - 유지: `children` 렌더링, `withBottomNav` prop 동작, 내부 padding 로직(`pb-32`/`pb-10` 분기)
   - 검증: 375px / 768px / 1280px에서 셸 폭과 그림자 유무 확인
 
-- [ ] `frontend/components/student-bottom-nav.tsx`
+- [x] `frontend/components/student-bottom-nav.tsx`
   - 현재: `max-w-[430px]`(`:28`)
   - 목표: `screen-shell.tsx`와 동일한 3단 `max-w`
   - 수정 범위: `nav`의 className만
   - 유지: `pathname.startsWith("/student/sprint")` 분기(`:17`), `items` 배열, `Link href`, `active` 판정 로직
   - 검증: 셸 폭과 네비 폭이 3개 뷰포트 모두에서 일치하는지 나란히 스크린샷 비교
 
-- [ ] `frontend/components/sprint-bottom-nav.tsx`
+- [x] `frontend/components/sprint-bottom-nav.tsx`
   - 현재: `max-w-[430px]`(`:32`)
   - 목표: 동일 3단 `max-w`
   - 수정 범위: `nav`의 className만
   - 유지: `isActive` 함수, `items` 배열, `Link href`
   - 검증: 동일
 
-- [ ] `frontend/app/layout.tsx`, `frontend/app/globals.css`
+- [x] `frontend/app/layout.tsx`, `frontend/app/globals.css`
   - 현재: Pretendard CDN `<link>` + `--font-body` 변수(`globals.css:21`)
   - 목표: SUIT 적용(옵션 A CDN 또는 옵션 B `next/font/local`, 디자인 시스템 문서 9절 참고 — 이번 계획 문서는 옵션만 제시, 방식 확정은 Phase 0 착수 시 결정)
   - 수정 범위: `<link>` 태그 및 `--font-body` 값

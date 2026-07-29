@@ -382,6 +382,10 @@ def get_active_textbooks_by_subject(db: Session, subject: str, student_id: int) 
         .filter(
             MathTextbook.id.in_(tagged_textbook_ids),
             MathTextbook.id.in_(visible_ids),
+            # 모의고사 교재는 수1/수2/확통 subject 태그를 함께 갖고 있어도(모의고사
+            # 전용 화면에서 시리즈로 묶어 보여주기 위함) 이 일반 과목별 화면에는
+            # 노출하지 않는다 — type 구분은 이미 관리자 등록에서 쓰던 값이다.
+            MathTextbook.type != "mock_exam",
         )
         .order_by(MathTextbook.order_index, MathTextbook.id)
         .all()
