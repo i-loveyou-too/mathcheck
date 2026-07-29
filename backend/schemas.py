@@ -134,6 +134,9 @@ class TextbookProgressInfo(BaseModel):
     title: str
     full_title: str
     problem_count: int
+    series_name: Optional[str] = None
+    first_pass_completed_at: Optional[datetime] = None
+    debugging_completed_at: Optional[datetime] = None
 
 
 class TextbookProgressSummary(BaseModel):
@@ -141,6 +144,7 @@ class TextbookProgressSummary(BaseModel):
     done: int
     partial: int
     not_started: int
+    passed: int = 0
 
 
 class TextbookProgressItem(BaseModel):
@@ -183,6 +187,27 @@ class AdminStudentItemProgressBatchRequest(BaseModel):
     item_ids: list[int]
     status: str
     memo: Optional[str] = None
+
+
+class AdminTextbookFirstPassRequest(BaseModel):
+    completed: bool
+
+
+class TextbookFirstPassResponse(BaseModel):
+    student_id: int
+    textbook_id: int
+    first_pass_completed_at: Optional[datetime] = None
+
+
+class StudentTextbookDebuggingCompleteRequest(BaseModel):
+    student_id: int
+    completed: bool
+
+
+class TextbookDebuggingCompleteResponse(BaseModel):
+    student_id: int
+    textbook_id: int
+    debugging_completed_at: Optional[datetime] = None
 
 
 class AdminStudentLectureTaskItemProgressRequest(BaseModel):
@@ -243,6 +268,7 @@ class DailyTaskResponse(BaseModel):
     status: str
     difficulty: Optional[str] = None
     category: Optional[str] = None
+    video_url: Optional[str] = None
     order_index: int
     completed_at: Optional[datetime] = None
     textbook: Optional[DailyTaskTextbookInfo] = None
@@ -294,6 +320,7 @@ class AdminDailyTaskCreateRequest(BaseModel):
     status: str = "todo"
     difficulty: Optional[str] = None
     category: Optional[str] = None
+    video_url: Optional[str] = None
     order_index: int = 0
 
 
@@ -307,6 +334,7 @@ class AdminDailyTaskUpdateRequest(BaseModel):
     status: Optional[str] = None
     difficulty: Optional[str] = None
     category: Optional[str] = None
+    video_url: Optional[str] = None
     order_index: Optional[int] = None
 
 

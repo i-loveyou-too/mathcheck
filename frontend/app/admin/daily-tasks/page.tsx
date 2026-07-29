@@ -63,6 +63,7 @@ type DailyTask = {
   status: DailyTaskStatus;
   difficulty: string | null;
   category: string | null;
+  video_url: string | null;
   order_index: number;
 };
 
@@ -111,6 +112,7 @@ type TaskFormState = {
   status: DailyTaskStatus;
   taskDate: string;
   title: string;
+  videoUrl: string;
 };
 
 type AutoRangeRow = {
@@ -244,6 +246,7 @@ function makeEmptyForm(today: string): TaskFormState {
     status: "todo",
     taskDate: today,
     title: "",
+    videoUrl: "",
   };
 }
 
@@ -1341,6 +1344,7 @@ export default function AdminDailyTasksPage() {
   const [todoDate, setTodoDate] = useState(today);
   const [todoTitle, setTodoTitle] = useState("");
   const [todoMemo, setTodoMemo] = useState("");
+  const [todoVideoUrl, setTodoVideoUrl] = useState("");
   const [todoSubmitting, setTodoSubmitting] = useState(false);
 
   const [freeInputMode, setFreeInputMode] = useState<"direct" | "auto_page">("direct");
@@ -2065,7 +2069,7 @@ export default function AdminDailyTasksPage() {
 
   const startEdit = (task: DailyTask) => {
     setEditTaskId(task.id);
-    setEditForm({ category: task.category ?? "기타", detail: task.detail ?? "", difficulty: task.difficulty ?? "보통", endNumber: task.end_item_number === null ? "" : String(task.end_item_number), orderIndex: String(task.order_index), rangeType: task.start_item_number !== null ? "item" : "none", selectedTextbookValue: getTextbookValue(task.textbook_key), startNumber: task.start_item_number === null ? "" : String(task.start_item_number), status: task.status, taskDate: selectedDate, title: task.title });
+    setEditForm({ category: task.category ?? "기타", detail: task.detail ?? "", difficulty: task.difficulty ?? "보통", endNumber: task.end_item_number === null ? "" : String(task.end_item_number), orderIndex: String(task.order_index), rangeType: task.start_item_number !== null ? "item" : "none", selectedTextbookValue: getTextbookValue(task.textbook_key), startNumber: task.start_item_number === null ? "" : String(task.start_item_number), status: task.status, taskDate: selectedDate, title: task.title, videoUrl: task.video_url ?? "" });
     setMessage(""); setError("");
   };
 
@@ -2075,7 +2079,7 @@ export default function AdminDailyTasksPage() {
     const editTextbook = getTextbookByValue(editForm.selectedTextbookValue, textbookOptions);
     setSavingEdit(true);
     try {
-      await apiFetch<DailyTask>(`/admin/daily-tasks/${taskId}`, { method: "PATCH", body: { task_date: editForm.taskDate, title: editForm.title.trim(), detail: editForm.detail.trim() || null, textbook_key: editTextbook.textbookKey, start_item_number: editForm.rangeType === "item" ? toNullableNumber(editForm.startNumber) : null, end_item_number: editForm.rangeType === "item" ? toNullableNumber(editForm.endNumber) : null, status: editForm.status, difficulty: editForm.difficulty, category: editForm.category.trim() || editTextbook.category, order_index: Number(editForm.orderIndex) || 1 } });
+      await apiFetch<DailyTask>(`/admin/daily-tasks/${taskId}`, { method: "PATCH", body: { task_date: editForm.taskDate, title: editForm.title.trim(), detail: editForm.detail.trim() || null, textbook_key: editTextbook.textbookKey, start_item_number: editForm.rangeType === "item" ? toNullableNumber(editForm.startNumber) : null, end_item_number: editForm.rangeType === "item" ? toNullableNumber(editForm.endNumber) : null, status: editForm.status, difficulty: editForm.difficulty, category: editForm.category.trim() || editTextbook.category, video_url: editForm.videoUrl.trim() || null, order_index: Number(editForm.orderIndex) || 1 } });
       setMessage("숙제가 수정되었습니다."); setEditTaskId(null);
       await fetchTasks(selectedStudentId, selectedDate);
       setTaskRefreshKey((k) => k + 1);
@@ -2098,8 +2102,8 @@ export default function AdminDailyTasksPage() {
     if (!selectedStudentId || !todoTitle.trim()) return;
     setTodoSubmitting(true);
     try {
-      await apiFetch<DailyTask>("/admin/daily-tasks", { method: "POST", body: { student_id: Number(selectedStudentId), task_date: todoDate, title: todoTitle.trim(), detail: todoMemo.trim() || null, textbook_key: null, start_item_number: null, end_item_number: null, status: "todo", difficulty: "보통", category: "기타", order_index: 1 } });
-      setMessage("할 일이 추가됐습니다."); setTodoTitle(""); setTodoMemo("");
+      await apiFetch<DailyTask>("/admin/daily-tasks", { method: "POST", body: { student_id: Number(selectedStudentId), task_date: todoDate, title: todoTitle.trim(), detail: todoMemo.trim() || null, textbook_key: null, start_item_number: null, end_item_number: null, status: "todo", difficulty: "보통", category: "기타", video_url: todoVideoUrl.trim() || null, order_index: 1 } });
+      setMessage("할 일이 추가됐습니다."); setTodoTitle(""); setTodoMemo(""); setTodoVideoUrl("");
       await fetchTasks(selectedStudentId, selectedDate);
       setTaskRefreshKey((k) => k + 1);
     } catch { setError("추가에 실패했습니다. 다시 시도해주세요."); } finally { setTodoSubmitting(false); }
@@ -3085,6 +3089,7 @@ export default function AdminDailyTasksPage() {
                   <div><label className="mb-2 block text-xs font-bold text-[#667085]">날짜</label><input className={inputCls} onChange={(e) => setTodoDate(e.target.value)} type="date" value={todoDate} /></div>
                   <div><label className="mb-2 block text-xs font-bold text-[#667085]">제목</label><input className={inputCls} onChange={(e) => setTodoTitle(e.target.value)} placeholder="오답노트 2개 복습" value={todoTitle} /></div>
                   <div><label className="mb-2 block text-xs font-bold text-[#667085]">메모 (선택)</label><input className={inputCls} onChange={(e) => setTodoMemo(e.target.value)} placeholder="추가 메모" value={todoMemo} /></div>
+                  <div><label className="mb-2 block text-xs font-bold text-[#667085]">영상 링크 (선택, 영상 보기 할일이면 입력)</label><input className={inputCls} onChange={(e) => setTodoVideoUrl(e.target.value)} placeholder="https://youtu.be/..." type="url" value={todoVideoUrl} /></div>
                   <button className="w-full rounded-2xl bg-[#0F172A] py-3.5 text-sm font-black text-white disabled:opacity-50" disabled={todoSubmitting || !todoTitle.trim() || !selectedStudentId} type="submit">
                     {todoSubmitting ? "추가 중..." : "할 일 추가하기"}
                   </button>
@@ -3165,6 +3170,7 @@ export default function AdminDailyTasksPage() {
                                     </select>
                                     <input className="rounded-xl border border-[#E5E7EB] bg-white px-2 py-2 text-sm font-bold outline-none" onChange={(event) => updateEditForm({ category: event.target.value })} placeholder="카테고리" value={editForm.category} />
                                   </div>
+                                  <input className="w-full rounded-xl border border-[#E5E7EB] bg-white px-3 py-2 text-sm font-bold outline-none" onChange={(event) => updateEditForm({ videoUrl: event.target.value })} placeholder="영상 링크(선택)" type="url" value={editForm.videoUrl} />
                                   <div className="flex gap-2">
                                     <button className="flex-1 rounded-xl bg-[#0F172A] px-3 py-2 text-sm font-bold text-white" disabled={savingEdit} onClick={() => void handleSaveEdit(task.id)} type="button">저장</button>
                                     <button className="flex-1 rounded-xl border border-[#E5E7EB] bg-white px-3 py-2 text-sm font-bold text-[#667085]" onClick={() => setEditTaskId(null)} type="button">취소</button>
@@ -3178,6 +3184,11 @@ export default function AdminDailyTasksPage() {
                                     <p className="mt-1 text-xs font-bold text-[#98A2B3]">
                                       {task.textbook_key ? (catalogTextbooks.find((t) => t.textbookKey === task.textbook_key)?.shortTitle ?? task.textbook_key) : "직접 입력"} · {getRangeText(task)}
                                     </p>
+                                    {task.video_url ? (
+                                      <a className="mt-1 inline-flex items-center gap-1 text-xs font-bold text-[#4F46E5] hover:underline" href={task.video_url} rel="noreferrer" target="_blank">
+                                        🎬 영상 보기
+                                      </a>
+                                    ) : null}
                                   </div>
                                   <div className="flex shrink-0 items-center gap-1">
                                     <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${task.status === "done" ? "bg-emerald-100 text-emerald-600" : task.status === "in_progress" ? "bg-amber-100 text-amber-600" : "bg-[#F1F5F9] text-[#64748B]"}`}>{getStatusLabel(task.status)}</span>

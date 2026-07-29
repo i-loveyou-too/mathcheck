@@ -24,6 +24,29 @@ class MathStudentTextbook(Base):
     textbook = relationship("MathTextbook", back_populates="student_assignments")
 
 
+class MathStudentTextbookMilestone(Base):
+    """학생-교재 단위 수동 마일스톤(예: 1회독 완료). 문항별 자동 집계와는 별개로
+    관리자가 수동으로 확정하는 표시라 math_student_item_progress와 분리한다."""
+
+    __tablename__ = "math_student_textbook_milestones"
+    __table_args__ = (
+        UniqueConstraint("student_id", "textbook_id", name="uq_math_student_textbook_milestones"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("math_students.id"), nullable=False, index=True)
+    textbook_id = Column(Integer, ForeignKey("math_textbooks.id"), nullable=False, index=True)
+    first_pass_completed_at = Column(DateTime(timezone=True), nullable=True)
+    # 디버그 모의고사 등 학생이 직접 표시하는 마일스톤. first_pass_completed_at(관리자 전용)과
+    # 별개 컬럼으로 두어 누가 토글 가능한지 헷갈리지 않게 한다.
+    debugging_completed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    student = relationship("Student")
+    textbook = relationship("MathTextbook")
+
+
 class Student(Base):
     __tablename__ = "math_students"
 
@@ -376,6 +399,7 @@ class MathDailyTask(Base):
     status = Column(String(50), nullable=False, default="todo")
     difficulty = Column(String(50), nullable=True)
     category = Column(String(100), nullable=True)
+    video_url = Column(String(500), nullable=True)
     order_index = Column(Integer, nullable=False, default=0)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     completed_at = Column(DateTime(timezone=True), nullable=True)
@@ -621,6 +645,8 @@ class VocabularyTestSession(Base):
     total_count = Column(Integer, nullable=False, default=0)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     submitted_at = Column(DateTime(timezone=True), nullable=True)
+    # 관리자가 이 시험지(session)를 확인했다는 표시. 채점/제출 로직과는 무관한 순수 체크용.
+    admin_reviewed_at = Column(DateTime(timezone=True), nullable=True)
 
 
 class VocabularyTestQuestion(Base):

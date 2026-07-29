@@ -23,12 +23,14 @@ type Question = {
   manual_graded_at: string | null;
 };
 type Result = {
+  id: number;
   challenge_name: string;
   study_date: string;
   score: number;
   correct_count: number;
   total_count: number;
   submitted_at: string;
+  admin_reviewed_at: string | null;
   questions: Question[];
 };
 type GradingAction = "mark_correct" | "mark_incorrect" | "restore_auto";
@@ -40,6 +42,7 @@ export default function AdminVocabularyResultPage() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busyResponseId, setBusyResponseId] = useState<number | null>(null);
+  const [reviewSaving, setReviewSaving] = useState(false);
 
   const load = () => apiFetch<Result>(`/admin/vocabulary-results/${params.sessionId}`).then(setResult);
 
@@ -85,6 +88,23 @@ export default function AdminVocabularyResultPage() {
     void runGrading(question.response_id, "restore_auto", null);
   };
 
+  const toggleReviewed = async () => {
+    if (!result) return;
+    setReviewSaving(true);
+    setError("");
+    try {
+      await apiFetch(`/admin/vocabulary-results/${result.id}/review`, {
+        method: "PATCH",
+        body: { reviewed: !result.admin_reviewed_at },
+      });
+      await load();
+    } catch (reason) {
+      setError(reason instanceof ApiError ? reason.message : "확인 상태를 저장하지 못했습니다.");
+    } finally {
+      setReviewSaving(false);
+    }
+  };
+
   if (!result) {
     return <main className="min-h-screen bg-[#EEF2F6] p-10 text-center font-bold text-[#7A859F]">{error || "결과를 불러오는 중..."}</main>;
   }
@@ -103,6 +123,16 @@ export default function AdminVocabularyResultPage() {
           <div className="text-right">
             <p className="text-4xl font-black text-[#65E6BA]">{result.score}점</p>
             <p className="mt-1 text-sm text-white/60">{result.correct_count} / {result.total_count} 정답</p>
+            <button
+              type="button"
+              disabled={reviewSaving}
+              onClick={() => void toggleReviewed()}
+              className={`mt-3 rounded-full px-4 py-2 text-xs font-black transition disabled:opacity-60 ${
+                result.admin_reviewed_at ? "bg-emerald-500 text-white" : "bg-white/10 text-white hover:bg-white/20"
+              }`}
+            >
+              {result.admin_reviewed_at ? "✓ 확인함" : "확인 체크"}
+            </button>
           </div>
         </div>
 

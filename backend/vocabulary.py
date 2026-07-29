@@ -540,6 +540,10 @@ class GradingActionIn(BaseModel):
     reason: str | None = Field(default=None, max_length=500)
 
 
+class SessionReviewIn(BaseModel):
+    reviewed: bool
+
+
 def storage_path_from_input(storage_path: str) -> Path:
     root = Path.cwd().resolve()
     candidate = (root / storage_path).resolve()
@@ -883,7 +887,7 @@ def serialize_session(
     student = db.get(models.Student, session.student_id)
     bank = db.get(models.VocabularyBank, challenge.word_bank_id) if challenge and challenge.word_bank_id else None
     day_info = vocabulary_day_info(db, challenge, session.study_date) if challenge else {}
-    return {
+    result = {
         "id": session.id,
         "challenge_id": session.challenge_id,
         "challenge_name": challenge.name if challenge else "",
@@ -904,6 +908,9 @@ def serialize_session(
         "submitted_at": session.submitted_at,
         "questions": items,
     }
+    if for_admin:
+        result["admin_reviewed_at"] = session.admin_reviewed_at
+    return result
 
 
 def unresolved_review_questions(db: Session, challenge: models.VocabularyChallenge):
@@ -1398,6 +1405,7 @@ def admin_challenge_status(challenge_id: int, db: Session = Depends(get_db)):
             "total_count": session.total_count if session else None,
             "submitted_at": session.submitted_at if session else None,
             "session_id": session.id if session else None,
+            "admin_reviewed_at": session.admin_reviewed_at if session else None,
         })
         cursor += timedelta(days=1)
     return {"challenge": challenge_dict(db, challenge), "days": days}
@@ -1409,6 +1417,22 @@ def admin_result(session_id: int, db: Session = Depends(get_db)):
     if session is None:
         raise HTTPException(status_code=404, detail="Vocabulary result not found.")
     return serialize_session(db, session, include_result=True, for_admin=True)
+
+
+@router.patch("/admin/vocabulary-results/{session_id}/review")
+def admin_set_session_reviewed(
+    session_id: int,
+    payload: SessionReviewIn,
+    db: Session = Depends(get_db),
+    admin: models.Admin = Depends(admin_auth.require_admin),
+):
+    session = db.get(models.VocabularyTestSession, session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Vocabulary result not found.")
+    session.admin_reviewed_at = datetime.now(timezone.utc) if payload.reviewed else None
+    db.commit()
+    db.refresh(session)
+    return {"id": session.id, "admin_reviewed_at": session.admin_reviewed_at}
 
 
 def active_challenge(db: Session, student_id: int, study_date: date):

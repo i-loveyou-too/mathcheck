@@ -15,7 +15,7 @@ const icons = {
 const items = [
   { href: "/student/sprint", label: "홈", icon: "home" },
   { href: "/student/sprint/proofs", label: "공부 인증", icon: "list" },
-  { href: "/student/sprint/records", label: "학습 기록", icon: "chart" },
+  { href: "/student/sprint/progress", label: "진도표", icon: "chart" },
   { href: "/student/sprint/exams", label: "모의고사", icon: "exam" },
   { href: "/student/sprint/vocabulary", label: "영단어", icon: "book" },
 ] as const;

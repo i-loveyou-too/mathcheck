@@ -864,6 +864,51 @@ def admin_update_student_textbook_items_progress(
 
 
 @app.patch(
+    "/admin/students/{student_id}/textbooks/{textbook_id}/first-pass",
+    response_model=schemas.TextbookFirstPassResponse,
+    tags=["Admin"],
+)
+def admin_set_textbook_first_pass(
+    student_id: int,
+    textbook_id: int,
+    payload: schemas.AdminTextbookFirstPassRequest,
+    db: Session = Depends(get_db),
+):
+    student = crud.get_student_by_id(db, student_id)
+    if student is None:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    textbook = crud.get_textbook_by_id(db, textbook_id)
+    if textbook is None:
+        raise HTTPException(status_code=404, detail="Textbook not found")
+
+    completed_at = crud.set_textbook_first_pass_completed(db, student_id, textbook_id, payload.completed)
+    return {"student_id": student_id, "textbook_id": textbook_id, "first_pass_completed_at": completed_at}
+
+
+@app.patch(
+    "/student/textbooks/{textbook_id}/debugging-complete",
+    response_model=schemas.TextbookDebuggingCompleteResponse,
+    tags=["Student"],
+)
+def student_set_textbook_debugging_complete(
+    textbook_id: int,
+    payload: schemas.StudentTextbookDebuggingCompleteRequest,
+    db: Session = Depends(get_db),
+):
+    student = crud.get_student_by_id(db, payload.student_id)
+    if student is None:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    textbook = crud.get_textbook_by_id(db, textbook_id)
+    if textbook is None or not crud.is_textbook_visible_to_student(db, textbook, payload.student_id):
+        raise HTTPException(status_code=404, detail="Textbook not found")
+
+    completed_at = crud.set_textbook_debugging_completed(db, payload.student_id, textbook_id, payload.completed)
+    return {"student_id": payload.student_id, "textbook_id": textbook_id, "debugging_completed_at": completed_at}
+
+
+@app.patch(
     "/admin/students/{student_id}/daily-tasks/{task_id}/lecture-items/{lecture_number}",
     response_model=schemas.DailyTaskResponse,
     tags=["Admin"],
@@ -1313,6 +1358,8 @@ def create_admin_daily_task(
 ):
     if payload.status not in crud.DAILY_TASK_STATUSES:
         raise HTTPException(status_code=400, detail="Invalid status")
+    if not crud.is_valid_task_video_url(payload.video_url):
+        raise HTTPException(status_code=400, detail="Invalid video_url")
 
     student = crud.get_student_by_id(db, payload.student_id)
     if student is None:
@@ -1334,6 +1381,8 @@ def update_admin_daily_task(
 ):
     if payload.status is not None and payload.status not in crud.DAILY_TASK_STATUSES:
         raise HTTPException(status_code=400, detail="Invalid status")
+    if not crud.is_valid_task_video_url(payload.video_url):
+        raise HTTPException(status_code=400, detail="Invalid video_url")
 
     task = crud.get_daily_task(db, task_id)
     if task is None:

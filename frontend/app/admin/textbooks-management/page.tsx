@@ -475,6 +475,21 @@ export default function TextbooksManagementPage() {
     }));
   }, [selectedSeries, form.subjects, form.title, keyEdited]);
 
+  // 디버그 시리즈는 회차마다 과목(수학 I+수학 II+확률과 통계)과 문항 구간(객관식 9~14,
+  // 주관식 20~21, 확통 28~29)이 고정이라 새 교재 등록 시 자동으로 채워준다. 폼이 아직
+  // 손대지 않은 초기 상태일 때만 적용해서 관리자가 이미 입력한 내용을 덮어쓰지 않는다.
+  useEffect(() => {
+    if (formMode !== "create") return;
+    if (selectedSeries?.korean_name !== "디버그") return;
+    if (form.structureType !== "none" || sections.length > 0) return;
+    setForm((f) => ({ ...f, structureType: "problems", subjects: [...SUBJECT_TAGS] }));
+    setSections(() => [
+      { ...makeEmptySection(), sectionTitle: "객관식", startProblem: "9", endProblem: "14" },
+      { ...makeEmptySection(), sectionTitle: "주관식", startProblem: "20", endProblem: "21" },
+      { ...makeEmptySection(), sectionTitle: "확통", startProblem: "28", endProblem: "29" },
+    ]);
+  }, [formMode, selectedSeries, form.structureType, sections.length]);
+
   const sectionUnionCount = useMemo(() => computeUnionItemCount(sections), [sections]);
 
   useEffect(() => {

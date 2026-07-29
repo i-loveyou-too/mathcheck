@@ -6,7 +6,7 @@ import { ApiError, apiFetch } from "@/lib/api";
 import { getStudyDate } from "@/lib/study-date";
 
 type DailyTaskStatus = "todo" | "in_progress" | "done";
-type ItemProgressStatus = "not_started" | "partial" | "done";
+type ItemProgressStatus = "not_started" | "partial" | "done" | "passed";
 
 type DailyTask = {
   id: number;
@@ -53,12 +53,16 @@ type TextbookProgressData = {
     full_title: string;
     subject: string | null;
     problem_count: number;
+    series_name: string | null;
+    first_pass_completed_at: string | null;
+    debugging_completed_at: string | null;
   };
   summary: {
     total: number;
     done: number;
     partial: number;
     not_started: number;
+    passed: number;
   };
   items: {
     id: number;
@@ -140,12 +144,14 @@ function getStatusLabel(status: DailyTaskStatus) {
 function getItemTone(status: ItemProgressStatus) {
   if (status === "done") return "bg-emerald-50 text-emerald-700";
   if (status === "partial") return "bg-amber-50 text-amber-700";
+  if (status === "passed") return "bg-violet-50 text-violet-700";
   return "bg-slate-100 text-slate-500";
 }
 
 function getItemLabel(status: ItemProgressStatus) {
   if (status === "done") return "완료";
   if (status === "partial") return "질문";
+  if (status === "passed") return "패스";
   return "미완료";
 }
 
@@ -182,6 +188,7 @@ export function AdminStudentProgressManager({
   const [rangeStart, setRangeStart] = useState("");
   const [rangeEnd, setRangeEnd] = useState("");
   const [textbookBatchSaving, setTextbookBatchSaving] = useState(false);
+  const [firstPassSaving, setFirstPassSaving] = useState(false);
 
   const [lectureAssignments, setLectureAssignments] = useState<LectureAssignmentListItem[]>([]);
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<number | null>(null);
@@ -431,6 +438,26 @@ export function AdminStudentProgressManager({
     }
   };
 
+  const toggleFirstPassCompleted = async () => {
+    if (!textbookProgress) return;
+    const nextCompleted = !textbookProgress.textbook.first_pass_completed_at;
+    setFirstPassSaving(true);
+    setTextbookError("");
+    try {
+      await apiFetch(
+        `/admin/students/${studentId}/textbooks/${textbookProgress.textbook.id}/first-pass`,
+        { method: "PATCH", body: { completed: nextCompleted } },
+      );
+      await fetchTextbookProgress();
+    } catch (error) {
+      setTextbookError(
+        error instanceof ApiError ? error.message : "1회독 완료 상태를 저장하지 못했습니다.",
+      );
+    } finally {
+      setFirstPassSaving(false);
+    }
+  };
+
   const toggleLectureItem = async (
     taskId: number,
     lectureNumber: number,
@@ -630,12 +657,31 @@ export function AdminStudentProgressManager({
               <>
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                   <div>
-                    <h3 className="text-lg font-black text-[#17213B]">
-                      {textbookProgress.textbook.full_title}
-                    </h3>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-lg font-black text-[#17213B]">
+                        {textbookProgress.textbook.full_title}
+                      </h3>
+                      <button
+                        type="button"
+                        disabled={firstPassSaving}
+                        onClick={() => void toggleFirstPassCompleted()}
+                        className={`rounded-full px-3 py-1.5 text-xs font-black transition disabled:opacity-60 ${
+                          textbookProgress.textbook.first_pass_completed_at
+                            ? "bg-violet-500 text-white"
+                            : "border border-[#D0D5DD] bg-white text-[#667085]"
+                        }`}
+                      >
+                        {textbookProgress.textbook.first_pass_completed_at ? "✓ 1회독 완료" : "1회독 완료 처리"}
+                      </button>
+                      {textbookProgress.textbook.debugging_completed_at ? (
+                        <span className="rounded-full bg-emerald-500 px-3 py-1.5 text-xs font-black text-white">
+                          🐞 디버깅 완료(학생 표시)
+                        </span>
+                      ) : null}
+                    </div>
                     <p className="mt-1 text-sm font-semibold text-[#98A2B3]">
-                      완료 {textbookProgress.summary.done} · 질문 {textbookProgress.summary.partial} · 미완료{" "}
-                      {textbookProgress.summary.not_started}
+                      완료 {textbookProgress.summary.done} · 질문 {textbookProgress.summary.partial} · 패스{" "}
+                      {textbookProgress.summary.passed} · 미완료 {textbookProgress.summary.not_started}
                     </p>
                   </div>
 
@@ -722,8 +768,8 @@ export function AdminStudentProgressManager({
                         </span>
                       </div>
 
-                      <div className="mt-3 grid grid-cols-3 gap-2">
-                        {(["not_started", "partial", "done"] as ItemProgressStatus[]).map((status) => (
+                      <div className="mt-3 grid grid-cols-2 gap-2">
+                        {(["not_started", "partial", "done", "passed"] as ItemProgressStatus[]).map((status) => (
                           <button
                             key={status}
                             type="button"

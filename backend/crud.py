@@ -27,6 +27,7 @@ from models import (
     MathStudentItemProgress,
     MathStudentLectureProgress,
     MathStudentTextbook,
+    MathStudentTextbookMilestone,
     MathTextbook,
     MathTextbookItem,
     MathTextbookSection,
@@ -50,8 +51,18 @@ TEXTBOOK_PROGRESS_CONFIG = {
     "deep-prob-counting": "딥러닝 Deep Learning 확률과 통계 - 경우의 수",
     "deep-su1-trig-shape": "딥러닝 Deep Learning 수1 - 삼각함수 도형",
 }
-ITEM_PROGRESS_STATUSES = {"not_started", "partial", "done"}
+ITEM_PROGRESS_STATUSES = {"not_started", "partial", "done", "passed"}
 DAILY_TASK_STATUSES = {"todo", "in_progress", "done"}
+
+
+def is_valid_task_video_url(value: Optional[str]) -> bool:
+    """할일에 다는 영상 링크는 http(s) 스킴만 허용한다(javascript: 등 위험한 스킴 차단).
+    유튜브로 한정하지 않는 이유: 관리자가 다른 영상 링크를 걸 수도 있다."""
+    if value is None or value == "":
+        return True
+    return value.startswith("http://") or value.startswith("https://")
+
+
 STUDENT_PROGRESS_SUMMARY_SUBJECTS = ["수1", "수2", "확률과 통계"]
 KST = get_study_timezone(DEFAULT_STUDY_TIMEZONE)
 
@@ -746,6 +757,7 @@ def serialize_daily_task(db: Session, task: MathDailyTask) -> dict:
         "status": resolved["status"],
         "difficulty": task.difficulty,
         "category": task.category,
+        "video_url": task.video_url,
         "order_index": task.order_index,
         "completed_at": resolved["completed_at"],
         "textbook": textbook,
@@ -1162,6 +1174,7 @@ def create_daily_task(db: Session, payload) -> MathDailyTask:
         status=payload.status,
         difficulty=payload.difficulty,
         category=payload.category,
+        video_url=payload.video_url,
         order_index=payload.order_index,
         completed_at=completed_at,
     )
@@ -1194,6 +1207,7 @@ def update_daily_task(db: Session, task: MathDailyTask, payload) -> MathDailyTas
         "status",
         "difficulty",
         "category",
+        "video_url",
         "order_index",
     ]:
         if field in update_data:
@@ -2451,6 +2465,7 @@ def get_textbook_progress(db: Session, student_id: int, textbook_key: str) -> Op
         "done": 0,
         "partial": 0,
         "not_started": 0,
+        "passed": 0,
     }
 
     for item in items:
@@ -2467,6 +2482,8 @@ def get_textbook_progress(db: Session, student_id: int, textbook_key: str) -> Op
             }
         )
 
+    milestone = get_textbook_milestone(db, student_id, textbook.id)
+
     return {
         "textbook": {
             "id": textbook.id,
@@ -2475,10 +2492,60 @@ def get_textbook_progress(db: Session, student_id: int, textbook_key: str) -> Op
             "title": textbook.title,
             "full_title": textbook.full_title,
             "problem_count": len(items),
+            "series_name": textbook.series.korean_name if textbook.series else None,
+            "first_pass_completed_at": milestone.first_pass_completed_at if milestone else None,
+            "debugging_completed_at": milestone.debugging_completed_at if milestone else None,
         },
         "summary": summary,
         "items": item_payloads,
     }
+
+
+def get_textbook_by_id(db: Session, textbook_id: int) -> Optional[MathTextbook]:
+    return db.get(MathTextbook, textbook_id)
+
+
+def get_textbook_milestone(
+    db: Session, student_id: int, textbook_id: int
+) -> Optional[MathStudentTextbookMilestone]:
+    return (
+        db.query(MathStudentTextbookMilestone)
+        .filter(
+            MathStudentTextbookMilestone.student_id == student_id,
+            MathStudentTextbookMilestone.textbook_id == textbook_id,
+        )
+        .first()
+    )
+
+
+def _get_or_create_textbook_milestone(
+    db: Session, student_id: int, textbook_id: int
+) -> MathStudentTextbookMilestone:
+    milestone = get_textbook_milestone(db, student_id, textbook_id)
+    if milestone is None:
+        milestone = MathStudentTextbookMilestone(student_id=student_id, textbook_id=textbook_id)
+        db.add(milestone)
+    return milestone
+
+
+def set_textbook_first_pass_completed(
+    db: Session, student_id: int, textbook_id: int, completed: bool
+):
+    milestone = _get_or_create_textbook_milestone(db, student_id, textbook_id)
+    milestone.first_pass_completed_at = datetime.now(timezone.utc) if completed else None
+    db.commit()
+    db.refresh(milestone)
+    return milestone.first_pass_completed_at
+
+
+def set_textbook_debugging_completed(
+    db: Session, student_id: int, textbook_id: int, completed: bool
+):
+    milestone = _get_or_create_textbook_milestone(db, student_id, textbook_id)
+    milestone.debugging_completed_at = datetime.now(timezone.utc) if completed else None
+    db.commit()
+    db.refresh(milestone)
+    return milestone.debugging_completed_at
 
 
 def _set_student_item_progress(

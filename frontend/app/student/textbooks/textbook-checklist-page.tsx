@@ -9,8 +9,8 @@ import { ApiError, apiFetch } from "@/lib/api";
 import { getStudent } from "@/lib/storage";
 import { cn } from "@/lib/utils";
 
-type ProblemStatus = "not-started" | "question" | "done";
-type ApiProblemStatus = "not_started" | "partial" | "done";
+type ProblemStatus = "not-started" | "question" | "done" | "pass";
+type ApiProblemStatus = "not_started" | "partial" | "done" | "passed";
 
 type ChecklistItem = {
   id?: number;
@@ -27,12 +27,16 @@ type TextbookProgressResponse = {
     title: string;
     full_title: string;
     problem_count: number;
+    series_name: string | null;
+    first_pass_completed_at: string | null;
+    debugging_completed_at: string | null;
   };
   summary: {
     total: number;
     done: number;
     partial: number;
     not_started: number;
+    passed: number;
   };
   items: {
     id: number;
@@ -61,6 +65,7 @@ const statusOptions: { label: string; value: ProblemStatus }[] = [
   { label: "아직 안함", value: "not-started" },
   { label: "질문", value: "question" },
   { label: "완료", value: "done" },
+  { label: "패스", value: "pass" },
 ];
 
 const statusStyles: Record<
@@ -90,23 +95,32 @@ const statusStyles: Record<
     selectedButton: "bg-emerald-500 text-white shadow-sm",
     idleButton: "bg-emerald-50 text-emerald-500 hover:bg-emerald-100",
   },
+  pass: {
+    card: "bg-violet-100 text-violet-700",
+    label: "text-violet-600",
+    selectedButton: "bg-violet-500 text-white shadow-sm",
+    idleButton: "bg-violet-50 text-violet-500 hover:bg-violet-100",
+  },
 };
 
 function toUiStatus(status: ApiProblemStatus): ProblemStatus {
   if (status === "done") return "done";
   if (status === "partial") return "question";
+  if (status === "passed") return "pass";
   return "not-started";
 }
 
 function toApiStatus(status: ProblemStatus): ApiProblemStatus {
   if (status === "done") return "done";
   if (status === "question") return "partial";
+  if (status === "pass") return "passed";
   return "not_started";
 }
 
 function getStatusLabel(status: ProblemStatus) {
   if (status === "done") return "완료";
   if (status === "question") return "질문";
+  if (status === "pass") return "패스";
   return "아직 안함";
 }
 
@@ -120,6 +134,11 @@ export function TextbookChecklistPage({
   const router = useRouter();
   const [studentId, setStudentId] = useState<number | null>(null);
   const [apiTitle, setApiTitle] = useState<string | null>(null);
+  const [textbookId, setTextbookId] = useState<number | null>(null);
+  const [seriesName, setSeriesName] = useState<string | null>(null);
+  const [firstPassCompletedAt, setFirstPassCompletedAt] = useState<string | null>(null);
+  const [debuggingCompletedAt, setDebuggingCompletedAt] = useState<string | null>(null);
+  const [debuggingSaving, setDebuggingSaving] = useState(false);
   const [items, setItems] = useState<ChecklistItem[]>([]);
   const [statuses, setStatuses] = useState<Record<number, ProblemStatus>>({});
   const [loading, setLoading] = useState(Boolean(progressKey));
@@ -142,6 +161,10 @@ export function TextbookChecklistPage({
         );
 
         setApiTitle(data.textbook.full_title);
+        setTextbookId(data.textbook.id);
+        setSeriesName(data.textbook.series_name);
+        setFirstPassCompletedAt(data.textbook.first_pass_completed_at);
+        setDebuggingCompletedAt(data.textbook.debugging_completed_at);
         setItems(
           data.items.map((item) => ({
             id: item.id,
@@ -201,12 +224,14 @@ export function TextbookChecklistPage({
     const total = visibleItems.length;
     const done = visibleItems.filter((item) => item.status === "done").length;
     const question = visibleItems.filter((item) => item.status === "question").length;
+    const pass = visibleItems.filter((item) => item.status === "pass").length;
 
     return {
       total,
       done,
       question,
-      notStarted: total - done - question,
+      pass,
+      notStarted: total - done - question - pass,
     };
   }, [visibleItems]);
 
@@ -254,6 +279,29 @@ export function TextbookChecklistPage({
     }
   };
 
+  const toggleDebuggingCompleted = async () => {
+    if (!studentId || !textbookId) return;
+    const nextCompleted = !debuggingCompletedAt;
+    setDebuggingSaving(true);
+    setSaveError("");
+    try {
+      const result = await apiFetch<{ debugging_completed_at: string | null }>(
+        `/student/textbooks/${textbookId}/debugging-complete`,
+        { method: "PATCH", body: { student_id: studentId, completed: nextCompleted } }
+      );
+      setDebuggingCompletedAt(result.debugging_completed_at);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        console.error("[debugging-complete] save failed", { status: err.status, body: err.body });
+      } else {
+        console.error("[debugging-complete] save failed", err);
+      }
+      setSaveError("디버깅 완료 상태를 저장하지 못했습니다.");
+    } finally {
+      setDebuggingSaving(false);
+    }
+  };
+
   return (
     <ScreenShell withBottomNav>
       <Header
@@ -267,9 +315,32 @@ export function TextbookChecklistPage({
         title={apiTitle ?? title}
       />
 
+      {firstPassCompletedAt ? (
+        <div className="flex items-center gap-2 rounded-2xl bg-violet-100 px-4 py-3 text-sm font-black text-violet-700">
+          <span>🏁</span>
+          <span>1회독 완료</span>
+        </div>
+      ) : null}
+
+      {seriesName === "디버그" ? (
+        <button
+          type="button"
+          disabled={debuggingSaving}
+          onClick={() => void toggleDebuggingCompleted()}
+          className={`flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-black transition disabled:opacity-60 ${
+            debuggingCompletedAt
+              ? "bg-emerald-500 text-white"
+              : "border-2 border-dashed border-emerald-300 bg-emerald-50 text-emerald-600"
+          }`}
+        >
+          <span>🐞</span>
+          <span>{debuggingCompletedAt ? "디버깅 완료" : "디버깅 완료로 표시하기"}</span>
+        </button>
+      ) : null}
+
       <section className="rounded-3xl bg-white p-5 shadow-card">
         <h2 className="text-base font-bold text-indigo-500">진도 요약</h2>
-        <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
+        <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
           <div className="rounded-2xl bg-[#EEF2FF] p-4">
             <p className="text-xl leading-none">📋</p>
             <p className="mt-2 text-xs font-semibold text-indigo-400">전체</p>
@@ -284,6 +355,11 @@ export function TextbookChecklistPage({
             <p className="text-xl leading-none">⚠️</p>
             <p className="mt-2 text-xs font-semibold">질문</p>
             <p className="mt-0.5 text-2xl font-black">{summary.question}개</p>
+          </div>
+          <div className={cn("rounded-2xl p-4", statusStyles.pass.card)}>
+            <p className="text-xl leading-none">⏭️</p>
+            <p className="mt-2 text-xs font-semibold">패스</p>
+            <p className="mt-0.5 text-2xl font-black">{summary.pass}개</p>
           </div>
           <div className={cn("rounded-2xl p-4", statusStyles["not-started"].card)}>
             <p className="text-xl leading-none">🕐</p>
@@ -325,7 +401,7 @@ export function TextbookChecklistPage({
                       {getStatusLabel(selectedStatus)}
                     </p>
                   </div>
-                  <div className="grid grid-cols-3 gap-1.5">
+                  <div className="grid grid-cols-2 gap-1.5">
                     {statusOptions.map((option) => {
                       const isSelected = selectedStatus === option.value;
 

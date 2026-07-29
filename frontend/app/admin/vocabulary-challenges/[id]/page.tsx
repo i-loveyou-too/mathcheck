@@ -33,7 +33,7 @@ type Challenge = {
   words: Word[];
 };
 type Assignment = { date: string; word_ids: number[]; count: number };
-type DayStatus = { date: string; day_number: number; learning_day: number; new_bank_day_label: string | null; cumulative_bank_day_label: string | null; cumulative_pool_count: number; new_word_count: number; question_count: number; status: string; score: number | null; correct_count: number | null; total_count: number | null; submitted_at: string | null; session_id: number | null };
+type DayStatus = { date: string; day_number: number; learning_day: number; new_bank_day_label: string | null; cumulative_bank_day_label: string | null; cumulative_pool_count: number; new_word_count: number; question_count: number; status: string; score: number | null; correct_count: number | null; total_count: number | null; submitted_at: string | null; session_id: number | null; admin_reviewed_at: string | null };
 
 export default function VocabularyChallengeDetailPage() {
   const params = useParams<{ id: string }>();
@@ -53,6 +53,7 @@ export default function VocabularyChallengeDetailPage() {
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState({ name: "", start_date: "", end_date: "" });
   const [deleting, setDeleting] = useState(false);
+  const [reviewingSessionId, setReviewingSessionId] = useState<number | null>(null);
 
   const load = async () => {
     const [detail, assignmentRows, status] = await Promise.all([
@@ -79,6 +80,23 @@ export default function VocabularyChallengeDetailPage() {
     const row = assignments.find((item) => item.date === selectedDate);
     setSelectedWords(row?.word_ids ?? []);
   }, [assignments, selectedDate]);
+
+  const toggleDayReviewed = async (day: DayStatus) => {
+    if (!day.session_id) return;
+    setReviewingSessionId(day.session_id);
+    setError("");
+    try {
+      await apiFetch(`/admin/vocabulary-results/${day.session_id}/review`, {
+        method: "PATCH",
+        body: { reviewed: !day.admin_reviewed_at },
+      });
+      await load();
+    } catch (reason) {
+      setError(reason instanceof ApiError ? reason.message : "확인 상태를 저장하지 못했습니다.");
+    } finally {
+      setReviewingSessionId(null);
+    }
+  };
 
   const run = async (action: () => Promise<unknown>, message: string) => {
     setError("");
@@ -243,8 +261,8 @@ export default function VocabularyChallengeDetailPage() {
           <div className="border-b border-[#EEF1F5] p-6"><p className="text-xs font-black text-[#F59E0B]">PROGRESS</p><h2 className="mt-1 text-xl font-black text-[#17213B]">날짜별 응시 현황</h2></div>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[760px] text-left text-sm">
-              <thead className="bg-[#F8FAFC] text-xs text-[#7A859F]"><tr><th className="p-4">날짜</th><th>SPRINT DAY</th><th>신규 범위</th><th>누적 범위</th><th>Pool</th><th>출제</th><th>상태</th><th>점수</th><th>PDF</th></tr></thead>
-              <tbody>{days.map((day) => <tr key={day.date} className="border-t border-[#F0F2F6]"><td className="p-4 font-black text-[#17213B]">{day.date}</td><td>{day.learning_day ?? day.day_number}</td><td>{day.new_bank_day_label ?? "-"}</td><td>{day.cumulative_bank_day_label ?? "-"}</td><td>{day.cumulative_pool_count ?? "-"}</td><td>{day.question_count}</td><td><span className={`rounded-full px-2 py-1 text-xs font-bold ${day.status === "submitted" ? "bg-emerald-50 text-emerald-600" : "bg-gray-100 text-gray-500"}`}>{day.status}</span></td><td>{day.score ?? "-"}</td><td>{day.session_id ? <div className="flex gap-2"><a target="_blank" href={`${API_BASE_URL}/admin/vocabulary-sessions/${day.session_id}/paper`} className="text-xs font-black text-[#2874E8]">문제지</a><a target="_blank" href={`${API_BASE_URL}/admin/vocabulary-sessions/${day.session_id}/answer-key`} className="text-xs font-black text-[#19A879]">정답지</a>{day.status === "submitted" && <Link href={`/admin/vocabulary-challenges/${params.id}/results/${day.session_id}`} className="text-xs font-black text-[#9A6500]">결과/채점</Link>}</div> : "-"}</td></tr>)}</tbody>
+              <thead className="bg-[#F8FAFC] text-xs text-[#7A859F]"><tr><th className="p-4">날짜</th><th>SPRINT DAY</th><th>신규 범위</th><th>누적 범위</th><th>Pool</th><th>출제</th><th>상태</th><th>점수</th><th>확인</th><th>PDF</th></tr></thead>
+              <tbody>{days.map((day) => <tr key={day.date} className="border-t border-[#F0F2F6]"><td className="p-4 font-black text-[#17213B]">{day.date}</td><td>{day.learning_day ?? day.day_number}</td><td>{day.new_bank_day_label ?? "-"}</td><td>{day.cumulative_bank_day_label ?? "-"}</td><td>{day.cumulative_pool_count ?? "-"}</td><td>{day.question_count}</td><td><span className={`rounded-full px-2 py-1 text-xs font-bold ${day.status === "submitted" ? "bg-emerald-50 text-emerald-600" : "bg-gray-100 text-gray-500"}`}>{day.status}</span></td><td>{day.score ?? "-"}</td><td>{day.session_id ? <button type="button" disabled={reviewingSessionId === day.session_id} onClick={() => void toggleDayReviewed(day)} className={`rounded-full px-2 py-1 text-xs font-black transition disabled:opacity-50 ${day.admin_reviewed_at ? "bg-emerald-500 text-white" : "bg-gray-100 text-gray-400"}`}>{day.admin_reviewed_at ? "✓" : "-"}</button> : "-"}</td><td>{day.session_id ? <div className="flex gap-2"><a target="_blank" href={`${API_BASE_URL}/admin/vocabulary-sessions/${day.session_id}/paper`} className="text-xs font-black text-[#2874E8]">문제지</a><a target="_blank" href={`${API_BASE_URL}/admin/vocabulary-sessions/${day.session_id}/answer-key`} className="text-xs font-black text-[#19A879]">정답지</a>{day.status === "submitted" && <Link href={`/admin/vocabulary-challenges/${params.id}/results/${day.session_id}`} className="text-xs font-black text-[#9A6500]">결과/채점</Link>}</div> : "-"}</td></tr>)}</tbody>
             </table>
           </div>
         </section>

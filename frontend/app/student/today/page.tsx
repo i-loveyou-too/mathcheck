@@ -48,6 +48,7 @@ type DailyTask = {
   textbook_id: number | null;
   textbook_key: string | null;
   title: string;
+  video_url?: string | null;
   lecture_items?: LectureTaskItemProgress[];
   source_type?: "manual" | "homework" | "lecture";
   lecture_assignment_id?: number | null;
@@ -390,6 +391,17 @@ function StandardTaskItem({
           <span className={cn("rounded-full px-3 py-1 text-xs font-bold", getStatusClass(task.status))}>
             {getStatusLabel(task.status)}
           </span>
+          {task.video_url ? (
+            <a
+              className="rounded-full bg-red-50 px-3 py-1 text-xs font-bold text-red-500"
+              href={task.video_url}
+              onClick={(event) => event.stopPropagation()}
+              rel="noreferrer"
+              target="_blank"
+            >
+              🎬 영상 보기
+            </a>
+          ) : null}
         </div>
       </div>
       <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#F7F8FC] text-2xl font-black text-[#8A94A8]">
