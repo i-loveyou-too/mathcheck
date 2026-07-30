@@ -170,6 +170,11 @@ def computed_status(assignment: models.SprintExamV2Assignment, *, now: datetime 
     return "available"
 
 
+def _can_start_assignment(assignment: models.SprintExamV2Assignment, eligibility: dict[str, Any]) -> bool:
+    status = computed_status(assignment)
+    return status == "available" or bool(eligibility.get("has_active_attempt")) or bool(eligibility.get("available_retake_approval_count"))
+
+
 def serialize_assignment_list_item(db: Session, assignment: models.SprintExamV2Assignment) -> dict[str, Any]:
     eligibility = retake_approval_service.start_eligibility(db, assignment)
     latest_attempt = _latest_attempt(assignment)
@@ -185,6 +190,9 @@ def serialize_assignment_list_item(db: Session, assignment: models.SprintExamV2A
         "attempt_count": _loaded_attempt_count(assignment),
         "base_attempt_count": eligibility["base_attempt_count"],
         "available_retake_approval_count": eligibility["available_retake_approval_count"],
+        "available_retake_approval_id": eligibility["available_retake_approval_id"],
+        "has_started_attempt": eligibility["has_active_attempt"],
+        "can_start": _can_start_assignment(assignment, eligibility),
         "attempt_limit": assignment.attempt_limit,
         "paper_selection_mode": assignment.paper_selection_mode,
         "memo": assignment.memo,
@@ -220,6 +228,7 @@ def _attempt_payload(attempt: models.SprintExamV2Attempt | None) -> dict[str, An
         "id": attempt.id,
         "attempt_no": attempt.attempt_no,
         "status": attempt.status,
+        "retake_approval_id": attempt.retake_approval_id,
         "started_at": attempt.started_at.isoformat() if attempt.started_at else None,
         "submitted_at": attempt.submitted_at.isoformat() if attempt.submitted_at else None,
         "scored_at": attempt.scored_at.isoformat() if attempt.scored_at else None,
@@ -250,10 +259,11 @@ def serialize_assignment_detail(db: Session, assignment: models.SprintExamV2Assi
             "attempt_limit": assignment.attempt_limit,
             "paper_selection_mode": assignment.paper_selection_mode,
             "memo": assignment.memo,
-            "can_start": computed_status(assignment) == "available" and eligibility["can_start"],
+            "can_start": _can_start_assignment(assignment, eligibility),
             "needs_retake_approval": eligibility["needs_retake_approval"],
             "available_retake_approval_count": eligibility["available_retake_approval_count"],
-            "cannot_start_reason": None if computed_status(assignment) == "available" and eligibility["can_start"] else "NOT_AVAILABLE",
+            "available_retake_approval_id": eligibility["available_retake_approval_id"],
+            "cannot_start_reason": None if _can_start_assignment(assignment, eligibility) else "NOT_AVAILABLE",
         },
         "student": {
             "id": assignment.student.id,
@@ -315,7 +325,7 @@ def create_assignments(db: Session, payload: dict[str, Any]) -> dict[str, Any]:
     due_at = payload.get("due_at")
     validate_time_range(available_from, due_at)
     paper_overrides = payload.get("paper_overrides") or {}
-    attempt_limit = _normalize_attempt_limit(payload.get("attempt_limit"))
+    attempt_limit = 1
     paper_selection_mode = _normalize_paper_selection_mode(
         payload.get("paper_selection_mode"),
         has_overrides=bool(paper_overrides),

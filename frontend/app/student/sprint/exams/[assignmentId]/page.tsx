@@ -11,6 +11,7 @@ type AttemptSummary = {
   id: number;
   attempt_no: number;
   status: "started" | "submitted" | "scored" | "voided";
+  retake_approval_id: number | null;
   started_at: string | null;
   submitted_at: string | null;
   scored_at: string | null;
@@ -26,10 +27,13 @@ type AssignmentDetail = {
     assigned_at: string | null;
     attempt_count: number;
     base_attempt_count: number;
+    approval_attempt_count: number;
     attempt_limit: number;
     can_start: boolean;
+    has_started_attempt: boolean;
     needs_retake_approval: boolean;
     available_retake_approval_count: number;
+    available_retake_approval_id: number | null;
   };
   exam: { id: number; title: string; exam_date: string | null };
   papers: Array<{ assignment_paper_id: number; subject_code: string; subject_name: string; score_group_name: string }>;
@@ -116,6 +120,8 @@ export default function StudentSprintExamAssignmentDetailPage() {
 
   const latest = data.latest_attempt;
   const active = data.active_attempt;
+  const activeIsRetake = active?.retake_approval_id != null;
+  const hasOpenRetake = data.assignment.available_retake_approval_count > 0;
   const canStartAfterVoided = latest?.status === "voided" && data.assignment.can_start;
 
   return (
@@ -141,7 +147,7 @@ export default function StudentSprintExamAssignmentDetailPage() {
             <div className="flex justify-between gap-4"><dt className="font-bold text-[#6E7F99]">응시 시작</dt><dd className="text-right font-black text-[#10213D]">{formatDateTime(data.assignment.available_from)}</dd></div>
             <div className="flex justify-between gap-4"><dt className="font-bold text-[#6E7F99]">제출 마감</dt><dd className="text-right font-black text-[#10213D]">{formatDateTime(data.assignment.due_at)}</dd></div>
             <div className="flex justify-between gap-4"><dt className="font-bold text-[#6E7F99]">과목</dt><dd className="text-right font-black text-[#10213D]">{data.papers.length}개</dd></div>
-            <div className="flex justify-between gap-4"><dt className="font-bold text-[#6E7F99]">응시 횟수</dt><dd className="text-right font-black text-[#10213D]">{data.assignment.base_attempt_count} / {data.assignment.attempt_limit}</dd></div>
+            <div className="flex justify-between gap-4"><dt className="font-bold text-[#6E7F99]">답안 재입력</dt><dd className="text-right font-black text-[#10213D]">{hasOpenRetake ? "열림" : "닫힘"}</dd></div>
           </dl>
         </section>
 
@@ -159,22 +165,36 @@ export default function StudentSprintExamAssignmentDetailPage() {
 
         <div className="mt-4 space-y-3">
           {active && (
-            <StateCard title="응시 중" desc={`#${active.attempt_no} 응시가 진행 중입니다. 저장된 답안을 이어서 입력할 수 있습니다.`} tone="blue" />
+            <StateCard
+              title={activeIsRetake ? "답안 재입력 중" : "최초 응시 중"}
+              desc="저장된 답안을 이어서 입력할 수 있습니다."
+              tone="blue"
+            />
           )}
-          {!active && latest?.status === "submitted" && (
+          {!active && hasOpenRetake && (
+            <StateCard title="답안 재입력 열림" desc="모의고사 답안 재입력이 열렸습니다." tone="blue" />
+          )}
+          {!active && latest?.status === "submitted" && !hasOpenRetake && (
             <StateCard title="제출 완료" desc="답안 제출이 완료되었습니다. 선생님의 채점과 결과 공개를 기다려주세요." tone="orange" />
           )}
-          {!active && latest?.status === "scored" && (
+          {!active && latest?.status === "scored" && !hasOpenRetake && (
             <StateCard title="채점 완료" desc="결과가 공개되었는지 확인할 수 있습니다. 공개 전이면 대기 화면이 표시됩니다." tone="green" />
           )}
           {!active && latest?.status === "voided" && (
-            <StateCard title="무효 처리" desc={canStartAfterVoided ? "새 응시가 가능합니다." : "새 응시는 관리자 승인 또는 배정 정책이 필요합니다."} tone="red" />
+            <StateCard title="무효 처리" desc={canStartAfterVoided ? "새 응시가 가능합니다." : "새 응시는 관리자 승인 또는 배정 조정이 필요합니다."} tone="red" />
           )}
         </div>
 
         <div className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom))] left-1/2 z-30 w-full max-w-[430px] -translate-x-1/2 px-5 md:max-w-[760px] lg:max-w-[1180px] lg:px-6">
           {active ? (
-            <Link href={`/student/sprint/exams/attempts/${active.id}`} className="block h-14 rounded-[20px] bg-[#2874E8] text-center text-base font-black leading-[3.5rem] text-white shadow-[0_16px_35px_rgba(40,116,232,0.28)]">OMR 이어서 입력</Link>
+            <Link href={`/student/sprint/exams/attempts/${active.id}`} className="block h-14 rounded-[20px] bg-[#2874E8] text-center text-base font-black leading-[3.5rem] text-white shadow-[0_16px_35px_rgba(40,116,232,0.28)]">{activeIsRetake ? "답안 재입력 계속하기" : "OMR 이어서 입력"}</Link>
+          ) : hasOpenRetake ? (
+            <div className="space-y-2">
+              <button onClick={() => void start()} disabled={busy || totalQuestions === 0} className="h-14 w-full rounded-[20px] bg-[#2874E8] text-base font-black text-white shadow-[0_16px_35px_rgba(40,116,232,0.28)] disabled:opacity-45">{busy ? "준비 중..." : "답안 재입력"}</button>
+              {latest?.status === "scored" && (
+                <Link href={`/student/sprint/exams/attempts/${latest.id}/result`} className="block h-12 rounded-[16px] border border-[#DCE4ED] bg-white text-center text-sm font-black leading-[3rem] text-[#2874E8]">결과 보기</Link>
+              )}
+            </div>
           ) : latest?.status === "submitted" ? (
             <Link href={`/student/sprint/exams/attempts/${latest.id}/result`} className="block h-14 rounded-[20px] bg-[#10213D] text-center text-base font-black leading-[3.5rem] text-white shadow-[0_16px_35px_rgba(16,33,61,0.24)]">제출 상태 확인</Link>
           ) : latest?.status === "scored" ? (

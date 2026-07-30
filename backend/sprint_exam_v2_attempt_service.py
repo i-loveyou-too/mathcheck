@@ -147,7 +147,7 @@ def _start_type(attempt: models.SprintExamV2Attempt) -> str:
 def _start_remaining(db: Session, assignment: models.SprintExamV2Assignment, *, now: datetime) -> dict[str, int]:
     eligibility = retake_approval_service.start_eligibility(db, assignment, now=now)
     return {
-        "base_attempts": max((assignment.attempt_limit or 1) - eligibility["base_attempt_count"], 0),
+        "base_attempts": max(1 - eligibility["base_attempt_count"], 0),
         "available_retake_approvals": eligibility["available_retake_approval_count"],
     }
 
@@ -186,7 +186,7 @@ def start_attempt(db: Session, assignment_id: int, student_id: int) -> dict[str,
         )
         retake_approval = None
         start_type = "base"
-        if base_attempt_count >= assignment.attempt_limit:
+        if base_attempt_count >= 1:
             retake_approval = retake_approval_service.take_available_retake_approval(db, assignment.id, now=now)
             if retake_approval is None:
                 raise SprintExamV2AttemptConflictError(
@@ -409,7 +409,7 @@ def _validate_attempt_editable(db: Session, attempt: models.SprintExamV2Attempt,
     if attempt.status != "started" or attempt.submitted_at is not None:
         raise SprintExamV2AttemptConflictError("ATTEMPT_ALREADY_SUBMITTED", "Submitted attempts cannot be edited.")
     due_at = _aware_utc(attempt.assignment.submission_deadline_at)
-    if due_at is not None and now > due_at:
+    if attempt.retake_approval_id is None and due_at is not None and now > due_at:
         raise SprintExamV2AttemptConflictError("ASSIGNMENT_EXPIRED", "This assignment is past its due time.")
     if not _assigned_question_ids(db, attempt.assignment):
         raise SprintExamV2AttemptConflictError("INVALID_ASSIGNMENT_CONFIGURATION", "This assignment has no questions.")

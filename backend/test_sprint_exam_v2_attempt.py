@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import sys
 from unittest import TestCase
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -53,3 +54,16 @@ class SprintExamV2AttemptUnitTests(TestCase):
         with self.assertRaises(attempt_service.SprintExamV2AttemptConflictError) as captured:
             attempt_service._validate_assignment_startable(assignment, now=datetime.now(timezone.utc))
         self.assertEqual(captured.exception.code, "ASSIGNMENT_EXPIRED")
+
+    def test_start_remaining_ignores_legacy_attempt_limit(self):
+        assignment = models.SprintExamV2Assignment(id=1, attempt_limit=3)
+        now = datetime.now(timezone.utc)
+
+        with patch.object(
+            attempt_service.retake_approval_service,
+            "start_eligibility",
+            return_value={"base_attempt_count": 1, "available_retake_approval_count": 0},
+        ):
+            remaining = attempt_service._start_remaining(None, assignment, now=now)
+
+        self.assertEqual(remaining["base_attempts"], 0)

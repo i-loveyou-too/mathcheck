@@ -87,6 +87,7 @@ export type AttemptSummary = {
   id: number;
   attempt_no: number;
   status: "started" | "submitted" | "scored" | "voided";
+  retake_approval_id: number | null;
   started_at: string | null;
   submitted_at: string | null;
   scored_at: string | null;
@@ -104,6 +105,9 @@ export type AssignmentListItem = {
   attempt_count: number;
   base_attempt_count: number;
   available_retake_approval_count: number;
+  available_retake_approval_id: number | null;
+  has_started_attempt: boolean;
+  can_start: boolean;
   attempt_limit: number;
   paper_selection_mode: string;
   memo: string | null;
@@ -138,8 +142,10 @@ export type AssignmentDetail = {
     paper_selection_mode: string;
     memo: string | null;
     can_start: boolean;
+    has_started_attempt: boolean;
     needs_retake_approval: boolean;
     available_retake_approval_count: number;
+    available_retake_approval_id: number | null;
     cannot_start_reason: string | null;
   };
   student: {

@@ -158,15 +158,16 @@ def start_eligibility(db: Session, assignment: models.SprintExamV2Assignment, *,
     now = now or now_utc()
     counts = active_attempt_counts(assignment)
     has_active_attempt = any(attempt.status == "started" for attempt in assignment.attempts or [])
-    available_count = available_retake_approval_count(db, assignment.id, now=now)
-    base_remaining = max((assignment.attempt_limit or 1) - counts["base_attempt_count"], 0)
+    available_approvals = _available_approvals(db, assignment.id, now=now)
+    base_remaining = max(1 - counts["base_attempt_count"], 0)
     return {
         "attempt_limit": assignment.attempt_limit,
         **counts,
         "has_active_attempt": has_active_attempt,
-        "can_start": has_active_attempt or base_remaining > 0 or available_count > 0,
-        "needs_retake_approval": not has_active_attempt and base_remaining <= 0 and available_count <= 0,
-        "available_retake_approval_count": available_count,
+        "can_start": has_active_attempt or base_remaining > 0 or len(available_approvals) > 0,
+        "needs_retake_approval": not has_active_attempt and base_remaining <= 0 and len(available_approvals) <= 0,
+        "available_retake_approval_count": len(available_approvals),
+        "available_retake_approval_id": available_approvals[0].id if available_approvals else None,
     }
 
 
@@ -252,16 +253,22 @@ def get_retake_approval(db: Session, approval_id: int, *, lock: bool = False) ->
     return approval
 
 
-def create_retake_approval(db: Session, payload: dict[str, Any], *, admin_id: int | None = None) -> dict[str, Any]:
+def create_retake_approval(db: Session, payload: dict[str, Any], *, admin_id: int | None = None, check_existing: bool = False) -> dict[str, Any]:
     now = now_utc()
     expires_at = aware_utc(payload.get("expires_at"))
     if expires_at is not None and now > expires_at:
         raise SprintExamV2RetakeApprovalDomainError("INVALID_RETAKE_APPROVAL_EXPIRY", "expires_at must be in the future.", "expires_at")
     try:
+        assignment_id = int(payload["assignment_id"])
         assignment = (
             db.query(models.SprintExamV2Assignment)
-            .options(selectinload(models.SprintExamV2Assignment.student), selectinload(models.SprintExamV2Assignment.exam))
-            .filter(models.SprintExamV2Assignment.id == int(payload["assignment_id"]))
+            .options(
+                selectinload(models.SprintExamV2Assignment.student),
+                selectinload(models.SprintExamV2Assignment.exam),
+                selectinload(models.SprintExamV2Assignment.attempts),
+                selectinload(models.SprintExamV2Assignment.retake_approvals),
+            )
+            .filter(models.SprintExamV2Assignment.id == assignment_id)
             .with_for_update()
             .first()
         )
@@ -269,6 +276,46 @@ def create_retake_approval(db: Session, payload: dict[str, Any], *, admin_id: in
             raise SprintExamV2RetakeApprovalNotFoundError("Sprint Exam V2 assignment not found.")
         if assignment.status == "closed":
             raise SprintExamV2RetakeApprovalConflictError("ASSIGNMENT_NOT_STARTABLE", "Closed assignments cannot receive retake approvals.")
+
+        if check_existing:
+            completed_base_attempts = [
+                a for a in (assignment.attempts or [])
+                if a.retake_approval_id is None and a.status in {"submitted", "scored"}
+            ]
+            if not completed_base_attempts:
+                raise SprintExamV2RetakeApprovalConflictError(
+                    "NO_BASE_ATTEMPT",
+                    "Student must have completed a base attempt to open retake.",
+                    assignment_id=assignment_id,
+                )
+            started_attempt = next((a for a in (assignment.attempts or []) if a.status == "started"), None)
+            if started_attempt:
+                raise SprintExamV2RetakeApprovalConflictError(
+                    "ATTEMPT_IN_PROGRESS",
+                    "An attempt is currently in progress.",
+                    assignment_id=assignment_id,
+                    attempt_id=started_attempt.id,
+                )
+            existing_available = _available_approvals(db, assignment_id, now=now, lock=False)
+            if existing_available:
+                raise SprintExamV2RetakeApprovalConflictError(
+                    "APPROVAL_ALREADY_AVAILABLE",
+                    "An approval is already available for this assignment.",
+                    assignment_id=assignment_id,
+                    approval_id=existing_available[0].id,
+                )
+            started_approval_attempt = next(
+                (a for a in (assignment.attempts or []) if a.retake_approval_id is not None and a.status == "started"),
+                None,
+            )
+            if started_approval_attempt:
+                raise SprintExamV2RetakeApprovalConflictError(
+                    "RETAKE_IN_PROGRESS",
+                    "A retake is currently in progress.",
+                    assignment_id=assignment_id,
+                    attempt_id=started_approval_attempt.id,
+                )
+
         approval = models.SprintExamV2RetakeApproval(
             assignment_id=assignment.id,
             status="approved",

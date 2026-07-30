@@ -60,7 +60,7 @@ def admin_create_sprint_exam_v2_retake_approval(
     _admin=Depends(admin_auth.require_admin),
 ):
     try:
-        return retake_service.create_retake_approval(db, _payload(payload))
+        return retake_service.create_retake_approval(db, _payload(payload), admin_id=_admin.id, check_existing=True)
     except Exception as exc:
         _raise_http_error(exc)
 
