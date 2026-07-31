@@ -289,7 +289,62 @@ def _english_part(question_no: int) -> tuple[str, str]:
     return ("english_other", "기타")
 
 
-def _korean_part(paper: models.SprintExamV2AssignmentPaper, question_no: int) -> tuple[str, str]:
+def _compact_text(value: str | None) -> str:
+    return "".join(str(value or "").split())
+
+
+def _korean_elective_name(paper: models.SprintExamV2AssignmentPaper) -> tuple[str, str] | None:
+    code = paper.subject_code_snapshot or ""
+    if code in KOREAN_ELECTIVE_NAMES:
+        return code, KOREAN_ELECTIVE_NAMES[code]
+    compact_name = _compact_text(paper.subject_name_snapshot)
+    if compact_name == "화법과작문":
+        return "korean_speech_writing", "화법과 작문"
+    if compact_name == "언어와매체":
+        return "korean_language_media", "언어와 매체"
+    return None
+
+
+def _korean_elective_from_assignment(assignment: models.SprintExamV2Assignment | None) -> tuple[str, str] | None:
+    if assignment is None:
+        return None
+    compact_name = _compact_text(assignment.korean_elective_snapshot)
+    if compact_name == "화법과작문":
+        return "korean_speech_writing", "화법과 작문"
+    if compact_name == "언어와매체":
+        return "korean_language_media", "언어와 매체"
+    code = assignment.korean_elective_snapshot or ""
+    if code in KOREAN_ELECTIVE_NAMES:
+        return code, KOREAN_ELECTIVE_NAMES[code]
+    return None
+
+
+def _math_elective_name(paper: models.SprintExamV2AssignmentPaper) -> tuple[str, str] | None:
+    code = paper.subject_code_snapshot or ""
+    if code in MATH_ELECTIVE_NAMES:
+        return code, MATH_ELECTIVE_NAMES[code]
+    compact_name = _compact_text(paper.subject_name_snapshot)
+    if compact_name == "확률과통계":
+        return "math_probability_statistics", "확률과 통계"
+    if compact_name == "미적분":
+        return "math_calculus", "미적분"
+    if compact_name == "기하":
+        return "math_geometry", "기하"
+    return None
+
+
+def _korean_part(
+    paper: models.SprintExamV2AssignmentPaper,
+    question_no: int,
+    assignment: models.SprintExamV2Assignment | None = None,
+) -> tuple[str, str]:
+    elective = _korean_elective_name(paper)
+    if elective is not None:
+        return elective
+    if question_no >= 31:
+        assignment_elective = _korean_elective_from_assignment(assignment)
+        if assignment_elective is not None:
+            return assignment_elective
     if paper.paper_role_snapshot == "elective":
         name = KOREAN_ELECTIVE_NAMES.get(paper.subject_code_snapshot, paper.subject_name_snapshot)
         return (paper.subject_code_snapshot, name)
@@ -303,6 +358,9 @@ def _korean_part(paper: models.SprintExamV2AssignmentPaper, question_no: int) ->
 def _math_part(paper: models.SprintExamV2AssignmentPaper, question_no: int) -> tuple[str, str, str]:
     if question_no in KILLER_MATH_QUESTION_NOS:
         return ("math_killer", "고난도 문항", "high_difficulty")
+    elective = _math_elective_name(paper)
+    if elective is not None:
+        return (elective[0], elective[1], "weakness")
     if paper.paper_role_snapshot == "elective":
         name = MATH_ELECTIVE_NAMES.get(paper.subject_code_snapshot, paper.subject_name_snapshot)
         return (paper.subject_code_snapshot, name, "weakness")
@@ -320,13 +378,17 @@ def _subject_area_from_paper(paper: models.SprintExamV2AssignmentPaper) -> str:
     return "inquiry" if paper.paper_role_snapshot == "inquiry_slot" else "other"
 
 
-def _weak_part_key(paper: models.SprintExamV2AssignmentPaper, question_no: int) -> tuple[str, str, str, str, str] | None:
+def _weak_part_key(
+    paper: models.SprintExamV2AssignmentPaper,
+    question_no: int,
+    assignment: models.SprintExamV2Assignment | None = None,
+) -> tuple[str, str, str, str, str] | None:
     subject_area = _subject_area_from_paper(paper)
     subject_name = SUBJECT_LABELS.get(subject_area, paper.score_group_name_snapshot)
     if subject_area == "inquiry":
         return None
     if subject_area == "korean":
-        part_code, part_name = _korean_part(paper, question_no)
+        part_code, part_name = _korean_part(paper, question_no, assignment)
         return (subject_area, subject_name, part_code, part_name, "weakness")
     if subject_area == "math":
         part_code, part_name, mode = _math_part(paper, question_no)
@@ -365,7 +427,7 @@ def _weakness_analysis(attempts: list[models.SprintExamV2Attempt]) -> dict[str, 
             paper = _paper_for_question(attempt, question)
             if paper is None:
                 continue
-            key = _weak_part_key(paper, question.question_no)
+            key = _weak_part_key(paper, question.question_no, attempt.assignment)
             if key is None:
                 continue
             subject_area, subject_name, part_code, part_name, mode = key

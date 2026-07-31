@@ -18,6 +18,8 @@ def make_attempt(
     paper: models.SprintExamV2AssignmentPaper,
     questions: list[models.SprintExamV2Question],
     wrong_question_ids: set[int],
+    *,
+    korean_elective_snapshot: str | None = None,
 ) -> models.SprintExamV2Attempt:
     exam_paper = models.SprintExamV2Paper(id=paper.paper_id)
     exam_paper.questions = questions
@@ -26,6 +28,7 @@ def make_attempt(
     assignment = models.SprintExamV2Assignment(id=attempt_id, student_id=1)
     assignment.exam = exam
     assignment.papers = [paper]
+    assignment.korean_elective_snapshot = korean_elective_snapshot
     responses = []
     for question in questions:
         responses.append(
@@ -159,6 +162,32 @@ class SprintExamV2AnalysisTests(TestCase):
 
         self.assertEqual(item["part_name"], "화법과 작문")
         self.assertNotEqual(item["part_name"], "문학")
+
+    def test_korean_elective_snapshot_keeps_31_to_45_out_of_common(self):
+        paper = make_paper(
+            10,
+            subject_code="korean_common",
+            subject_name="국어 공통",
+            score_group_code="korean_total",
+            score_group_name="국어",
+            role="common",
+        )
+        item = _weakness_analysis(
+            [
+                make_attempt(
+                    1,
+                    "1회",
+                    date(2026, 7, 1),
+                    paper,
+                    make_questions(10, [32, 33]),
+                    {1032, 1033},
+                    korean_elective_snapshot="화법과 작문",
+                )
+            ]
+        )["priority_items"][0]
+
+        self.assertEqual(item["part_name"], "화법과 작문")
+        self.assertNotEqual(item["part_name"], "국어 공통")
 
     def test_math_killer_questions_are_separated_from_weakness_priority(self):
         paper = make_paper(
