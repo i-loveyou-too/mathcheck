@@ -20,6 +20,7 @@ import schemas
 import sprint
 import sprint_compliance
 import sprint_exam_v2
+import sprint_exam_v2_analysis
 import sprint_exam_v2_assignment
 import sprint_exam_v2_attempt
 import sprint_exam_v2_scoring
@@ -244,6 +245,7 @@ app.include_router(vocabulary.router)
 app.include_router(sprint.router)
 app.include_router(sprint_compliance.router)
 app.include_router(sprint_exam_v2.router)
+app.include_router(sprint_exam_v2_analysis.router)
 app.include_router(sprint_exam_v2_assignment.router)
 app.include_router(sprint_exam_v2_attempt.router)
 app.include_router(sprint_exam_v2_scoring.router)

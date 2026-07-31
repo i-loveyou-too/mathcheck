@@ -6,8 +6,9 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, model_validator
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
+import admin_auth
 import models
 from database import get_db
 
@@ -255,6 +256,108 @@ def synthesize_events(db: Session, student_id: int, start: date, end: date) -> l
         cursor += timedelta(days=1)
 
     result.sort(key=lambda item: (item["event_date"], item["start_time"]))
+    return result
+
+
+def calendar_event_dict(item: dict, student: models.Student) -> dict:
+    subject = item.get("title") or "수업"
+    return {
+        "id": item["id"],
+        "source": item["source"],
+        "student_id": item["student_id"],
+        "student_name": student.name,
+        "schedule_id": item["schedule_id"],
+        "subject": subject,
+        "title": item.get("title"),
+        "date": item["event_date"],
+        "start_at": item["start_time"],
+        "end_at": item["end_time"],
+        "start_time": item["start_time"],
+        "end_time": item["end_time"],
+        "status": item["status"],
+        "event_type": item["event_type"],
+        "memo": item.get("memo"),
+        "location": item.get("location"),
+        "lesson_type": item["event_type"],
+        "timezone": item.get("timezone") or "Asia/Seoul",
+        "edit_url": f"/admin/lesson-schedules?student_id={item['student_id']}",
+    }
+
+
+def synthesize_admin_calendar_events(
+    db: Session,
+    *,
+    start: date,
+    end: date,
+    student_id: int | None = None,
+    status: str | None = None,
+) -> list[dict]:
+    if end < start:
+        raise HTTPException(status_code=400, detail="end_date must be greater than or equal to start_date.")
+    if (end - start).days > 93:
+        raise HTTPException(status_code=400, detail="조회 기간은 최대 93일까지만 가능합니다.")
+
+    student_query = db.query(models.Student).order_by(models.Student.name.asc(), models.Student.id.asc())
+    if student_id is not None:
+        student_query = student_query.filter(models.Student.id == student_id)
+    students = student_query.all()
+    if student_id is not None and not students:
+        raise HTTPException(status_code=404, detail="학생을 찾을 수 없습니다.")
+    student_map = {student.id: student for student in students}
+    student_ids = list(student_map)
+    if not student_ids:
+        return []
+
+    events = (
+        db.query(models.StudentLessonEvent)
+        .options(joinedload(models.StudentLessonEvent.student))
+        .filter(
+            models.StudentLessonEvent.student_id.in_(student_ids),
+            models.StudentLessonEvent.event_date >= start,
+            models.StudentLessonEvent.event_date <= end,
+        )
+        .all()
+    )
+    overridden = {
+        (event.schedule_id, event.event_date)
+        for event in events
+        if event.schedule_id is not None
+    }
+    result = [calendar_event_dict(event_row_dict(event), event.student or student_map[event.student_id]) for event in events]
+
+    schedules = (
+        db.query(models.StudentLessonSchedule)
+        .options(joinedload(models.StudentLessonSchedule.student))
+        .filter(
+            models.StudentLessonSchedule.student_id.in_(student_ids),
+            models.StudentLessonSchedule.is_active.is_(True),
+            models.StudentLessonSchedule.effective_start_date <= end,
+        )
+        .filter(
+            (models.StudentLessonSchedule.effective_end_date.is_(None))
+            | (models.StudentLessonSchedule.effective_end_date >= start)
+        )
+        .all()
+    )
+    cursor = start
+    while cursor <= end:
+        for schedule in schedules:
+            if schedule.weekday != cursor.weekday():
+                continue
+            if cursor < schedule.effective_start_date:
+                continue
+            if schedule.effective_end_date and cursor > schedule.effective_end_date:
+                continue
+            if (schedule.id, cursor) in overridden:
+                continue
+            result.append(calendar_event_dict(synthetic_dict(schedule, cursor), schedule.student or student_map[schedule.student_id]))
+        cursor += timedelta(days=1)
+
+    if status and status != "all":
+        allowed = set(status.split(","))
+        result = [item for item in result if item["status"] in allowed]
+
+    result.sort(key=lambda item: (item["date"], item["start_at"], item["student_name"], item["id"] or 0))
     return result
 
 
@@ -534,6 +637,35 @@ def admin_list_events(
 # ---------------------------------------------------------------------------
 # Student: 조회 전용 (본인 데이터만)
 # ---------------------------------------------------------------------------
+
+
+@router.get("/admin/class-schedules")
+def admin_class_schedules(
+    start_date: date = Query(...),
+    end_date: date = Query(...),
+    student_id: int | None = Query(default=None),
+    status: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+    _admin=Depends(admin_auth.require_admin),
+):
+    allowed_statuses = {"scheduled", "completed", "cancelled", "rescheduled", "all"}
+    if status:
+        requested = set(status.split(","))
+        if not requested.issubset(allowed_statuses):
+            raise HTTPException(status_code=400, detail="유효하지 않은 수업 상태입니다.")
+    events = synthesize_admin_calendar_events(
+        db,
+        start=start_date,
+        end=end_date,
+        student_id=student_id,
+        status=status,
+    )
+    return {
+        "start_date": start_date,
+        "end_date": end_date,
+        "student_id": student_id,
+        "events": events,
+    }
 
 
 @router.get("/student/lessons")

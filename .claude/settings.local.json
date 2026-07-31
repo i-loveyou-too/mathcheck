@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m pytest backend/test_sprint_exam_v2_retake_approval.py -v)",
+      "Bash(python -m py_compile backend/sprint_exam_v2_assignment_service.py backend/sprint_exam_v2_attempt_service.py backend/sprint_exam_v2_retake_approval_service.py)"
+    ]
+  }
+}

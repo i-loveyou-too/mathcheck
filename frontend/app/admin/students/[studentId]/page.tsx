@@ -403,6 +403,13 @@ export default function AdminStudentDetailPage() {
 
           <ElectiveProfileCard studentId={params.studentId} />
 
+          <Link
+            href={`/admin/students/${params.studentId}/exam-analysis`}
+            className="flex h-12 items-center justify-center rounded-2xl bg-[#10213D] text-sm font-black text-white shadow-[0_14px_28px_rgba(16,33,61,0.18)]"
+          >
+            전체 성적 분석
+          </Link>
+
           {loadingInit ? (
             <div className="rounded-[32px] border border-white/80 bg-white px-6 py-20 text-center text-sm font-bold text-[#98A2B3] shadow-[0_16px_40px_rgba(15,23,42,0.06)]">
               불러오는 중...

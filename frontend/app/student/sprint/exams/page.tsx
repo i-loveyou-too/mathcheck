@@ -117,6 +117,13 @@ export default function StudentSprintExamAssignmentsPage() {
           <p className="mt-2 break-keep text-sm font-bold leading-6 text-[#6E7F99]">종이 시험지로 문제를 풀고 앱에서는 OMR 답안만 직접 체크해 제출합니다.</p>
         </header>
 
+        <Link
+          href="/student/sprint/exams/analysis"
+          className="mt-5 flex h-12 items-center justify-center rounded-2xl bg-[#10213D] text-sm font-black text-white shadow-[0_14px_28px_rgba(16,33,61,0.18)]"
+        >
+          전체 성적 분석
+        </Link>
+
         {error && <p className="mt-5 break-keep rounded-2xl bg-red-50 px-4 py-3 text-sm font-bold text-red-600">{error}</p>}
 
         <div className="mt-6 space-y-3 md:grid md:grid-cols-2 md:gap-3 md:space-y-0 lg:gap-4">

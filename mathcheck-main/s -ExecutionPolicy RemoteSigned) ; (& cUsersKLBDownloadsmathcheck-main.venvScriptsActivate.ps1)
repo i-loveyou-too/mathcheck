@@ -1,0 +1,24 @@
+warning: in the working copy of 'backend/crud.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/main.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/models.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/schemas.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'frontend/app/admin/daily-tasks/page.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'frontend/app/admin/page.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'frontend/app/admin/students/[studentId]/page.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'frontend/app/admin/students/page.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'frontend/app/admin/textbooks-management/page.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'frontend/components/student-card.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'frontend/lib/types.ts', LF will be replaced by CRLF the next time Git touches it
+ backend/crud.py                                  |  126 [32m+[m[31m-[m
+ backend/main.py                                  |  116 [32m++[m
+ backend/models.py                                |   25 [32m+[m
+ backend/schemas.py                               |   56 [32m+[m
+ frontend/app/admin/daily-tasks/page.tsx          | 2098 [32m++++++++++[m[31m------------[m
+ frontend/app/admin/page.tsx                      |  625 [32m++++++[m[31m-[m
+ frontend/app/admin/students/[studentId]/page.tsx |  680 [32m++++[m[31m---[m
+ frontend/app/admin/students/page.tsx             |  327 [32m+++[m[31m-[m
+ frontend/app/admin/textbooks-management/page.tsx | 1613 [32m++++++++++++[m[31m-----[m
+ frontend/components/student-card.tsx             |  147 [32m+[m[31m-[m
+ frontend/lib/types.ts                            |   17 [32m+[m
+ frontend/tsconfig.tsbuildinfo                    |    2 [32m+[m[31m-[m
+ 12 files changed, 3802 insertions(+), 2030 deletions(-)

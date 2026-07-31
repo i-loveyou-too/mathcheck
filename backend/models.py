@@ -1317,7 +1317,7 @@ class SprintExamV2(Base):
     exam_date = Column(Date, nullable=True)
     status = Column(String(20), nullable=False, default="draft", server_default=text("'draft'"))
     source_label = Column(String(100), nullable=True)
-    metadata_json = Column("metadata", JSONB_TYPE, nullable=False, default=dict, server_default=text("'{}'::jsonb"))
+    metadata_json = Column("metadata", JSONB_TYPE, nullable=False, default=dict, server_default=text("'{}'"))
     source_text = Column(Text, nullable=True)
     parse_summary = Column(JSONB_TYPE, nullable=True)
     created_by_admin_id = Column(Integer, ForeignKey("math_admins.id", ondelete="SET NULL"), nullable=True, index=True)
@@ -1336,20 +1336,20 @@ class SprintExamV2ScoreGroup(Base):
     __tablename__ = "sprint_exam_v2_score_groups"
     __table_args__ = (
         UniqueConstraint("exam_id", "score_group_code", name="uq_sprint_exam_v2_score_groups_exam_code"),
-        CheckConstraint("score_group_code ~ '^[a-z0-9_]+$'", name="ck_sprint_exam_v2_score_groups_code"),
+        CheckConstraint("score_group_code = lower(score_group_code)", name="ck_sprint_exam_v2_score_groups_code"),
         CheckConstraint("aggregation_type IN ('sum', 'standalone')", name="ck_sprint_exam_v2_score_groups_aggregation"),
         Index("ix_sprint_exam_v2_score_groups_exam_id", "exam_id"),
         Index("ix_sprint_exam_v2_score_groups_subject_area", "subject_area"),
     )
 
     id = Column(Integer, primary_key=True, index=True)
-    exam_id = Column(Integer, ForeignKey("sprint_exam_v2_exams.id", ondelete="CASCADE"), nullable=False, index=True)
+    exam_id = Column(Integer, ForeignKey("sprint_exam_v2_exams.id", ondelete="CASCADE"), nullable=False)
     score_group_code = Column(String(40), nullable=False)
     score_group_name = Column(String(100), nullable=False)
     subject_area = Column(String(40), nullable=False)
     aggregation_type = Column(String(20), nullable=False, default="standalone", server_default=text("'standalone'"))
     display_order = Column(Integer, nullable=False, default=0, server_default=text("0"))
-    group_metadata = Column("metadata", JSONB_TYPE, nullable=False, default=dict, server_default=text("'{}'::jsonb"))
+    group_metadata = Column("metadata", JSONB_TYPE, nullable=False, default=dict, server_default=text("'{}'"))
     solution_drive_file_id = Column(String(100), nullable=True)
     solution_is_published = Column(Boolean, nullable=False, default=False, server_default=text("FALSE"))
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -1388,7 +1388,7 @@ class SprintExamV2Paper(Base):
     )
 
     id = Column(Integer, primary_key=True, index=True)
-    exam_id = Column(Integer, ForeignKey("sprint_exam_v2_exams.id", ondelete="CASCADE"), nullable=False, index=True)
+    exam_id = Column(Integer, ForeignKey("sprint_exam_v2_exams.id", ondelete="CASCADE"), nullable=False)
     score_group_id = Column(Integer, ForeignKey("sprint_exam_v2_score_groups.id", ondelete="CASCADE"), nullable=False, index=True)
     subject_code = Column(String(40), nullable=False)
     subject_name = Column(String(100), nullable=False)
@@ -1398,7 +1398,7 @@ class SprintExamV2Paper(Base):
     elective_name = Column(String(100), nullable=True)
     total_points = Column(Integer, nullable=False, default=0, server_default=text("0"))
     question_count = Column(Integer, nullable=False, default=0, server_default=text("0"))
-    omr_metadata = Column(JSONB_TYPE, nullable=False, default=dict, server_default=text("'{}'::jsonb"))
+    omr_metadata = Column(JSONB_TYPE, nullable=False, default=dict, server_default=text("'{}'"))
     listening_youtube_url = Column(String(500), nullable=True)
     source_order = Column(Integer, nullable=False, default=0, server_default=text("0"))
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -1420,12 +1420,12 @@ class SprintExamV2Question(Base):
     )
 
     id = Column(Integer, primary_key=True, index=True)
-    paper_id = Column(Integer, ForeignKey("sprint_exam_v2_papers.id", ondelete="CASCADE"), nullable=False, index=True)
+    paper_id = Column(Integer, ForeignKey("sprint_exam_v2_papers.id", ondelete="CASCADE"), nullable=False)
     question_no = Column(Integer, nullable=False)
     answer_type = Column(String(20), nullable=False, default="choice", server_default=text("'choice'"))
     correct_answers = Column(JSONB_TYPE, nullable=False)
     points = Column(Integer, nullable=False)
-    question_metadata = Column("metadata", JSONB_TYPE, nullable=False, default=dict, server_default=text("'{}'::jsonb"))
+    question_metadata = Column("metadata", JSONB_TYPE, nullable=False, default=dict, server_default=text("'{}'"))
     explanation = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
@@ -1445,11 +1445,11 @@ class SprintExamV2GradeCut(Base):
     )
 
     id = Column(Integer, primary_key=True, index=True)
-    score_group_id = Column(Integer, ForeignKey("sprint_exam_v2_score_groups.id", ondelete="CASCADE"), nullable=False, index=True)
+    score_group_id = Column(Integer, ForeignKey("sprint_exam_v2_score_groups.id", ondelete="CASCADE"), nullable=False)
     grade = Column(Integer, nullable=False)
     min_score = Column(Integer, nullable=False)
     cut_type = Column(String(20), nullable=False, default="raw_score_min", server_default=text("'raw_score_min'"))
-    cut_metadata = Column("metadata", JSONB_TYPE, nullable=False, default=dict, server_default=text("'{}'::jsonb"))
+    cut_metadata = Column("metadata", JSONB_TYPE, nullable=False, default=dict, server_default=text("'{}'"))
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
@@ -1469,7 +1469,7 @@ class SprintExamV2Assignment(Base):
     )
 
     id = Column(Integer, primary_key=True, index=True)
-    exam_id = Column(Integer, ForeignKey("sprint_exam_v2_exams.id", ondelete="CASCADE"), nullable=False, index=True)
+    exam_id = Column(Integer, ForeignKey("sprint_exam_v2_exams.id", ondelete="CASCADE"), nullable=False)
     sprint_program_id = Column(Integer, ForeignKey("sprint_programs.id", ondelete="CASCADE"), nullable=False, index=True)
     student_id = Column(Integer, ForeignKey("math_students.id"), nullable=False, index=True)
     status = Column(String(20), nullable=False, default="assigned", server_default=text("'assigned'"))
@@ -1506,9 +1506,9 @@ class SprintExamV2AssignmentPaper(Base):
     )
 
     id = Column(Integer, primary_key=True, index=True)
-    assignment_id = Column(Integer, ForeignKey("sprint_exam_v2_assignments.id", ondelete="CASCADE"), nullable=False, index=True)
-    paper_id = Column(Integer, ForeignKey("sprint_exam_v2_papers.id", ondelete="CASCADE"), nullable=False, index=True)
-    score_group_id = Column(Integer, ForeignKey("sprint_exam_v2_score_groups.id", ondelete="CASCADE"), nullable=False, index=True)
+    assignment_id = Column(Integer, ForeignKey("sprint_exam_v2_assignments.id", ondelete="CASCADE"), nullable=False)
+    paper_id = Column(Integer, ForeignKey("sprint_exam_v2_papers.id", ondelete="CASCADE"), nullable=False)
+    score_group_id = Column(Integer, ForeignKey("sprint_exam_v2_score_groups.id", ondelete="CASCADE"), nullable=False)
     subject_code_snapshot = Column(String(40), nullable=False)
     subject_name_snapshot = Column(String(100), nullable=False)
     paper_role_snapshot = Column(String(20), nullable=False)
@@ -1535,7 +1535,7 @@ class SprintExamV2RetakeApproval(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     assignment_id = Column(Integer, ForeignKey("sprint_exam_v2_assignments.id", ondelete="CASCADE"), nullable=False, index=True)
-    source_attempt_id = Column(Integer, ForeignKey("sprint_exam_v2_attempts.id", ondelete="SET NULL"), nullable=True, index=True)
+    source_attempt_id = Column(Integer, ForeignKey("sprint_exam_v2_attempts.id", ondelete="SET NULL"), nullable=True)
     status = Column(String(20), nullable=False, default="requested", server_default=text("'requested'"))
     requested_reason = Column(Text, nullable=True)
     admin_note = Column(Text, nullable=True)
@@ -1545,7 +1545,7 @@ class SprintExamV2RetakeApproval(Base):
     decided_at = Column(DateTime(timezone=True), nullable=True)
     used_at = Column(DateTime(timezone=True), nullable=True)
     cancelled_at = Column(DateTime(timezone=True), nullable=True)
-    approval_metadata = Column("metadata", JSONB_TYPE, nullable=False, default=dict, server_default=text("'{}'::jsonb"))
+    approval_metadata = Column("metadata", JSONB_TYPE, nullable=False, default=dict, server_default=text("'{}'"))
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
@@ -1621,8 +1621,8 @@ class SprintExamV2Response(Base):
     )
 
     id = Column(Integer, primary_key=True, index=True)
-    attempt_id = Column(Integer, ForeignKey("sprint_exam_v2_attempts.id", ondelete="CASCADE"), nullable=False, index=True)
-    question_id = Column(Integer, ForeignKey("sprint_exam_v2_questions.id", ondelete="CASCADE"), nullable=False, index=True)
+    attempt_id = Column(Integer, ForeignKey("sprint_exam_v2_attempts.id", ondelete="CASCADE"), nullable=False)
+    question_id = Column(Integer, ForeignKey("sprint_exam_v2_questions.id", ondelete="CASCADE"), nullable=False)
     answer_value = Column(String(200), nullable=True)
     answer_values = Column(JSONB_TYPE, nullable=True)
     is_blank = Column(Boolean, nullable=False, default=False, server_default=text("FALSE"))
@@ -1649,8 +1649,8 @@ class SprintExamV2Score(Base):
     )
 
     id = Column(Integer, primary_key=True, index=True)
-    attempt_id = Column(Integer, ForeignKey("sprint_exam_v2_attempts.id", ondelete="CASCADE"), nullable=False, index=True)
-    score_group_id = Column(Integer, ForeignKey("sprint_exam_v2_score_groups.id", ondelete="CASCADE"), nullable=False, index=True)
+    attempt_id = Column(Integer, ForeignKey("sprint_exam_v2_attempts.id", ondelete="CASCADE"), nullable=False)
+    score_group_id = Column(Integer, ForeignKey("sprint_exam_v2_score_groups.id", ondelete="CASCADE"), nullable=False)
     raw_score = Column(Integer, nullable=False, default=0, server_default=text("0"))
     max_score = Column(Integer, nullable=False, default=0, server_default=text("0"))
     correct_count = Column(Integer, nullable=False, default=0, server_default=text("0"))
@@ -1674,7 +1674,7 @@ class SprintExamV2ScoreLog(Base):
     )
 
     id = Column(Integer, primary_key=True, index=True)
-    attempt_id = Column(Integer, ForeignKey("sprint_exam_v2_attempts.id", ondelete="CASCADE"), nullable=False, index=True)
+    attempt_id = Column(Integer, ForeignKey("sprint_exam_v2_attempts.id", ondelete="CASCADE"), nullable=False)
     trigger_type = Column(String(40), nullable=False)
     triggered_by_admin_id = Column(Integer, ForeignKey("math_admins.id", ondelete="SET NULL"), nullable=True, index=True)
     answer_key_version = Column(Integer, nullable=True)
@@ -1697,7 +1697,7 @@ class SprintExamV2ResultPublication(Base):
     )
 
     id = Column(Integer, primary_key=True, index=True)
-    attempt_id = Column(Integer, ForeignKey("sprint_exam_v2_attempts.id", ondelete="CASCADE"), nullable=False, index=True)
+    attempt_id = Column(Integer, ForeignKey("sprint_exam_v2_attempts.id", ondelete="CASCADE"), nullable=False)
     status = Column(String(20), nullable=False, default="unpublished", server_default=text("'unpublished'"))
     show_total_score = Column(Boolean, nullable=False, default=True, server_default=text("TRUE"))
     show_grade = Column(Boolean, nullable=False, default=True, server_default=text("TRUE"))
@@ -1729,8 +1729,8 @@ class SprintExamV2ResultPublicationLog(Base):
     )
 
     id = Column(Integer, primary_key=True, index=True)
-    publication_id = Column(Integer, ForeignKey("sprint_exam_v2_result_publications.id", ondelete="CASCADE"), nullable=False, index=True)
-    attempt_id = Column(Integer, ForeignKey("sprint_exam_v2_attempts.id", ondelete="CASCADE"), nullable=False, index=True)
+    publication_id = Column(Integer, ForeignKey("sprint_exam_v2_result_publications.id", ondelete="CASCADE"), nullable=False)
+    attempt_id = Column(Integer, ForeignKey("sprint_exam_v2_attempts.id", ondelete="CASCADE"), nullable=False)
     action = Column(String(40), nullable=False)
     actor_admin_id = Column(Integer, ForeignKey("math_admins.id", ondelete="SET NULL"), nullable=True, index=True)
     previous_snapshot = Column(JSONB_TYPE, nullable=True)

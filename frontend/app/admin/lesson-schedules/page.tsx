@@ -51,7 +51,9 @@ export default function AdminLessonSchedulesPage() {
     if (!getAdmin()) { router.push("/admin/login"); return; }
     void apiFetch<Student[]>("/admin/students").then((rows) => {
       setStudents(rows);
-      if (rows[0]) { setStudentId(rows[0].id); void load(rows[0].id).catch(() => {}); }
+      const requestedStudentId = Number(new URLSearchParams(window.location.search).get("student_id"));
+      const initialStudent = rows.find((student) => student.id === requestedStudentId) ?? rows[0];
+      if (initialStudent) { setStudentId(initialStudent.id); void load(initialStudent.id).catch(() => {}); }
     }).catch((reason) => setError(reason instanceof Error ? reason.message : "학생 목록을 불러오지 못했습니다."));
   }, [router]);
 

@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(py -3.13 -c ' *)",
+      "Bash(py -3.13 -m pytest -q test_sprint_mock_rounds.py)",
+      "Bash(mkdir -p \"c:/Users/KLB/Downloads/mathcheck-main/frontend/app/admin/sprints/[id]/mock-exam-rounds\")",
+      "Bash(mkdir -p \"c:/Users/KLB/Downloads/mathcheck-main/frontend/app/student/sprint/mock-exam-rounds/[roundId]/papers/[participantPaperId]/omr\")",
+      "Bash(mkdir -p \"c:/Users/KLB/Downloads/mathcheck-main/frontend/app/student/sprint/mock-exam-rounds/[roundId]/papers/[participantPaperId]/result\")"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\KLB\\Downloads\\mathcheck-main\\frontend\\app\\admin\\sprints\\[id]"
+    ]
+  }
+}
