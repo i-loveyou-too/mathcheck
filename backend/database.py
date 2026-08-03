@@ -50,8 +50,8 @@ DATABASE_URL = build_database_url()
 engine = create_engine(
     DATABASE_URL,
     echo=False,
-    client_encoding="utf8",
-    connect_args={"options": "-c client_encoding=utf8"},
+    pool_pre_ping=True,
+    connect_args={"client_encoding": "UTF8"},
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
