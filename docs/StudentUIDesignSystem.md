@@ -1,6 +1,6 @@
 # Student UI Design System
 
-이 문서는 mathcheck 학생 화면(오늘도 해냄 + SPRINT)에 실제로 적용할 최종 디자인 시스템을 정의한다. 모든 색상·spacing·radius 값은 `frontend/app/student/**`, `frontend/components/**` 실제 코드에서 grep/Read로 확인한 값을 근거로 한다. 새로 추측한 값은 없다.
+이 문서는 AIMON 학생 화면(AIMON 기본 학습 흐름 + SPRINT)에 실제로 적용할 최종 디자인 시스템을 정의한다. 모든 색상·spacing·radius 값은 `frontend/app/student/**`, `frontend/components/**` 실제 코드에서 grep/Read로 확인한 값을 근거로 한다. 새로 추측한 값은 없다.
 
 이 문서는 설계 문서이며, 이 단계에서 `.tsx`/`.ts`/`.css`는 수정하지 않는다. 실제 적용은 `docs/StudentUIRedesignPlan.md`의 Phase 0부터 별도로 진행한다.
 
@@ -8,7 +8,7 @@
 
 ## 1. 디자인 목표
 
-- 오늘도 해냄과 SPRINT 두 브랜드가 공존하는 학생 화면 전체에 **일관된 spacing·radius·타이포그래피 규칙**을 적용하되, **브랜드 색은 분리**한다.
+- AIMON 기본 학습 흐름과 SPRINT 두 영역이 공존하는 학생 화면 전체에 **일관된 spacing·radius·타이포그래피 규칙**을 적용하되, **영역별 색은 분리**한다.
 - 현재 430px 모바일 앱 프레임에 고정된 레이아웃을 모바일/태블릿/데스크톱에서 자연스럽게 넓어지는 반응형 구조로 바꾼다.
 - 기존에 검증된 반응형 패턴(`StudentResultShell`, `frontend/app/student/sprint/exams/attempts/[attemptId]/result/page.tsx:181-191`)을 표준으로 승격한다.
 - 시험 응시(OMR), 자동저장, 채점, 제출 같은 기능 로직은 절대 건드리지 않고 시각 레이어만 재설계한다.
@@ -27,25 +27,25 @@
 
 ## 3. 토스 가이드에서 적용하지 않을 항목
 
-- Primary 컬러 `#3182f6`를 그대로 쓰지 않는다. 오늘도 해냄과 SPRINT는 각자의 실제 브랜드 색을 유지한다(4·6·7절).
+- Primary 컬러 `#3182f6`를 그대로 쓰지 않는다. AIMON 기본 학습 흐름과 SPRINT는 각자의 실제 색을 유지한다(4·6·7절).
 - Toss Product Sans를 쓰지 않는다. 전역 폰트는 SUIT으로 통일한다(9절).
 - Toss가 명시한 카드/그림자/탭/토스트/다이얼로그의 "정답" 스펙을 그대로 이식하지 않는다 — 이 프로젝트는 이미 자체적인 카드 radius(20~30px 커스텀 값)와 색이 있는 그림자 언어를 갖고 있고, 이번 리디자인은 그것을 정리·체계화하는 것이지 토스 스타일로 대체하는 것이 아니다.
 - 토스의 텍스트필드 4단 변형(box/line/big/hero) 명칭을 그대로 쓰지 않는다. 이 프로젝트의 입력창은 대부분 `h-11~h-14` 높이의 박스형 하나만 쓰고 있으므로 그 실사용 패턴을 기준으로 정의한다(18절).
 
-## 4. 오늘도 해냄과 SPRINT의 브랜드 구분
+## 4. AIMON과 SPRINT의 영역 구분
 
 두 개의 학생 경험이 한 앱 안에 공존한다.
 
 | 구분 | 진입 경로 | 톤 | 대표 색 |
 |---|---|---|---|
-| 오늘도 해냄 (기본 학습 트랙) | `/student`, `/student/today`, `/student/curriculum`, `/student/tracker`, `/student/subjects/**`, `/student/textbooks/**`, `/student/units/**`, `/student/lessons`, `/student/lectures/**`, `/student/my-progress` | 보라색 계열 브랜드, 진한 남색 텍스트 | `#17213B` 텍스트 + 보라 계열(6절) |
+| AIMON 기본 학습 흐름 | `/student`, `/student/today`, `/student/curriculum`, `/student/tracker`, `/student/subjects/**`, `/student/textbooks/**`, `/student/units/**`, `/student/lessons`, `/student/lectures/**`, `/student/my-progress` | 보라색 계열 브랜드, 진한 남색 텍스트 | `#17213B` 텍스트 + 보라 계열(6절) |
 | SPRINT (미션형 학습 프로그램) | `/student/sprint/**` 전체(모의고사 포함) | 파란색·하늘색 계열 브랜드 | `#2874E8` primary(7절) |
 
 `frontend/components/student-bottom-nav.tsx:17`이 `pathname.startsWith("/student/sprint")`일 때 자기 자신을 숨기고, `frontend/components/sprint-bottom-nav.tsx`가 그 자리를 대체하는 것이 이미 코드에 존재하는 분기 기준이다. 이 경로 기준(`/student/sprint` 접두어)을 브랜드 분기의 유일한 기준으로 삼는다.
 
-예외: `/student/vocabulary/**`(오늘도 해냄 영단어)와 `/student/sprint/vocabulary/**`(SPRINT 영단어)는 두 브랜드 어디에도 완전히 속하지 않는 **제3의 서브 팔레트**(짙은 남색 카드 + 민트/틸 그린 강조, `#17213B` · `#45D3A2` · `#19A879`)를 쓰고 있다. 이는 실제 코드에서 확인된 사실이며, 이번 시스템에서는 이를 "영단어 전용 강조색"으로 명시적으로 인정하고 8절에 별도 토큰화한다(새 색을 만들지 않고 기존 값 유지).
+예외: `/student/vocabulary/**`(AIMON 영단어)와 `/student/sprint/vocabulary/**`(SPRINT 영단어)는 두 영역 어디에도 완전히 속하지 않는 **제3의 서브 팔레트**(짙은 남색 카드 + 민트/틸 그린 강조, `#17213B` · `#45D3A2` · `#19A879`)를 쓰고 있다. 이는 실제 코드에서 확인된 사실이며, 이번 시스템에서는 이를 "영단어 전용 강조색"으로 명시적으로 인정하고 8절에 별도 토큰화한다(새 색을 만들지 않고 기존 값 유지).
 
-금지: 오늘도 해냄과 SPRINT를 단일 브랜드 색으로 통합하지 않는다. 두 톤이 같은 화면에 섞여 보이면 안 된다.
+금지: AIMON 기본 학습 흐름과 SPRINT를 단일 브랜드 색으로 통합하지 않는다. 두 톤이 같은 화면에 섞여 보이면 안 된다.
 
 ## 5. 공통 중립 색상 체계
 
@@ -55,14 +55,14 @@
 |---|---|---|
 | `neutral-canvas` | `#F8FAFC` / `#EEF2F6` | `screen-shell.tsx:10-11` (바깥 배경 `#EEF2F6`, 안쪽 배경 `#F8FAFC`) |
 | `neutral-surface` | `#FFFFFF` | 카드 배경 전반 |
-| `neutral-border` | `#E5E7EB` (오늘도 해냄) / `#DFEAF6`, `#DCEBFA` (SPRINT) | `tailwind.config.ts` `brand.border`, `sprint/exams/page.tsx:102,115` |
-| `neutral-text-strong` | 오늘도 해냄 `#17213B` / SPRINT `#10213D` | 6·7절 참고 |
-| `neutral-text-muted` | `#98A1B3`, `#98A2B3`, `#8A94A8`, `#7A859F` (오늘도 해냄) / `#6E7F99`, `#8CA0BD` (SPRINT) | 컴포넌트·페이지 다수 |
+| `neutral-border` | `#E5E7EB` (AIMON) / `#DFEAF6`, `#DCEBFA` (SPRINT) | `tailwind.config.ts` `brand.border`, `sprint/exams/page.tsx:102,115` |
+| `neutral-text-strong` | AIMON `#17213B` / SPRINT `#10213D` | 6·7절 참고 |
+| `neutral-text-muted` | `#98A1B3`, `#98A2B3`, `#8A94A8`, `#7A859F` (AIMON) / `#6E7F99`, `#8CA0BD` (SPRINT) | 컴포넌트·페이지 다수 |
 | `neutral-disabled` | `#B8C4D6` | `sprint/exams/[assignmentId]/page.tsx:185` 비활성 버튼 배경 |
 
 원칙: 새 화면을 만들 때 임의의 회색(`text-gray-400` 등 Tailwind 기본 팔레트)을 새로 도입하지 말고, 이미 코드에 존재하는 위 값 중에서 고른다. 기존에 `text-gray-400`, `text-gray-500`, `text-gray-900` 같은 Tailwind 기본 클래스도 다수 섞여 있으므로(`stat-card.tsx`, `unit-card.tsx`, `header.tsx`) — 이들을 즉시 강제 치환하지는 않되, 신규/수정 영역에서는 위 커스텀 토큰을 우선한다.
 
-## 6. 오늘도 해냄 보라색 토큰
+## 6. AIMON 보라색 토큰
 
 실제 코드(`frontend/app/student/page.tsx`, `subjects/page.tsx`, `components/curriculum-graph.tsx`, `components/student-card.tsx` 등)에서 확인된 보라/인디고 계열 hex를 있는 그대로 토큰화한다. **단일 값으로 통합하지 않는다** — 용도별로 이미 분화되어 쓰이고 있었기 때문에, 그 용도 구분을 그대로 유지한다.
 
@@ -76,7 +76,7 @@
 | `today-purple-weak-bg-alt` | `#F1EDFF`, `#F1F0FF`, `#F1EEFF` | `curriculum-graph.tsx:58` | `in_progress` 배지/카드 배경 |
 | `today-purple-deep` | `#4F46E5` | 리스트/상세 페이지 소수 사용 | 진한 강조가 필요한 텍스트 |
 
-발견된 이탈값: `frontend/app/student/lessons/page.tsx:46`의 `#5C63FF`(뒤로가기 버튼 텍스트)는 위 클러스터와 가깝지만 정확히 일치하는 값이 없는 1회성 사용이다. SPRINT가 아니라 **오늘도 해냄** 쪽에서 발견됐다는 점에 주의 — 리디자인 시 `today-purple-primary`(`#635BFF`) 또는 `today-purple-primary-alt`(`#6D73FF`)로 흡수 통합할 후보다.
+발견된 이탈값: `frontend/app/student/lessons/page.tsx:46`의 `#5C63FF`(뒤로가기 버튼 텍스트)는 위 클러스터와 가깝지만 정확히 일치하는 값이 없는 1회성 사용이다. SPRINT가 아니라 **AIMON 기본 학습 흐름** 쪽에서 발견됐다는 점에 주의 — 리디자인 시 `today-purple-primary`(`#635BFF`) 또는 `today-purple-primary-alt`(`#6D73FF`)로 흡수 통합할 후보다.
 
 원칙: 새로운 보라색을 만들지 않는다. 위 표에 없는 보라 계열 값이 필요하면 반드시 코드에서 재검색 후 근접값을 골라 쓴다.
 
@@ -104,7 +104,7 @@
 | `sprint-surface-tint-2` | `#F1F7FF` | 강조 박스 배경(`sprint/my/page.tsx:73,79`) |
 | `sprint-canvas-gradient` | `radial-gradient(circle_at_50%_-5%, #D9F6FF 0, #EEF9FF 34%, #F8FBFF 68%)` | `sprint/exams/page.tsx:85`, `sprint/exams/[assignmentId]/page.tsx:123`, `sprint/exams/attempts/[attemptId]/page.tsx:195`, `sprint/my/page.tsx:53`, `sprint/worksheets/page.tsx:67` 등 SPRINT 메인 화면 배경으로 반복 사용 |
 
-이탈값 확인: 사용자가 우려했던 `#5C63FF`는 **SPRINT 디렉터리 어디에도 존재하지 않는다**(grep 결과 0건). SPRINT는 색상 관점에서 오늘도 해냄의 보라 계열과 실제로 잘 분리되어 있다 — 유일한 예외는 8절에서 다루는 영단어 서브 팔레트(`#17213B` 등)가 `/student/sprint/vocabulary/**` 경로에도 그대로 쓰이는 것이다.
+이탈값 확인: 사용자가 우려했던 `#5C63FF`는 **SPRINT 디렉터리 어디에도 존재하지 않는다**(grep 결과 0건). SPRINT는 색상 관점에서 AIMON의 보라 계열과 실제로 잘 분리되어 있다 — 유일한 예외는 8절에서 다루는 영단어 서브 팔레트(`#17213B` 등)가 `/student/sprint/vocabulary/**` 경로에도 그대로 쓰이는 것이다.
 
 ## 8. 성공·경고·오류·비활성 상태 색상
 
@@ -118,7 +118,7 @@ SPRINT 쪽 상태 배지에서 이미 일관된 3색 체계가 있다(`sprint/ex
 | `state-danger`(무효/오답/에러) | `#FFF0F0`, `bg-red-50` | `#E25050`, `#D94343`, `#E15B45`, `#E5533C`, `text-red-600` (혼재) | `sprint/exams/page.tsx:63`, 다수 에러 배너 |
 | `state-disabled` | `#B8C4D6`(배경) | `text-white`, `opacity-45~55` | `sprint/exams/[assignmentId]/page.tsx:185`, 각종 `disabled:opacity-*` |
 
-오늘도 해냄 쪽 대응 값(현재 상태 배지에서 확인):
+AIMON 쪽 대응 값(현재 상태 배지에서 확인):
 
 | 상태 | 배경 | 텍스트 | 근거 |
 |---|---|---|---|
@@ -126,9 +126,9 @@ SPRINT 쪽 상태 배지에서 이미 일관된 3색 체계가 있다(`sprint/ex
 | `state-danger`(진도 낮음) | `bg-red-50` | `text-red-500` | `student-card.tsx:21` |
 | `state-warning`(체크 필요) | `bg-orange-50` | `text-orange-500` | `student-card.tsx:23` |
 
-경고/오류 색은 정확한 hex가 두 브랜드·기능별로 미세하게 갈라져 있다(`#E25050` vs `#D94343` vs `#E15B45` 등). 완전 통일은 이번 범위 밖으로 두고, semantic 토큰 4종(info/pending·warning/success/danger) + disabled 1종의 **역할 구분만 표준화**한다. 값 자체는 브랜드 캔버스(오늘도 해냄/SPRINT)에 맞는 근접값을 그대로 사용해도 된다.
+경고/오류 색은 정확한 hex가 두 영역·기능별로 미세하게 갈라져 있다(`#E25050` vs `#D94343` vs `#E15B45` 등). 완전 통일은 이번 범위 밖으로 두고, semantic 토큰 4종(info/pending·warning/success/danger) + disabled 1종의 **역할 구분만 표준화**한다. 값 자체는 브랜드 캔버스(AIMON/SPRINT)에 맞는 근접값을 그대로 사용해도 된다.
 
-영단어 서브 팔레트(오늘도 해냄·SPRINT 공통, 8절 별도 인정):
+영단어 서브 팔레트(AIMON·SPRINT 공통, 8절 별도 인정):
 
 | 토큰 | 값 | 근거 |
 |---|---|---|
@@ -168,7 +168,7 @@ SPRINT 쪽 상태 배지에서 이미 일관된 3색 체계가 있다(`sprint/ex
 | 레벨 | 크기/굵기 | 용도 | 근거 |
 |---|---|---|---|
 | Display (페이지 대제목) | `text-3xl font-black tracking-[-0.05em]` | SPRINT 페이지 최상단 타이틀 | `sprint/exams/page.tsx:93`, `sprint/my/page.tsx:57` |
-| H1 | `text-2xl font-black` | 오늘도 해냄 페이지 타이틀, `Header` 컴포넌트 | `header.tsx:49` |
+| H1 | `text-2xl font-black` | AIMON 페이지 타이틀, `Header` 컴포넌트 | `header.tsx:49` |
 | H2 | `text-xl font-black` ~ `text-lg font-black` | 섹션 제목, 카드 상세 제목 | `sprint/exams/[assignmentId]/page.tsx:151`, `subject-card.tsx:72` |
 | Body | `text-sm font-semibold` ~ `text-sm font-bold` | 본문 설명, 카드 보조 텍스트 | `sprint/exams/page.tsx:94,120` |
 | Body-small / Caption | `text-xs font-bold` ~ `text-[11px] font-black` | 배지, 라벨, 타임스탬프 | `sprint/exams/page.tsx:88`, `progress-bar.tsx:37` |
@@ -192,7 +192,7 @@ Toss 가이드의 `4/6/8/16/24/32`(6px 스텝 포함)는 채택하지 않는다 
 
 ## 12. border radius 체계
 
-실사용 빈도(SPRINT: `rounded-2xl` 85회, `rounded-full` 69회, `rounded-[28px]` 24회, `rounded-[22px]` 15회, `rounded-[20px]` 12회, `rounded-[24px]` 11회 / 오늘도 해냄: `rounded-full` 87회, `rounded-2xl` 47회, `rounded-[28px]` 13회, `rounded-[24px]` 12회)를 기준으로 3단계로 정리한다.
+실사용 빈도(SPRINT: `rounded-2xl` 85회, `rounded-full` 69회, `rounded-[28px]` 24회, `rounded-[22px]` 15회, `rounded-[20px]` 12회, `rounded-[24px]` 11회 / AIMON: `rounded-full` 87회, `rounded-2xl` 47회, `rounded-[28px]` 13회, `rounded-[24px]` 12회)를 기준으로 3단계로 정리한다.
 
 | 토큰 | 값 | 용도 |
 |---|---|---|
@@ -204,17 +204,17 @@ Toss 가이드의 `4/6/8/16/24/32`(6px 스텝 포함)는 채택하지 않는다 
 
 ## 13. 그림자와 테두리 원칙
 
-토스 가이드는 그림자 토큰을 두지 않고 flat layering을 권장하지만, 이 프로젝트는 이미 브랜드별로 **색이 있는 은은한 그림자**를 광범위하게 쓰고 있다(SPRINT: `rgba(71,104,143,*)`, `rgba(49,89,130,*)`가 카드에, `rgba(40,116,232,*)`가 primary 버튼에 / 오늘도 해냄: `shadow-card` = `rgba(15,23,42,0.06)`가 33회, 보라 계열 `rgba(109,115,255,*)`가 강조 CTA에). 이는 이미 확립된 시각 언어이므로 **토스 원칙을 그대로 따르지 않고, 기존 색 그림자 언어를 토큰으로 정리해서 유지**한다.
+토스 가이드는 그림자 토큰을 두지 않고 flat layering을 권장하지만, 이 프로젝트는 이미 영역별로 **색이 있는 은은한 그림자**를 광범위하게 쓰고 있다(SPRINT: `rgba(71,104,143,*)`, `rgba(49,89,130,*)`가 카드에, `rgba(40,116,232,*)`가 primary 버튼에 / AIMON: `shadow-card` = `rgba(15,23,42,0.06)`가 33회, 보라 계열 `rgba(109,115,255,*)`가 강조 CTA에). 이는 이미 확립된 시각 언어이므로 **토스 원칙을 그대로 따르지 않고, 기존 색 그림자 언어를 토큰으로 정리해서 유지**한다.
 
 | 토큰 | 값 | 용도 | 근거 |
 |---|---|---|---|
-| `shadow-today-card` | `shadow-card` = `0 4px 20px rgba(15,23,42,0.06)` | 오늘도 해냄 기본 카드 | `tailwind.config.ts`, 33회 사용 |
+| `shadow-today-card` | `shadow-card` = `0 4px 20px rgba(15,23,42,0.06)` | AIMON 기본 카드 | `tailwind.config.ts`, 33회 사용 |
 | `shadow-today-cta` | `0 6px 16px rgba(140,132,255,0.25)` 계열 | 보라 강조 버튼 | 소수 페이지 |
 | `shadow-sprint-card` | `0 12px 28px rgba(71,104,143,0.14)` | SPRINT 기본 카드 | `sprint/exams/page.tsx:115` |
 | `shadow-sprint-card-lg` | `0 18px 36px rgba(49,89,130,0.16)` | SPRINT 히어로/상세 섹션 | `sprint/exams/[assignmentId]/page.tsx:131` |
 | `shadow-sprint-cta` | `0 16px 35px rgba(40,116,232,0.28)` | SPRINT primary 버튼(고정 CTA 포함) | `sprint/exams/[assignmentId]/page.tsx:177,183` |
 
-테두리: 카드는 그림자만 쓰거나(오늘도 해냄) 옅은 `ring-1`(SPRINT, `ring-[#DFEAF6]`/`ring-[#DCEBFA]`)을 함께 쓴다. 두 방식 다 유지하되, **SPRINT 카드는 ring을 항상 동반**하고 **오늘도 해냄 카드는 그림자만으로 구분**하는 현재 관례를 규칙으로 명문화한다.
+테두리: 카드는 그림자만 쓰거나(AIMON) 옅은 `ring-1`(SPRINT, `ring-[#DFEAF6]`/`ring-[#DCEBFA]`)을 함께 쓴다. 두 방식 다 유지하되, **SPRINT 카드는 ring을 항상 동반**하고 **AIMON 카드는 그림자만으로 구분**하는 현재 관례를 규칙으로 명문화한다.
 
 데스크톱 확장 시 원칙: `screen-shell.tsx:11`의 바깥 `shadow-[0_0_60px_rgba(0,0,0,0.07)]`(앱 프레임 외곽 그림자)는 모바일 앱처럼 보이게 하는 장치이므로, 데스크톱 폭에서는 제거한다(이미 `StudentResultShell`이 `lg:shadow-none`으로 검증한 패턴, 14·22절 참고). 카드 내부 그림자(`shadow-card`, `shadow-sprint-card` 등)는 뷰포트와 무관하게 유지한다.
 
@@ -318,7 +318,7 @@ px-4 pb-32 pt-8 sm:px-5 sm:pt-10 lg:px-6
 ## 23. 하단 네비게이션
 
 세 가지 구현이 존재한다(3개 다 실제로 확인):
-- `StudentBottomNav`(`student-bottom-nav.tsx:28`): 오늘도 해냄, `max-w-[430px]`, 배경 `#0F172A`.
+- `StudentBottomNav`(`student-bottom-nav.tsx:28`): AIMON, `max-w-[430px]`, 배경 `#0F172A`.
 - `SprintBottomNav`(`sprint-bottom-nav.tsx:32`): SPRINT, `max-w-[430px]`, 배경 `white/95` + `backdrop-blur`, 활성색 `#2874E8`.
 - `BottomNav`(`bottom-nav.tsx:19`, 범용/관리자용 추정): `max-w-md`(448px), 배경 `bg-brand-deep`.
 
@@ -382,7 +382,7 @@ px-4 pb-32 pt-8 sm:px-5 sm:pt-10 lg:px-6
 
 ## 29. 금지 사례
 
-- 오늘도 해냄과 SPRINT를 하나의 primary 색으로 합치는 것
+- AIMON과 SPRINT를 하나의 primary 색으로 합치는 것
 - 토스 primary `#3182f6`를 전역 primary로 쓰는 것
 - Toss Product Sans를 로드하는 것
 - 셸만 넓히고 하단 네비/카드 그리드는 430px 그대로 두는 것(불일치 레이아웃)
@@ -395,7 +395,7 @@ px-4 pb-32 pt-8 sm:px-5 sm:pt-10 lg:px-6
 
 - [x] 375px, 768px, 1280px 3개 뷰포트에서 셸·네비·카드 그리드가 모두 같은 `max-w` 기준을 공유하는가
 - [x] 데스크톱(`lg` 이상)에서 앱 프레임 외곽 그림자(`shadow-[0_0_60px_...]`)가 제거됐는가
-- [ ] 오늘도 해냄 화면에 SPRINT 블루가, SPRINT 화면에 오늘도 해냄 퍼플이 섞여 들어가지 않았는가
+- [ ] AIMON 화면에 SPRINT 블루가, SPRINT 화면에 AIMON 퍼플이 섞여 들어가지 않았는가
 - [ ] 모바일에서 바텀시트가 여전히 하단 고정으로 뜨는가, 데스크톱에서 중앙 모달로 전환됐는가
 - [ ] 모든 클릭 가능 요소에 키보드 탭 이동 시 시각적 포커스 표시가 있는가
 - [ ] OMR 문항 저장/제출 플로우가 리디자인 전후로 동일하게 동작하는가(수동 회귀 테스트)

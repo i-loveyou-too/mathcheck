@@ -72,7 +72,7 @@ function NoActiveSprint({ router }: { router: ReturnType<typeof useRouter> }) {
           <p className="mt-2 break-keep text-sm text-[#6E7F99]">활성화된 SPRINT가 있을 때만 인증을 제출할 수 있어요.</p>
           <div className="mt-6 grid gap-2 sm:grid-cols-2">
             <button onClick={() => router.push("/student/sprint")} className="h-12 break-keep rounded-2xl bg-[#2874E8] text-sm font-black text-white">SPRINT 홈으로 돌아가기</button>
-            <button onClick={() => router.push("/student")} className="h-12 break-keep rounded-2xl bg-[#EAF5FF] text-sm font-black text-[#2874E8]">오늘도 해냄으로 전환</button>
+            <button onClick={() => router.push("/student")} className="h-12 break-keep rounded-2xl bg-[#EAF5FF] text-sm font-black text-[#2874E8]">AIMON으로 이동</button>
           </div>
         </div>
       </div>

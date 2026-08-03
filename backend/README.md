@@ -1,6 +1,6 @@
 # Backend
 
-Simple FastAPI backend for the student math progress app.
+FastAPI backend for AIMON.
 
 ## Setup
 
@@ -13,4 +13,4 @@ Simple FastAPI backend for the student math progress app.
 ## API
 
 - `GET /` returns a basic health message.
-- For this deployment step, expose the API as `http://aimon.teamzsoft.com:8002`.
+- Public access is served through `https://aimon.teamzsoft.com:4433`.

@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "MathCheck",
+  title: "AIMON",
   description: "9모 대비 수학 진도 관리",
 };
 

@@ -14,7 +14,7 @@
 
 | 컴포넌트 | 파일 | 현재 최대폭 | 비고 |
 |---|---|---|---|
-| `ScreenShell` | `frontend/components/screen-shell.tsx:11` | `max-w-[430px]` | 오늘도 해냄+SPRINT 공통, `withBottomNav` prop으로 하단 패딩만 분기 |
+| `ScreenShell` | `frontend/components/screen-shell.tsx:11` | `max-w-[430px]` | AIMON+SPRINT 공통, `withBottomNav` prop으로 하단 패딩만 분기 |
 | `StudentBottomNav` | `frontend/components/student-bottom-nav.tsx:28` | `max-w-[430px]` | `/student/sprint` 경로면 `return null`(`:17`) |
 | `SprintBottomNav` | `frontend/components/sprint-bottom-nav.tsx:32` | `max-w-[430px]` | SPRINT 전용 |
 | `BottomNav` | `frontend/components/bottom-nav.tsx:19` | `max-w-md`(448px) | 학생 화면에서 미사용으로 추정(관리자/범용) — 학생 리디자인 범위 아님, 확인만 하고 손대지 않음 |
@@ -82,9 +82,9 @@ textbooks/deep-*/page.tsx 5개 (TextbookChecklistPage 재사용)
 
 ## 6. 페이지를 기능 유형별로 그룹화
 
-- **A. 오늘도 해냄 대시보드/진도류**: `student/page.tsx`, `today/page.tsx`, `curriculum/page.tsx`, `tracker/page.tsx`, `my-progress/page.tsx`
-- **B. 오늘도 해냄 과목/교재류**: `subjects/page.tsx`, `subjects/[subjectId]/page.tsx`, `subjects/textbook-selection-page.tsx`(+ probability/su1/su2 래퍼), `textbooks/textbook-checklist-page.tsx`(+ `[key]`, `deep-*` 래퍼 6개), `units/[unitId]/page.tsx`
-- **C. 오늘도 해냄 인강**: `lessons/page.tsx`, `lectures/[assignmentId]/page.tsx`
+- **A. AIMON 대시보드/진도류**: `student/page.tsx`, `today/page.tsx`, `curriculum/page.tsx`, `tracker/page.tsx`, `my-progress/page.tsx`
+- **B. AIMON 과목/교재류**: `subjects/page.tsx`, `subjects/[subjectId]/page.tsx`, `subjects/textbook-selection-page.tsx`(+ probability/su1/su2 래퍼), `textbooks/textbook-checklist-page.tsx`(+ `[key]`, `deep-*` 래퍼 6개), `units/[unitId]/page.tsx`
+- **C. AIMON 인강**: `lessons/page.tsx`, `lectures/[assignmentId]/page.tsx`
 - **D. SPRINT 일반 화면**: `sprint/page.tsx`, `sprint/my/page.tsx`, `sprint/proofs/page.tsx`, `sprint/records/page.tsx`, `sprint/progress/page.tsx`, `sprint/study-time/page.tsx`, `sprint/planner/page.tsx`(+`proof-form.tsx`), `sprint/seat-check/page.tsx`(+`proof-form.tsx`), `sprint/coming-soon.tsx`
 - **E. SPRINT 문제지**: `sprint/worksheets/page.tsx`, `sprint/worksheets/[id]/page.tsx`
 - **F. SPRINT 모의고사(OMR)**: `sprint/exams/page.tsx`, `sprint/exams/[assignmentId]/page.tsx`, `sprint/exams/attempts/[attemptId]/page.tsx`, `sprint/exams/attempts/[attemptId]/result/page.tsx`
@@ -197,7 +197,7 @@ SUIT 전역 적용(설계만 완료, 실제 적용은 Phase 0 실행 시), 디�
   - 검증: 한글/영문/숫자 렌더링 확인, 폰트 로딩 실패 시 폴백 확인
 ```
 
-### Phase 1 — 오늘도 해냄 공통 화면
+### Phase 1 — AIMON 공통 화면
 학생 홈, 오늘의 미션, 진도표, 트래커, 과목, 교재, 인강, 학습 진도 (그룹 A·B·C).
 
 ```md
@@ -252,7 +252,7 @@ grep으로 그룹 A·B·C(및 관련 공통 컴포넌트) 전체를 재조사한
   - 목표 역할: `today-purple-primary`(`#635BFF`) 또는 `today-purple-primary-alt`(`#6D73FF`)로 흡수 통합하는 후보 — 새 토큰을 만들지 않고 기존 클러스터로 정리
   - 변경 가능한 className: `text-[#5C63FF]` → `text-[#635BFF]`(today-purple-primary) 후보로 명시(치환은 실행 안 함)
   - 유지할 semantic 색상: `#0F2E24`/`#4ADE80`/`#7FE9AD`(다음 수업 카드, 이 페이지 고유 초록 톤이므로 보라 정리와 무관), `statusStyles`(`:19-22`)의 파랑/회색/빨강/주황 상태색
-  - 검증: 치환 후 "← 홈" 버튼 색이 다른 오늘도 해냄 페이지 백버튼과 맞는지 육안 비교
+  - 검증: 치환 후 "← 홈" 버튼 색이 다른 AIMON 페이지 백버튼과 맞는지 육안 비교
 
 - [ ] `today-purple-weak-bg` 계열 (`#EEF2FF`, `#F1EDFF`, `#F1F0FF`)
   - 대상 파일: `frontend/components/curriculum-graph.tsx:58,306,317`(진행중 배지/카드 배경), `frontend/app/student/today/page.tsx:581,589,601,676,726`(배지 배경), `frontend/app/student/my-progress/page.tsx:24`(준비중 아이콘 원형 배경 + `text-[#3730A3]`), `frontend/app/student/subjects/[subjectId]/page.tsx:45-46`(과목 진도 히어로 카드 배경 + `text-[#818CF8]` 라벨)
@@ -264,7 +264,7 @@ grep으로 그룹 A·B·C(및 관련 공통 컴포넌트) 전체를 재조사한
 
 - [ ] 신규 발견: `frontend/components/student-card.tsx`는 실제로 `/student/**`에서 쓰이지 않음
   - 대상 파일: `frontend/components/student-card.tsx:53,101`(`bg-[#EEF2FF] text-[#5C5FFF]` 아이콘 원형), import 확인 결과 `frontend/app/admin/students/page.tsx:8` 한 곳에서만 사용되고 `href`도 `/admin/students/${id}`로 고정됨(`:50,97`)
-  - 현재: 기존 `StudentUIDesignSystem.md` 6절이 이 파일을 "오늘도 해냄 보라 토큰" 근거로 인용했으나, 실제로는 학생 화면이 아닌 관리자 학생 목록 페이지 전용 컴포넌트임이 이번 grep으로 확인됨
+  - 현재: 기존 `StudentUIDesignSystem.md` 6절이 이 파일을 "AIMON 보라 토큰" 근거로 인용했으나, 실제로는 학생 화면이 아닌 관리자 학생 목록 페이지 전용 컴포넌트임이 이번 grep으로 확인됨
   - 목표 역할: Phase 1 색상 정리 대상에서 제외. 관리자 페이지 영역이라 이번 학생 UI 리디자인 범위 밖
   - 변경 가능한 className: 해당 없음(범위 밖)
   - 유지할 semantic 색상: 그대로(수정 안 함)
@@ -448,7 +448,7 @@ Phase 2와 동일한 SPRINT 색 체계(`#2874E8`/`#EAF5FF`/`#10213D`)를 전제�
 
 #### Color and Visual Token Pass
 
-4개 파일을 다시 Read해서 `#17213B`+`#45D3A2`+`#19A879` 팔레트의 정확한 위치를 재확인했다. 원칙: **SPRINT 파랑(`#2874E8` 등)으로 무조건 흡수하지 않는다** — 영단어는 `/student/vocabulary/**`(오늘도 해냄 경로)와 `/student/sprint/vocabulary/**`(SPRINT 경로) 양쪽에서 동일한 다크 네이비+민트그린 팔레트를 그대로 공유하는 독립 서브 브랜드이기 때문이다(디자인시스템 문서 4·8절에서 이미 "제3의 서브 팔레트"로 인정됨). 이 팔레트를 SPRINT 블루나 오늘도 해냄 보라 어느 쪽으로도 재흡수하면 두 화면이 서로 다른 브랜드처럼 보이게 되는 시각적 퇴행이 발생한다.
+4개 파일을 다시 Read해서 `#17213B`+`#45D3A2`+`#19A879` 팔레트의 정확한 위치를 재확인했다. 원칙: **SPRINT 파랑(`#2874E8` 등)으로 무조건 흡수하지 않는다** — 영단어는 `/student/vocabulary/**`(AIMON 경로)와 `/student/sprint/vocabulary/**`(SPRINT 경로) 양쪽에서 동일한 다크 네이비+민트그린 팔레트를 그대로 공유하는 독립 서브 브랜드이기 때문이다(디자인시스템 문서 4·8절에서 이미 "제3의 서브 팔레트"로 인정됨). 이 팔레트를 SPRINT 블루나 AIMON 보라 어느 쪽으로도 재흡수하면 두 화면이 서로 다른 브랜드처럼 보이게 되는 시각적 퇴행이 발생한다.
 
 - [ ] 팔레트 유지 확인 — `#17213B`(다크 네이비)
   - 대상 파일: `vocabulary/test/[sessionId]/page.tsx:18-19`(헤더 타이틀, 문항 번호, 입력값, 제출 버튼 배경), `vocabulary/result/[sessionId]/page.tsx:19-22`(상단 스코어 카드 배경, 문항별 결과 타이틀, 토글 버튼 활성 배경), `sprint/vocabulary/test/[sessionId]/page.tsx:89,90,101,106`(동일 역할), `sprint/vocabulary/result/[sessionId]/page.tsx:61,75,79,97`(동일 역할)
@@ -475,13 +475,13 @@ Phase 2와 동일한 SPRINT 색 체계(`#2874E8`/`#EAF5FF`/`#10213D`)를 전제�
   - 유지할 semantic 색상: 두 값 모두 "오답" 역할이므로 유지
   - 검증: 두 result 페이지를 나란히 열어 오답 카드 텍스트 색조 차이가 육안으로 식별되는지 확인(식별 안 되면 통일 우선순위 낮음, 식별되면 향후 통일 후보로 재논의)
 
-- [ ] 오늘도 해냄 보라색 이탈 발견 — `#9EA9FF`, `#6478FF`
+- [ ] AIMON 보라색 이탈 발견 — `#9EA9FF`, `#6478FF`
   - 대상 파일: `vocabulary/result/[sessionId]/page.tsx:20`(스코어 카드 상단 라벨 `text-[#9EA9FF]`), `:21`(오답노트 보기 버튼 `text-[#6478FF]`), `sprint/vocabulary/result/[sessionId]/page.tsx:62,73`(동일 위치, 동일 값)
-  - 현재: `#9EA9FF`(다크 카드 위 보라빛 라벨 텍스트), `#6478FF`(흰 배경 카드 위 버튼 텍스트) — 두 값 다 영단어 서브 팔레트 문서(디자인시스템 8절)에 없는 신규 발견값. 오늘도 해냄 `today-purple-*` 클러스터(`#635BFF`/`#6D73FF`/`#6366F1`/`#8B5CF6`)와 색상이 근접하지만 정확히 일치하는 값은 없음
-  - 목표 역할: 이 두 값은 오늘도 해냄 보라색이 영단어 화면에 "새어 들어온" 것이 아니라, 두 영단어 화면(`vocabulary`/`sprint/vocabulary`) 모두에서 동일하게 쓰이는 **영단어 전용 보조 강조색**으로 판단됨(양쪽에 대칭적으로 존재하고 SPRINT 파랑과도 다름) — 새 토큰 `vocab-accent-purple`로 별도 인정하고 유지, `today-purple-*`로도 `sprint-*`로도 흡수하지 않음
+  - 현재: `#9EA9FF`(다크 카드 위 보라빛 라벨 텍스트), `#6478FF`(흰 배경 카드 위 버튼 텍스트) — 두 값 다 영단어 서브 팔레트 문서(디자인시스템 8절)에 없는 신규 발견값. AIMON `today-purple-*` 클러스터(`#635BFF`/`#6D73FF`/`#6366F1`/`#8B5CF6`)와 색상이 근접하지만 정확히 일치하는 값은 없음
+  - 목표 역할: 이 두 값은 AIMON 보라색이 영단어 화면에 "새어 들어온" 것이 아니라, 두 영단어 화면(`vocabulary`/`sprint/vocabulary`) 모두에서 동일하게 쓰이는 **영단어 전용 보조 강조색**으로 판단됨(양쪽에 대칭적으로 존재하고 SPRINT 파랑과도 다름) — 새 토큰 `vocab-accent-purple`로 별도 인정하고 유지, `today-purple-*`로도 `sprint-*`로도 흡수하지 않음
   - 변경 가능한 className: `text-[#9EA9FF]` → `text-vocab-accent-purple`, `text-[#6478FF]` → `text-vocab-accent-purple-strong`(값 유지, 이름만 부여 후보)
   - 유지할 semantic 색상: 해당 없음(브랜드 보조색)
-  - 검증: `grep -rn "#9EA9FF\|#6478FF" frontend/app/student` 결과가 영단어 4개 파일 밖(예: SPRINT 일반 화면이나 오늘도 해냄 대시보드)에 나타나지 않는지 확인 — 나타나면 진짜 오염이므로 재분류 필요
+  - 검증: `grep -rn "#9EA9FF\|#6478FF" frontend/app/student` 결과가 영단어 4개 파일 밖(예: SPRINT 일반 화면이나 AIMON 대시보드)에 나타나지 않는지 확인 — 나타나면 진짜 오염이므로 재분류 필요
 
 ### Phase 5 — 정리 및 검수
 중복 className 정리, 사용하지 않는 스타일 확인, viewport별 시각 검수, 기능 회귀 테스트.
@@ -505,18 +505,18 @@ Phase 2와 동일한 SPRINT 색 체계(`#2874E8`/`#EAF5FF`/`#10213D`)를 전제�
   - 판단 기준: 새로 나온 hex가 `StudentUIDesignSystem.md` 5~8절 토큰 표에 이미 있는 값이면 통과, 없는 신규 값이면 개별 항목으로 재조사(일괄 처리 금지)
 
 - [ ] 브랜드 간 색상 오염 교차 확인
-  - 방법 1(오늘도 해냄 파일에 SPRINT 블루 오염 여부): `grep -rln "#2874E8\|#EAF5FF\|#10213D\|#2E8AEA\|#2E74E8\|#145FDB" frontend/app/student/{page.tsx,today,curriculum,tracker,my-progress,subjects,textbooks,units,lessons,lectures}` 형태로 오늘도 해냄 경로(그룹 A·B·C)만 지정해서 SPRINT 파랑 계열이 나오는지 확인
-  - 방법 2(SPRINT 파일에 오늘도 해냄 퍼플 오염 여부): `grep -rln "#635BFF\|#6D73FF\|#6366F1\|#8B5CF6\|#5C63FF" frontend/app/student/sprint` 로 SPRINT 경로 전체(모의고사·영단어 제외 여부는 별도 판단, `/sprint/vocabulary/**`는 영단어 서브팔레트 예외이므로 결과 해석 시 감안)에서 오늘도 해냄 보라색이 나오는지 확인
+  - 방법 1(AIMON 파일에 SPRINT 블루 오염 여부): `grep -rln "#2874E8\|#EAF5FF\|#10213D\|#2E8AEA\|#2E74E8\|#145FDB" frontend/app/student/{page.tsx,today,curriculum,tracker,my-progress,subjects,textbooks,units,lessons,lectures}` 형태로 AIMON 경로(그룹 A·B·C)만 지정해서 SPRINT 파랑 계열이 나오는지 확인
+  - 방법 2(SPRINT 파일에 AIMON 퍼플 오염 여부): `grep -rln "#635BFF\|#6D73FF\|#6366F1\|#8B5CF6\|#5C63FF" frontend/app/student/sprint` 로 SPRINT 경로 전체(모의고사·영단어 제외 여부는 별도 판단, `/sprint/vocabulary/**`는 영단어 서브팔레트 예외이므로 결과 해석 시 감안)에서 AIMON 보라색이 나오는지 확인
   - 판단 기준: 두 grep 모두 0건이어야 정상. 단 `/student/sprint/vocabulary/**`는 영단어 서브팔레트(`#17213B`/`#45D3A2`/`#19A879`/`#9EA9FF`/`#6478FF`/`#65E6BA`)가 정상적으로 존재하므로 오염으로 오판하지 않는다(Phase 4 참고)
 
 - [ ] 토큰 표 밖 신규 색상 확인(diff 기반)
   - 방법: Phase 1~4 실제 적용 커밋이 생기면 `git diff --stat`으로 변경 파일을 확인한 뒤, 각 변경 파일에서 `git diff | grep -oE "#[0-9A-Fa-f]{6}"` 로 diff에 새로 등장한 hex만 추출
-  - 판단 기준: 추출된 hex가 `StudentUIDesignSystem.md` 5~8절 토큰 표(중립/오늘도 해냄/SPRINT/semantic/영단어)에 전부 포함되는지 확인. 표에 없는 값이 diff에 등장하면 "새 색상 추측 도입"으로 간주하고 되돌린다
+  - 판단 기준: 추출된 hex가 `StudentUIDesignSystem.md` 5~8절 토큰 표(중립/AIMON/SPRINT/semantic/영단어)에 전부 포함되는지 확인. 표에 없는 값이 diff에 등장하면 "새 색상 추측 도입"으로 간주하고 되돌린다
 
 - [ ] 중복값(육안 구분 불가 근접 hex) 정리 방법
   - 방법: 이미 확정된 사례(`#10213D` vs 사용 안 하는 `#10233F`)처럼, 6자리 hex를 RGB로 분해해 각 채널 차이가 5 이하인 값 쌍을 찾는 스크립트(`grep -oE "#[0-9A-Fa-f]{6}" frontend/app/student -r | sort -u`로 유니크 hex 목록을 뽑은 뒤 수작업 또는 스크립트로 채널 거리 비교) 실행을 계획만 해둔다
   - 판단 기준: 채널 거리가 작더라도 이번 Pass에서 이미 "역할이 분화되어 있다"고 판단한 값(예: `#635BFF` vs `#6D73FF`, `#2874E8` vs `#2E74E8`)은 통합 대상에서 제외 — 진짜 오탈자성 근접값(예: 같은 위치에서 실수로 다른 값이 들어간 경우)만 통일 후보로 남긴다
-  - 이번 Pass에서 이미 발견한 근접쌍 목록(참고용, Phase 5에서 재확인만): `#635BFF`/`#6D73FF`(오늘도 해냄), `#2874E8`/`#2E74E8`/`#2E8AEA`/`#2E7BEA`/`#145FDB`(SPRINT), `#12815F`(오답/정답 텍스트, 파일 간 오답 쪽만 `#D95D48` vs `#E15B45`로 다름 — Phase 4 참고), `#45D3A2`/`#65E6BA`(영단어)
+  - 이번 Pass에서 이미 발견한 근접쌍 목록(참고용, Phase 5에서 재확인만): `#635BFF`/`#6D73FF`(AIMON), `#2874E8`/`#2E74E8`/`#2E8AEA`/`#2E7BEA`/`#145FDB`(SPRINT), `#12815F`(오답/정답 텍스트, 파일 간 오답 쪽만 `#D95D48` vs `#E15B45`로 다름 — Phase 4 참고), `#45D3A2`/`#65E6BA`(영단어)
 
 - [ ] Phase 5 완료 조건
   - 위 4개 grep/diff 절차를 실제로 실행해서 결과를 기록하는 것까지가 Phase 5의 색상 작업 범위이며, 그 결과로 발견된 개별 항목의 실제 값 변경은 각 항목이 속한 Phase(1~4)로 되돌려보내 개별 판단한다. Phase 5 자체에서 색상 값을 확정하거나 일괄 치환하지 않는다
@@ -547,9 +547,9 @@ Phase 2와 동일한 SPRINT 색 체계(`#2874E8`/`#EAF5FF`/`#10213D`)를 전제�
 
 1. `Phase 0: responsive shell + nav breakpoints`
 2. `Phase 0: SUIT font wiring`(방식 확정 후 별도 커밋으로 분리 권장)
-3. `Phase 1: 오늘도 해냄 대시보드/진도 responsive grid`(그룹 A)
-4. `Phase 1: 오늘도 해냄 과목/교재 responsive grid`(그룹 B)
-5. `Phase 1: 오늘도 해냄 인강 responsive grid`(그룹 C)
+3. `Phase 1: AIMON 대시보드/진도 responsive grid`(그룹 A)
+4. `Phase 1: AIMON 과목/교재 responsive grid`(그룹 B)
+5. `Phase 1: AIMON 인강 responsive grid`(그룹 C)
 6. `Phase 2: SPRINT 일반 화면 responsive grid`(그룹 D)
 7. `Phase 2: SPRINT 문제지 + 영단어 목록/오답 responsive grid`(그룹 E, G 일부)
 8. `Phase 3: SPRINT 모의고사 목록/상세 responsive grid`

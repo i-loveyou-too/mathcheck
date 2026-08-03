@@ -57,7 +57,7 @@ export default function StudentSprintMyPage() {
             <h1 className="mt-1 text-3xl font-black tracking-[-0.05em] text-[#10213D]">나의 SPRINT</h1>
           </div>
           <Link href="/student" className="rounded-full bg-white px-4 py-3 text-xs font-black text-[#2874E8] shadow-[0_8px_20px_rgba(60,94,140,0.18)]">
-            오늘도 해냄으로 전환
+            AIMON으로 이동
           </Link>
         </div>
 

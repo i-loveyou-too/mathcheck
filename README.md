@@ -1,6 +1,6 @@
-# Mathcheck
+# AIMON
 
-Mathcheck is a student math progress tracking app with a FastAPI backend and a Next.js frontend.
+AIMON is a student math progress tracking app with a FastAPI backend and a Next.js frontend.
 
 ## Local backend
 
@@ -48,10 +48,11 @@ Frontend environment variables:
   `https://your-vercel-app.vercel.app,https://aimon.teamzsoft.com,http://localhost:3000`
 - `FRONTEND_ORIGIN_REGEX` defaults to `https://.*\.vercel\.app` for Vercel deployments.
 - Run FastAPI with PM2/uvicorn on the home server as usual.
-- Public frontend traffic should call `http://aimon.teamzsoft.com:8002`.
+- Public access uses `https://aimon.teamzsoft.com:4433`.
+- Local development may still use localhost URLs such as `http://localhost:3000` and `http://localhost:8002`.
 
 ## Vercel frontend deployment
 
 - Root Directory: `frontend`
 - Environment variable:
-  `NEXT_PUBLIC_API_URL=http://aimon.teamzsoft.com:8002`
+  `NEXT_PUBLIC_API_URL=https://aimon.teamzsoft.com:4433/api`

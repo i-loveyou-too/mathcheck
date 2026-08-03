@@ -3,6 +3,7 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { apiFetch } from "@/lib/api";
 import { saveAdmin } from "@/lib/storage";
 import { AdminLoginResponse } from "@/lib/types";
@@ -35,31 +36,31 @@ export default function AdminLoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-[#0F172A] px-5 py-12">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-white px-5 py-12 text-[#1F2933]">
       <div className="w-full max-w-[390px]">
-        {/* Admin logo */}
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-3xl bg-white/10">
-            <svg width="30" height="30" viewBox="0 0 24 24" fill="white">
-              <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z" />
-            </svg>
-          </div>
-          <h1 className="text-2xl font-black text-white">MathCheck</h1>
-          <p className="mt-1.5 text-sm text-white/50">관리자 전용 시스템</p>
+          <Image
+            src="/aimon-logo.png"
+            alt="AIMON"
+            width={220}
+            height={110}
+            className="mx-auto h-auto w-[190px] max-w-[68vw]"
+            priority
+          />
+          <p className="mt-5 text-sm font-semibold text-[#667085]">관리자 전용 시스템</p>
         </div>
 
-        {/* Login card */}
-        <div className="rounded-3xl border border-white/10 bg-white/5 p-7 backdrop-blur">
-          <h2 className="text-xl font-bold text-white">관리자 로그인</h2>
-          <p className="mt-1 text-sm text-white/50">
+        <div className="rounded-[1.4rem] border border-[#EEF0F3] bg-white p-6 shadow-[0_18px_45px_rgba(31,41,51,0.07)]">
+          <h2 className="text-xl font-black text-[#1F2933]">관리자 로그인</h2>
+          <p className="mt-1 text-sm font-medium text-[#667085]">
             학생 진도 현황을 한눈에 확인하세요.
           </p>
 
           <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
             <div>
-              <label className="mb-2 block text-sm font-semibold text-white/70">아이디</label>
+              <label className="mb-2 block text-sm font-bold text-[#344054]">아이디</label>
               <input
-                className="w-full rounded-2xl border border-white/10 bg-white/5 px-5 py-4 text-base text-white outline-none transition placeholder:text-white/25 focus:border-white/30 focus:bg-white/10"
+                className="w-full rounded-2xl border border-[#DDE1E7] bg-white px-4 py-4 text-base font-semibold text-[#1F2933] outline-none transition placeholder:text-[#98A2B3] focus:border-[#EF7B78] focus:ring-4 focus:ring-[#FDE8E7]"
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="admin"
                 value={username}
@@ -67,9 +68,9 @@ export default function AdminLoginPage() {
             </div>
 
             <div>
-              <label className="mb-2 block text-sm font-semibold text-white/70">비밀번호</label>
+              <label className="mb-2 block text-sm font-bold text-[#344054]">비밀번호</label>
               <input
-                className="w-full rounded-2xl border border-white/10 bg-white/5 px-5 py-4 text-base text-white outline-none transition placeholder:text-white/25 focus:border-white/30 focus:bg-white/10"
+                className="w-full rounded-2xl border border-[#DDE1E7] bg-white px-4 py-4 text-base font-semibold text-[#1F2933] outline-none transition placeholder:text-[#98A2B3] focus:border-[#EF7B78] focus:ring-4 focus:ring-[#FDE8E7]"
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••"
                 type="password"
@@ -78,11 +79,11 @@ export default function AdminLoginPage() {
             </div>
 
             {error ? (
-              <p className="rounded-xl bg-red-500/20 px-4 py-3 text-sm text-red-400">{error}</p>
+              <p className="rounded-2xl border border-[#F8C7C5] bg-[#FFF5F4] px-4 py-3 text-sm font-bold text-[#C8433F]">{error}</p>
             ) : null}
 
             <button
-              className="w-full rounded-2xl bg-white py-4 text-base font-bold text-[#0F172A] transition hover:opacity-90 disabled:opacity-50"
+              className="w-full rounded-2xl bg-[#E86F6B] py-4 text-base font-black text-white shadow-[0_12px_24px_rgba(232,111,107,0.22)] transition hover:bg-[#DC625E] focus:outline-none focus:ring-4 focus:ring-[#FDE8E7] disabled:cursor-not-allowed disabled:bg-[#F3B8B5] disabled:shadow-none"
               disabled={loading || !username || !password}
               type="submit"
             >
@@ -93,10 +94,7 @@ export default function AdminLoginPage() {
 
         {/* Student link */}
         <div className="mt-6 text-center">
-          <Link
-            className="text-xs text-white/30 transition hover:text-white/50"
-            href="/login"
-          >
+          <Link className="text-xs font-bold text-[#8A4750] transition hover:text-[#C8433F] focus:outline-none focus:ring-4 focus:ring-[#FDE8E7]" href="/login">
             학생 로그인으로 돌아가기
           </Link>
         </div>

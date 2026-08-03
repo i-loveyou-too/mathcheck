@@ -227,9 +227,9 @@ export default function AdminSprintsPage() {
             </Section>
 
             <Section title="4. 플래너 방식">
-              <SelectInput label="방식" value={form.planner_mode} onChange={(value) => update({ planner_mode: value })}><option value="paper">종이 플래너 사진</option><option value="today_system">오늘도 해냄 플래너 사용</option><option value="disabled">사용 안 함</option></SelectInput>
+              <SelectInput label="방식" value={form.planner_mode} onChange={(value) => update({ planner_mode: value })}><option value="paper">종이 플래너 사진</option><option value="today_system">AIMON 플래너 사용</option><option value="disabled">사용 안 함</option></SelectInput>
               {form.planner_mode === "paper" && <div className="grid grid-cols-2 gap-3"><TimeInput label="마감" value={form.planner_deadline_time} onChange={(value) => update({ planner_deadline_time: value })} /><Toggle label="지각 스트라이크" checked={form.planner_strike_on_late} onChange={(value) => update({ planner_strike_on_late: value })} /><Toggle label="미제출 스트라이크" checked={form.planner_strike_on_missing} onChange={(value) => update({ planner_strike_on_missing: value })} /></div>}
-              {form.planner_mode === "today_system" && <p className="rounded-2xl bg-white/10 p-3 text-xs font-bold text-white/65">SPRINT 플래너 사진 제출은 비활성화하고, 학생에게 오늘도 해냄 플래너 사용 상태를 보여줍니다.</p>}
+              {form.planner_mode === "today_system" && <p className="rounded-2xl bg-white/10 p-3 text-xs font-bold text-white/65">SPRINT 플래너 사진 제출은 비활성화하고, 학생에게 AIMON 플래너 사용 상태를 보여줍니다.</p>}
             </Section>
 
             <Section title="5. 공부시간">

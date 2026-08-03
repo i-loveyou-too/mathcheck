@@ -44,28 +44,30 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top,#FFFFFF_0%,#F7F8FF_48%,#F4F7FB_100%)] px-5 py-9 text-[#101A38]">
-      <div className="mx-auto flex min-h-[calc(100vh-4.5rem)] w-full max-w-[430px] flex-col justify-center">
+    <main className="min-h-screen bg-white px-5 py-8 text-[#1F2933]">
+      <div className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-[430px] flex-col justify-center md:max-w-[460px]">
         <header className="text-center">
           <Image
-            src="/haenaem-logo.png"
-            alt="오늘도 해냄"
-            width={320}
-            height={160}
-            className="mx-auto"
+            src="/aimon-logo.png"
+            alt="AIMON"
+            width={260}
+            height={130}
+            className="mx-auto h-auto w-[220px] max-w-[72vw] md:w-[250px]"
             priority
           />
+          <p className="mt-5 text-sm font-semibold text-[#667085]">전화번호로 AIMON 학습 기록에 접속하세요.</p>
         </header>
 
-        <form className="mt-8 space-y-5" onSubmit={handleSubmit}>
-          <label className="block overflow-hidden rounded-[1.6rem] border border-[#E1E5F5] bg-white shadow-[0_16px_35px_rgba(64,70,130,0.08)]">
+        <form className="mt-10 space-y-5 rounded-[1.4rem] border border-[#EEF0F3] bg-white p-5 shadow-[0_18px_45px_rgba(31,41,51,0.07)] md:p-6" onSubmit={handleSubmit}>
+          <label className="block">
             <span className="sr-only">전화번호</span>
-            <div className="flex items-center gap-4 px-6 py-5">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#F0EEFF] text-xl text-[#7B7FF0]">
+            <span className="mb-2 block text-sm font-bold text-[#344054]">전화번호</span>
+            <div className="flex items-center gap-3 rounded-2xl border border-[#DDE1E7] bg-white px-4 py-4 transition focus-within:border-[#EF7B78] focus-within:ring-4 focus-within:ring-[#FDE8E7]">
+              <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#FFF1F0] text-base text-[#D95C58]">
                 ☎
               </span>
               <input
-                className="min-w-0 flex-1 bg-transparent text-lg font-bold text-[#101A38] outline-none placeholder:text-[#A4ABC0]"
+                className="min-w-0 flex-1 bg-transparent text-base font-semibold text-[#1F2933] outline-none placeholder:text-[#98A2B3]"
                 onChange={(event) => setPhone(event.target.value)}
                 placeholder="전화번호를 입력하세요"
                 type="tel"
@@ -75,34 +77,32 @@ export default function LoginPage() {
           </label>
 
           {error ? (
-            <p className="rounded-2xl bg-red-50 px-4 py-3 text-sm font-bold text-red-500">{error}</p>
+            <p className="rounded-2xl border border-[#F8C7C5] bg-[#FFF5F4] px-4 py-3 text-sm font-bold text-[#C8433F]">{error}</p>
           ) : null}
 
           <button
-            className="w-full rounded-[1.6rem] bg-[#07143A] py-5 text-xl font-black text-white shadow-[0_16px_34px_rgba(7,20,58,0.24)] transition hover:-translate-y-0.5 hover:shadow-[0_20px_40px_rgba(7,20,58,0.28)] disabled:opacity-55"
+            className="w-full rounded-2xl bg-[#E86F6B] py-4 text-base font-black text-white shadow-[0_12px_24px_rgba(232,111,107,0.24)] transition hover:bg-[#DC625E] focus:outline-none focus:ring-4 focus:ring-[#FDE8E7] disabled:cursor-not-allowed disabled:bg-[#F3B8B5] disabled:shadow-none"
             disabled={loading || !phone}
             type="submit"
           >
             {loading ? "확인 중..." : "시작하기"}
           </button>
 
-          <p className="text-center text-sm font-bold text-[#8B93AA]">등록된 학생만 이용할 수 있어요.</p>
+          <p className="text-center text-sm font-semibold text-[#667085]">등록된 학생만 이용할 수 있어요.</p>
         </form>
 
-        <section className="mt-8 rounded-[1.8rem] border border-white bg-gradient-to-r from-[#F1EFFF] to-[#F9FBFF] px-6 py-5 shadow-[0_16px_36px_rgba(64,70,130,0.08)]">
-          <div className="flex items-center gap-4">
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-[#DFDBFF] text-2xl text-[#7471F1]">
-              ♥
-            </div>
+        <section className="mt-6 rounded-2xl border border-[#F1D8D7] bg-[#FFF8F7] px-5 py-4">
+          <div className="flex items-start gap-3">
+            <div aria-hidden="true" className="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full bg-[#E86F6B]" />
             <div>
-              <p className="text-base font-black text-[#101A38]">작게 해도 괜찮아. 오늘도 해내면 돼.</p>
-              <p className="mt-1 text-sm font-bold text-[#747D98]">너의 노력을 차곡차곡 기록할게요.</p>
+              <p className="text-sm font-bold text-[#344054]">AIMON이 학습 흐름을 차곡차곡 기록합니다.</p>
+              <p className="mt-1 text-sm font-medium text-[#667085]">처음 이용한다면 등록된 전화번호인지 선생님에게 확인해 주세요.</p>
             </div>
           </div>
         </section>
 
         <div className="mt-6 text-center">
-          <Link className="text-xs font-bold text-[#9AA1B4] transition hover:text-[#101A38]" href="/admin/login">
+          <Link className="text-xs font-bold text-[#8A4750] transition hover:text-[#C8433F] focus:outline-none focus:ring-4 focus:ring-[#FDE8E7]" href="/admin/login">
             관리자 로그인
           </Link>
         </div>

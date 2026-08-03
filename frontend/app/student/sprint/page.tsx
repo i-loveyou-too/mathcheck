@@ -235,7 +235,7 @@ export default function StudentSprintPage() {
               <Icon name="bell" />
               <span className="absolute right-0 top-0 h-3 w-3 rounded-full bg-[#F25E72]" />
             </div>
-            <Link href="/student" className="order-1 whitespace-nowrap break-keep rounded-full bg-white px-4 py-3 text-sm font-black text-[#2874E8] shadow-[0_8px_20px_rgba(60,94,140,0.18)] min-[430px]:order-none">↔ 오늘도 해냄으로 전환</Link>
+            <Link href="/student" className="order-1 whitespace-nowrap break-keep rounded-full bg-white px-4 py-3 text-sm font-black text-[#2874E8] shadow-[0_8px_20px_rgba(60,94,140,0.18)] min-[430px]:order-none">↔ AIMON으로 이동</Link>
           </div>
         </header>
 

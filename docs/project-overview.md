@@ -1,8 +1,8 @@
-# 오늘도 해냄 — 프로젝트 전체 개요
+# AIMON — 프로젝트 전체 개요
 
 > 수학 학원 학생 진도 관리 앱. 관리자가 숙제를 배정하고, 학생이 교재 문항 진도를 직접 체크하는 서비스.
 
-운영 주소: **http://aimon.teamzsoft.com**
+운영 주소: **https://aimon.teamzsoft.com:4433**
 
 ---
 
@@ -136,8 +136,8 @@ nginx (포트 80 → 내부 라우팅)
     ├── /api/*  →  uvicorn (FastAPI, 포트 8000)
     └── /*      →  Next.js (pm2, 포트 3007 내부)
 
-운영 URL:  http://aimon.teamzsoft.com
-API 문서:  http://aimon.teamzsoft.com/api/docs
+운영 URL:  https://aimon.teamzsoft.com:4433
+API 문서:  https://aimon.teamzsoft.com:4433/api/docs
 ```
 
 ### 배포 환경변수
@@ -145,12 +145,12 @@ API 문서:  http://aimon.teamzsoft.com/api/docs
 **백엔드** (`backend/.env`):
 ```
 DATABASE_URL=postgresql+psycopg2://...
-FRONTEND_ORIGINS=https://aimon.teamzsoft.com
+FRONTEND_ORIGINS=https://aimon.teamzsoft.com:4433
 ```
 
 **프론트엔드** (`frontend/.env.local`):
 ```
-NEXT_PUBLIC_API_URL=https://aimon.teamzsoft.com/api
+NEXT_PUBLIC_API_URL=https://aimon.teamzsoft.com:4433/api
 ```
 
 > **주의**: `NEXT_PUBLIC_*` 변수는 빌드 시점에 번들에 포함된다. 변경하면 반드시 `npm run build` 재실행 필요.
@@ -260,7 +260,7 @@ getAdmin()    // → { username, isLoggedIn } | null
 | GET | `/admin/textbook-list` | 교재 관리 목록 (DB 기반) |
 | GET | `/admin/textbooks/{id}` | 교재 상세 + 문항 목록 |
 
-> API 문서 (Swagger): http://aimon.teamzsoft.com/api/docs
+> API 문서 (Swagger): https://aimon.teamzsoft.com:4433/api/docs
 
 ---
 
