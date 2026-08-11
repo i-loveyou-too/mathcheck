@@ -33,7 +33,7 @@ function TextbookCardItem({
     <article className="rounded-2xl bg-white p-4 shadow-card">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <h3 className="text-sm font-bold leading-snug text-[#17213B]">{title}</h3>
+          <h3 className="text-sm font-bold leading-snug text-[#1F2933]">{title}</h3>
           <p className="mt-0.5 text-xs font-medium text-gray-400">{itemCount}문항</p>
           {progressRate !== undefined ? (
             <div className="mt-3">
@@ -134,7 +134,7 @@ export default function StudentMockExamTextbooksPage() {
   );
 
   return (
-    <ScreenShell withBottomNav>
+    <ScreenShell withBottomNav variant="student">
       <Header
         backHref="/student/subjects"
         logoutType="student"

@@ -8,7 +8,7 @@ export function StudentLogoutButton({ onClick }: StudentLogoutButtonProps) {
   return (
     <button
       aria-label="로그아웃"
-      className="inline-flex h-10 items-center justify-center gap-1.5 rounded-full bg-white px-4 text-sm font-bold text-[#17213B] shadow-card transition hover:bg-gray-50"
+      className="inline-flex h-10 items-center justify-center gap-1.5 rounded-full border border-[#E5E7EB] bg-white px-4 text-sm font-bold text-[#1F2933] transition hover:bg-[#F7F8FA]"
       onClick={onClick}
       type="button"
     >

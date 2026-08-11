@@ -46,9 +46,9 @@ export function Header({ title, subtitle, backHref, logoutType }: HeaderProps) {
 
       <div className="flex items-start justify-between gap-4 pt-0.5">
         <div className="min-w-0">
-          <h1 className="text-2xl font-black leading-tight tracking-tight text-gray-900">{title}</h1>
+          <h1 className="text-2xl font-black leading-tight tracking-tight text-[#1F2933]">{title}</h1>
           {subtitle ? (
-            <p className="mt-1 text-sm leading-relaxed text-gray-500">{subtitle}</p>
+            <p className="mt-1 text-sm leading-relaxed text-[#667085]">{subtitle}</p>
           ) : null}
         </div>
 

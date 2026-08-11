@@ -35,7 +35,7 @@ type CurriculumListItem = {
 };
 
 const SUBJECT_STYLES: { bg: string; text: string; icon: string }[] = [
-  { bg: "bg-[#EEF2FF]", text: "text-[#635BFF]", icon: "🧮" },
+  { bg: "bg-[#EEF1FF]", text: "text-[#635BFF]", icon: "🧮" },
   { bg: "bg-[#EFF6FF]", text: "text-[#2563EB]", icon: "Aa" },
   { bg: "bg-[#F5F3FF]", text: "text-[#7C3AED]", icon: "📖" },
   { bg: "bg-[#FFF7ED]", text: "text-[#EA580C]", icon: "🔬" },
@@ -116,13 +116,13 @@ function SubjectCard({
 
   if (!expanded) {
     return (
-      <button className="flex w-full items-center justify-between gap-3 rounded-[24px] border border-[#EEF2FF] bg-white px-4 py-4 text-left shadow-card transition hover:border-[#D9E1F5]" onClick={onToggle} type="button">
+      <button className="flex w-full items-center justify-between gap-3 rounded-[20px] border border-[#E5E7EB] bg-white px-4 py-4 text-left shadow-card transition hover:border-[#D0D5DD]" onClick={onToggle} type="button">
         <div className="flex min-w-0 items-center gap-3">
           <div className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-lg font-black", style.bg, style.text)}>
             {style.icon}
           </div>
           <div className="min-w-0">
-            <p className="truncate text-[15px] font-black text-[#17213B]">{item.subject}</p>
+            <p className="truncate text-[15px] font-black text-[#1F2933]">{item.subject}</p>
             <p className="mt-0.5 truncate text-xs font-bold text-[#98A2B3]">
               {item.in_progress_count > 0 ? "현재 진행 중" : "예정된 학습"} · {item.in_progress_count > 0 ? item.in_progress_count : item.planned_count}개
             </p>
@@ -137,14 +137,14 @@ function SubjectCard({
   }
 
   return (
-    <div className="rounded-[28px] border border-[#EEF2FF] bg-white p-5 shadow-card">
+    <div className="rounded-[28px] border border-[#E5E7EB] bg-white p-5 shadow-card">
       <button className="flex w-full items-center justify-between gap-3 text-left" onClick={onToggle} type="button">
         <div className="flex min-w-0 items-center gap-3">
           <div className={cn("flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-xl font-black", style.bg, style.text)}>
             {style.icon}
           </div>
           <div className="min-w-0">
-            <p className="truncate text-lg font-black text-[#17213B]">{item.title}</p>
+            <p className="truncate text-lg font-black text-[#1F2933]">{item.title}</p>
             <p className="mt-0.5 truncate text-xs font-bold text-[#98A2B3]">{item.description ?? "큰 흐름으로 학습 과정을 확인해요"}</p>
           </div>
         </div>
@@ -177,13 +177,13 @@ function NodeDetailPanel({ node, onClose }: { node: CurriculumNodeData; onClose:
   const style = STATUS_STYLES[node.status];
   return (
     <div className="fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-[430px] px-5 pb-28 md:max-w-[760px] lg:max-w-[1180px]">
-      <div className="rounded-[24px] border border-[#EEF2FF] bg-white p-5 shadow-[0_-8px_30px_rgba(15,23,42,0.12)]">
+      <div className="rounded-[24px] border border-[#E5E7EB] bg-white p-5 shadow-[0_-8px_30px_rgba(31,41,51,0.12)]">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <span className={cn("inline-flex rounded-full px-2.5 py-1 text-[11px] font-black", style.bg, style.text)}>
               {style.label}
             </span>
-            <h3 className="mt-2 truncate text-base font-black text-[#17213B]">{node.title}</h3>
+            <h3 className="mt-2 truncate text-base font-black text-[#1F2933]">{node.title}</h3>
             <p className="mt-1 text-xs font-bold text-[#98A2B3]">{NODE_TYPE_ICON[node.node_type]} {NODE_TYPE_LABEL[node.node_type]}</p>
           </div>
           <button className="shrink-0 rounded-full bg-[#F4F6FA] px-3 py-1.5 text-xs font-bold text-[#667085]" onClick={onClose} type="button">
@@ -293,23 +293,23 @@ export default function StudentCurriculumPage() {
   };
 
   return (
-    <ScreenShell withBottomNav>
+    <ScreenShell withBottomNav variant="student">
       <div className="flex items-start justify-between gap-4 pt-1">
         <div>
-          <h1 className="text-[1.5rem] font-black tracking-tight text-[#17213B]">진도표</h1>
-          <p className="mt-1 text-sm font-medium text-[#8A94A8]">현재 공부 중인 커리큘럼을 한눈에 확인해요</p>
+          <h1 className="text-[1.5rem] font-black tracking-tight text-[#1F2933]">진도표</h1>
+          <p className="mt-1 text-sm font-medium text-[#667085]">현재 공부 중인 커리큘럼을 한눈에 확인해요</p>
         </div>
         <div className="relative h-16 w-16 shrink-0">
           <Image alt="" className="object-contain" fill priority src="/study-cat2.png" />
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-1.5 rounded-[20px] border border-[#EEF2FF] bg-white p-1.5 shadow-card">
+      <div className="grid grid-cols-3 gap-1.5 rounded-[20px] border border-[#E5E7EB] bg-white p-1.5 shadow-card">
         {FILTER_OPTIONS.map((option) => (
           <button
             className={cn(
               "flex items-center justify-center gap-1.5 rounded-2xl py-2.5 text-sm font-black transition",
-              filter === option.value ? "bg-[#EEF2FF] text-[#635BFF]" : "text-[#98A2B3] hover:bg-[#F8FAFC]",
+              filter === option.value ? "bg-[#FFF1F0] text-[#E86F6B]" : "text-[#98A2B3] hover:bg-[#F8FAFC]",
             )}
             key={option.value}
             onClick={() => setFilter(option.value)}
@@ -321,10 +321,10 @@ export default function StudentCurriculumPage() {
         ))}
       </div>
 
-      <div className="rounded-[20px] border border-[#EEF2FF] bg-white px-2 py-4 shadow-card">
+      <div className="rounded-[20px] border border-[#E5E7EB] bg-white px-2 py-4 shadow-card">
         <div className="grid grid-cols-3 divide-x divide-[#EEF1F7]">
           {[
-            { icon: "▶", tone: "text-[#635BFF]", bg: "bg-[#F1EDFF]", label: "현재 진행 중", value: totals.in_progress },
+            { icon: "▶", tone: "text-[#E86F6B]", bg: "bg-[#FFF1F0]", label: "현재 진행 중", value: totals.in_progress },
             { icon: "✓", tone: "text-emerald-500", bg: "bg-emerald-50", label: "완료", value: totals.completed },
             { icon: "🕓", tone: "text-[#98A2B3]", bg: "bg-[#F1F5F9]", label: "예정", value: totals.planned },
           ].map((stat) => (
@@ -332,8 +332,8 @@ export default function StudentCurriculumPage() {
               <div className={cn("flex h-9 w-9 items-center justify-center rounded-full text-sm font-black", stat.bg, stat.tone)}>
                 {stat.icon}
               </div>
-              <p className="text-xs font-bold text-[#8A94A8]">{stat.label}</p>
-              <p className="text-2xl font-black tracking-tight text-[#17213B]">{stat.value}개</p>
+              <p className="text-xs font-bold text-[#667085]">{stat.label}</p>
+              <p className="text-2xl font-black tracking-tight text-[#1F2933]">{stat.value}개</p>
             </div>
           ))}
         </div>
@@ -344,7 +344,7 @@ export default function StudentCurriculumPage() {
 
       {!loading && !error && visibleItems.length === 0 ? (
         <div className="flex min-h-[160px] flex-col items-center justify-center rounded-[28px] border border-dashed border-[#E4EAF6] bg-white px-4 py-8 text-center shadow-card">
-          <p className="text-sm font-black text-[#17213B]">
+          <p className="text-sm font-black text-[#1F2933]">
             {items.length === 0 ? "아직 배정된 커리큘럼이 없어요" : "해당 상태의 커리큘럼이 없어요"}
           </p>
         </div>
@@ -368,16 +368,16 @@ export default function StudentCurriculumPage() {
         ))}
       </div>
 
-      <div className="rounded-[28px] border border-[#EEF2FF] bg-white p-5 shadow-card">
+      <div className="rounded-[20px] border border-[#E5E7EB] bg-white p-5 shadow-card">
         <div className="flex items-center gap-4">
           <div className="relative h-16 w-16 shrink-0">
             <Image alt="" className="object-contain" fill src="/hero-cat.png" />
           </div>
           <div className="min-w-0">
-            <p className="text-xs font-black text-[#635BFF]">오늘의 한 줄</p>
-            <p className="mt-1 text-sm font-black leading-snug text-[#17213B]">꾸준히 쌓인 시간이 실력이 돼요. ✨</p>
+            <p className="text-xs font-black text-[#E86F6B]">오늘의 한 줄</p>
+            <p className="mt-1 text-sm font-black leading-snug text-[#1F2933]">꾸준히 쌓인 시간이 실력이 돼요. ✨</p>
             <p className="mt-2 text-xs font-bold text-[#98A2B3]">
-              지금까지 공부한 날 <span className="rounded-full bg-[#F1EDFF] px-2 py-0.5 font-black text-[#635BFF]">{totals.completed}개</span>
+              지금까지 공부한 날 <span className="rounded-full bg-[#FFF1F0] px-2 py-0.5 font-black text-[#E86F6B]">{totals.completed}개</span>
             </p>
           </div>
         </div>

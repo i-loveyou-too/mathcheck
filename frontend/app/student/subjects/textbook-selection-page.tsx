@@ -54,21 +54,21 @@ function TextbookCardItem({ done, href, itemCount, textbookKey, title, total }: 
     <article className="rounded-2xl bg-white p-4 shadow-card">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <h3 className="text-sm font-bold leading-snug text-[#17213B]">{title}</h3>
+          <h3 className="text-sm font-bold leading-snug text-[#1F2933]">{title}</h3>
           <p className="mt-0.5 text-xs font-medium text-gray-400">{itemCount}문항</p>
           {progressRate !== undefined ? (
             <div className="mt-3">
-              <div className="h-1.5 overflow-hidden rounded-full bg-indigo-50">
+              <div className="h-1.5 overflow-hidden rounded-full bg-[#FFF1F0]">
                 <div
-                  className="h-full rounded-full bg-indigo-400 transition-all duration-500"
+                  className="h-full rounded-full bg-[#E86F6B] transition-all duration-500"
                   style={{ width: `${progressRate}%` }}
                 />
               </div>
-              <p className="mt-1 text-right text-xs font-bold text-indigo-400">{progressRate}%</p>
+              <p className="mt-1 text-right text-xs font-bold text-[#E86F6B]">{progressRate}%</p>
             </div>
           ) : null}
         </div>
-        <span className="shrink-0 rounded-2xl bg-[#EEF2FF] px-3 py-1.5 text-xs font-bold text-indigo-500">
+        <span className="shrink-0 rounded-2xl bg-[#FFF1F0] px-3 py-1.5 text-xs font-bold text-[#C8433F]">
           {href ? "열기" : "준비중"}
         </span>
       </div>
@@ -94,7 +94,7 @@ function SectionHeader({
   return (
     <div className="mb-3 flex items-center gap-3">
       {icon}
-      <h2 className="text-base font-black text-[#17213B]">{title}</h2>
+      <h2 className="text-base font-black text-[#1F2933]">{title}</h2>
     </div>
   );
 }
@@ -180,7 +180,7 @@ export function TextbookSelectionPage({
   }, [router, subjectQueryValues]);
 
   return (
-    <ScreenShell withBottomNav>
+    <ScreenShell withBottomNav variant="student">
       <Header
         backHref="/student/subjects"
         logoutType="student"

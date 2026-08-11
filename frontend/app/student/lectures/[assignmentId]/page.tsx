@@ -101,11 +101,11 @@ function rangeLabel(task: LectureDailyTask) {
 
 function StatTile({ icon, label, value }: { icon: string; label: string; value: string }) {
   return (
-    <div className="flex-1 rounded-[20px] border border-[#EEF2FF] bg-white px-3 py-4 text-center shadow-card">
-      <p className="text-sm font-black text-[#17213B]">{label}</p>
+    <div className="flex-1 rounded-[20px] border border-[#E5E7EB] bg-white px-3 py-4 text-center shadow-card">
+      <p className="text-sm font-black text-[#1F2933]">{label}</p>
       <div className="mt-2 flex items-center justify-center gap-1.5">
         <span className="text-xl">{icon}</span>
-        <span className="text-2xl font-black tracking-tight text-[#17213B]">{value}</span>
+        <span className="text-2xl font-black tracking-tight text-[#1F2933]">{value}</span>
       </div>
     </div>
   );
@@ -165,7 +165,7 @@ export default function StudentLectureDetailPage() {
 
   if (loading) {
     return (
-      <ScreenShell withBottomNav>
+      <ScreenShell withBottomNav variant="student">
         <p className="pt-10 text-center text-sm font-bold text-gray-400">불러오는 중...</p>
       </ScreenShell>
     );
@@ -173,7 +173,7 @@ export default function StudentLectureDetailPage() {
 
   if (!detail) {
     return (
-      <ScreenShell withBottomNav>
+      <ScreenShell withBottomNav variant="student">
         <Link className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-400 hover:text-gray-600" href="/student/today">
           <span>←</span>
           <span>오늘의 미션</span>
@@ -189,7 +189,7 @@ export default function StudentLectureDetailPage() {
   const remainingDays = remainingDaysUntil(assignment.due_date, today);
 
   return (
-    <ScreenShell withBottomNav>
+    <ScreenShell withBottomNav variant="student">
       <Link className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-400 transition hover:text-gray-600" href="/student/today">
         <svg fill="currentColor" height="15" viewBox="0 0 24 24" width="15">
           <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
@@ -197,14 +197,14 @@ export default function StudentLectureDetailPage() {
         오늘의 미션
       </Link>
 
-      <section className="relative overflow-hidden rounded-[28px] border border-[#EEF2FF] bg-white p-5 shadow-card">
-        <span className="inline-flex rounded-full bg-[#F1EDFF] px-3 py-1.5 text-xs font-black text-[#635BFF]">
+      <section className="relative overflow-hidden rounded-[20px] border border-[#E5E7EB] bg-white p-5 shadow-card">
+        <span className="inline-flex rounded-full bg-[#FFF1F0] px-3 py-1.5 text-xs font-black text-[#E86F6B]">
           {assignment.subject}
         </span>
-        <h1 className="mt-3 max-w-[70%] text-xl font-black leading-snug tracking-tight text-[#17213B]">
+        <h1 className="mt-3 max-w-[70%] text-xl font-black leading-snug tracking-tight text-[#1F2933]">
           {assignment.course_title}
         </h1>
-        <div className="mt-3 space-y-1.5 text-xs font-bold text-[#8A94A8]">
+        <div className="mt-3 space-y-1.5 text-xs font-bold text-[#667085]">
           <p>📅 {formatDot(assignment.start_date)} ~ {formatDot(assignment.due_date)}</p>
           <p>🗓 {assignment.weekdays.map((w) => WEEKDAY_KOR[w]).join(" · ")} ｜ 하루 {assignment.lectures_per_day}강</p>
         </div>
@@ -214,16 +214,16 @@ export default function StudentLectureDetailPage() {
         </div>
 
         <div className="mt-5">
-          <p className="text-xs font-bold text-[#98A1B3]">전체 진행률</p>
+          <p className="text-xs font-bold text-[#98A2B3]">전체 진행률</p>
           <div className="mt-1 flex items-end gap-3">
-            <span className="text-4xl font-black tracking-tight text-[#635BFF]">{detail.progress_rate}%</span>
-            <span className="pb-1.5 text-sm font-bold text-[#8A94A8]">
+            <span className="text-4xl font-black tracking-tight text-[#E86F6B]">{detail.progress_rate}%</span>
+            <span className="pb-1.5 text-sm font-bold text-[#667085]">
               완료 {detail.completed_lecture_count}강 / 전체 {detail.total_lectures_to_assign}강
             </span>
           </div>
-          <div className="mt-3 h-3 overflow-hidden rounded-full bg-[#F1EEFF]">
+          <div className="mt-3 h-3 overflow-hidden rounded-full bg-[#FFF1F0]">
             <div
-              className="h-full rounded-full bg-[linear-gradient(90deg,#635BFF_0%,#7C71FF_100%)] transition-all duration-500"
+              className="h-full rounded-full bg-[#E86F6B] transition-all duration-500"
               style={{ width: `${detail.progress_rate}%` }}
             />
           </div>
@@ -238,20 +238,20 @@ export default function StudentLectureDetailPage() {
 
       {error ? <p className="rounded-2xl bg-red-50 px-4 py-3 text-sm font-bold text-red-500">{error}</p> : null}
 
-      <section className="rounded-[28px] border border-[#EEF2FF] bg-white p-5 shadow-card">
+      <section className="rounded-[20px] border border-[#E5E7EB] bg-white p-5 shadow-card">
         <div className="mb-3 flex items-center justify-between gap-3">
-          <h2 className="text-base font-black text-[#17213B]">오늘의 강의</h2>
+          <h2 className="text-base font-black text-[#1F2933]">오늘의 강의</h2>
           {todayTasks.length > 0 ? (
-            <span className="rounded-full bg-[#EEF2FF] px-3 py-1 text-xs font-black text-[#635BFF]">오늘</span>
+            <span className="rounded-full bg-[#E5E7EB] px-3 py-1 text-xs font-black text-[#E86F6B]">오늘</span>
           ) : null}
         </div>
         {todayTasks.length === 0 ? (
-          <p className="rounded-2xl bg-[#F8FAFC] px-4 py-6 text-center text-sm font-bold text-[#98A1B3]">오늘 배정된 강의가 없어요.</p>
+          <p className="rounded-2xl bg-[#F8FAFC] px-4 py-6 text-center text-sm font-bold text-[#98A2B3]">오늘 배정된 강의가 없어요.</p>
         ) : (
           <div className="space-y-3">
             {todayTasks.map((task) => (
               <div key={task.id}>
-                <p className="mb-2 text-xs font-bold text-[#98A1B3]">오늘은 {rangeLabel(task)}</p>
+                <p className="mb-2 text-xs font-bold text-[#98A2B3]">오늘은 {rangeLabel(task)}</p>
                 <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                   {task.lecture_items.map((item) => {
                     const key = `${task.id}-${item.lecture_number}`;
@@ -259,7 +259,7 @@ export default function StudentLectureDetailPage() {
                       <button
                         className={cn(
                           "flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left transition disabled:opacity-60",
-                          item.is_done ? "border-[#BBF7D0] bg-[#F0FDF4]" : "border-[#E5E7EB] bg-white hover:border-[#C7D2FE]",
+                          item.is_done ? "border-[#BBF7D0] bg-[#F0FDF4]" : "border-[#E5E7EB] bg-white hover:border-[#F1D8D7]",
                         )}
                         disabled={savingKey === key}
                         key={key}
@@ -270,16 +270,16 @@ export default function StudentLectureDetailPage() {
                           <span
                             className={cn(
                               "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 text-sm font-black transition",
-                              item.is_done ? "border-[#22C55E] bg-[#22C55E] text-white" : "border-[#C7D2FE] bg-white text-transparent",
+                              item.is_done ? "border-[#22C55E] bg-[#22C55E] text-white" : "border-[#F1D8D7] bg-white text-transparent",
                             )}
                           >
                             ✓
                           </span>
-                          <span className={cn("text-sm font-bold", item.is_done ? "text-[#16A34A]" : "text-[#17213B]")}>
+                          <span className={cn("text-sm font-bold", item.is_done ? "text-[#16A34A]" : "text-[#1F2933]")}>
                             {item.title}
                           </span>
                         </div>
-                        <span className={cn("rounded-full px-2.5 py-1 text-[11px] font-black", item.is_done ? "bg-[#DCFCE7] text-[#16A34A]" : "bg-[#F1F0FF] text-[#635BFF]")}>
+                        <span className={cn("rounded-full px-2.5 py-1 text-[11px] font-black", item.is_done ? "bg-[#DCFCE7] text-[#16A34A]" : "bg-[#FFF1F0] text-[#E86F6B]")}>
                           {item.is_done ? "완료" : "예정"}
                         </span>
                       </button>
@@ -292,8 +292,8 @@ export default function StudentLectureDetailPage() {
         )}
       </section>
 
-      <section className="rounded-[28px] border border-[#EEF2FF] bg-white p-5 shadow-card">
-        <h2 className="mb-3 text-base font-black text-[#17213B]">전체 수강 일정</h2>
+      <section className="rounded-[20px] border border-[#E5E7EB] bg-white p-5 shadow-card">
+        <h2 className="mb-3 text-base font-black text-[#1F2933]">전체 수강 일정</h2>
         <div className="space-y-2 lg:grid lg:grid-cols-2 lg:gap-3 lg:space-y-0">
           {sortedTasks.map((task) => {
             const isToday = task.task_date === today;
@@ -306,7 +306,7 @@ export default function StudentLectureDetailPage() {
               <div
                 className={cn(
                   "rounded-2xl border px-4 py-3 transition",
-                  isDone ? "border-[#BBF7D0] bg-[#F0FDF4]" : isToday ? "border-[#C7D2FE] bg-[#EEF2FF]" : "border-[#EEF2FF] bg-white",
+                  isDone ? "border-[#BBF7D0] bg-[#F0FDF4]" : isToday ? "border-[#F1D8D7] bg-[#FFF8F7]" : "border-[#E5E7EB] bg-white",
                 )}
                 key={task.id}
               >
@@ -316,17 +316,17 @@ export default function StudentLectureDetailPage() {
                   type="button"
                 >
                   <div className="min-w-0">
-                    <p className={cn("text-sm font-black", isDone ? "text-[#16A34A]" : "text-[#17213B]")}>
+                    <p className={cn("text-sm font-black", isDone ? "text-[#16A34A]" : "text-[#1F2933]")}>
                       {formatMonthDay(task.task_date ?? assignment.start_date)}
-                      {isToday ? <span className="ml-2 rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-black text-[#635BFF]">오늘</span> : null}
+                      {isToday ? <span className="ml-2 rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-black text-[#E86F6B]">오늘</span> : null}
                     </p>
-                    <p className="mt-0.5 text-xs font-bold text-[#8A94A8]">{rangeLabel(task)}</p>
+                    <p className="mt-0.5 text-xs font-bold text-[#667085]">{rangeLabel(task)}</p>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
-                    <span className={cn("rounded-full px-2.5 py-1 text-[11px] font-black", isDone ? "bg-[#DCFCE7] text-[#16A34A]" : "bg-[#F1F0FF] text-[#635BFF]")}>
+                    <span className={cn("rounded-full px-2.5 py-1 text-[11px] font-black", isDone ? "bg-[#DCFCE7] text-[#16A34A]" : "bg-[#FFF1F0] text-[#E86F6B]")}>
                       {doneCount}/{totalCount} {isDone ? "완료" : "예정"}
                     </span>
-                    <span className="text-xs font-black text-[#98A1B3]">{isExpanded ? "▲" : "▼"}</span>
+                    <span className="text-xs font-black text-[#98A2B3]">{isExpanded ? "▲" : "▼"}</span>
                   </div>
                 </button>
 
@@ -338,7 +338,7 @@ export default function StudentLectureDetailPage() {
                         <button
                           className={cn(
                             "flex items-center gap-2 rounded-xl border px-3 py-2 text-left transition disabled:opacity-60",
-                            item.is_done ? "border-[#BBF7D0] bg-white" : "border-[#E5E7EB] bg-white hover:border-[#C7D2FE]",
+                            item.is_done ? "border-[#BBF7D0] bg-white" : "border-[#E5E7EB] bg-white hover:border-[#F1D8D7]",
                           )}
                           disabled={savingKey === key}
                           key={key}
@@ -365,37 +365,37 @@ export default function StudentLectureDetailPage() {
         </div>
       </section>
 
-      <section className="rounded-[28px] border border-[#EEF2FF] bg-white p-5 shadow-card">
-        <h2 className="mb-3 text-base font-black text-[#17213B]">강의 정보</h2>
+      <section className="rounded-[20px] border border-[#E5E7EB] bg-white p-5 shadow-card">
+        <h2 className="mb-3 text-base font-black text-[#1F2933]">강의 정보</h2>
         <div className="grid grid-cols-2 gap-3 text-xs md:grid-cols-3">
           <div>
-            <p className="font-bold text-[#98A1B3]">📖 전체 강의 수</p>
-            <p className="mt-1 text-sm font-black text-[#17213B]">{assignment.total_lectures}강</p>
+            <p className="font-bold text-[#98A2B3]">📖 전체 강의 수</p>
+            <p className="mt-1 text-sm font-black text-[#1F2933]">{assignment.total_lectures}강</p>
           </div>
           <div>
-            <p className="font-bold text-[#98A1B3]">▶ 시작 강의 번호</p>
-            <p className="mt-1 text-sm font-black text-[#17213B]">{assignment.start_lecture_no}강</p>
+            <p className="font-bold text-[#98A2B3]">▶ 시작 강의 번호</p>
+            <p className="mt-1 text-sm font-black text-[#1F2933]">{assignment.start_lecture_no}강</p>
           </div>
           <div>
-            <p className="font-bold text-[#98A1B3]">🗓 하루 수강 강의 수</p>
-            <p className="mt-1 text-sm font-black text-[#17213B]">{assignment.lectures_per_day}강</p>
+            <p className="font-bold text-[#98A2B3]">🗓 하루 수강 강의 수</p>
+            <p className="mt-1 text-sm font-black text-[#1F2933]">{assignment.lectures_per_day}강</p>
           </div>
           <div>
-            <p className="font-bold text-[#98A1B3]">🗓 수강 요일</p>
-            <p className="mt-1 text-sm font-black text-[#17213B]">{assignment.weekdays.map((w) => WEEKDAY_KOR[w]).join(" · ")}</p>
+            <p className="font-bold text-[#98A2B3]">🗓 수강 요일</p>
+            <p className="mt-1 text-sm font-black text-[#1F2933]">{assignment.weekdays.map((w) => WEEKDAY_KOR[w]).join(" · ")}</p>
           </div>
           <div>
-            <p className="font-bold text-[#98A1B3]">📆 시작일</p>
-            <p className="mt-1 text-sm font-black text-[#17213B]">{formatDot(assignment.start_date)}</p>
+            <p className="font-bold text-[#98A2B3]">📆 시작일</p>
+            <p className="mt-1 text-sm font-black text-[#1F2933]">{formatDot(assignment.start_date)}</p>
           </div>
           <div>
-            <p className="font-bold text-[#98A1B3]">📆 마감일</p>
-            <p className="mt-1 text-sm font-black text-[#17213B]">{formatDot(assignment.due_date)}</p>
+            <p className="font-bold text-[#98A2B3]">📆 마감일</p>
+            <p className="mt-1 text-sm font-black text-[#1F2933]">{formatDot(assignment.due_date)}</p>
           </div>
         </div>
         {assignment.memo ? (
           <div className="mt-4 rounded-2xl bg-[#F8FAFC] px-4 py-3">
-            <p className="text-xs font-bold text-[#98A1B3]">메모</p>
+            <p className="text-xs font-bold text-[#98A2B3]">메모</p>
             <p className="mt-1 text-sm font-semibold text-[#344054]">{assignment.memo}</p>
           </div>
         ) : null}

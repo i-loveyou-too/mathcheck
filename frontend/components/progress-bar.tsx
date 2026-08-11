@@ -2,7 +2,7 @@ import { formatPercent } from "@/lib/utils";
 
 type ProgressBarProps = {
   value: number;
-  tone?: "yellow" | "green" | "blue" | "pink" | "orange" | "mint";
+  tone?: "yellow" | "green" | "blue" | "pink" | "orange" | "mint" | "red";
 };
 
 const fillClasses: Record<string, string> = {
@@ -12,6 +12,9 @@ const fillClasses: Record<string, string> = {
   pink: "bg-pink-500",
   orange: "bg-orange-400",
   mint: "bg-teal-400",
+  // Student-app brand tone (general pages only). Additive — existing tones above are
+  // unchanged so admin screens that already pass them keep their current look.
+  red: "bg-[#E86F6B]",
 };
 
 const trackClasses: Record<string, string> = {
@@ -21,6 +24,7 @@ const trackClasses: Record<string, string> = {
   pink: "bg-pink-100",
   orange: "bg-orange-100",
   mint: "bg-teal-100",
+  red: "bg-[#FFF1F0]",
 };
 
 export function ProgressBar({ value, tone = "blue" }: ProgressBarProps) {

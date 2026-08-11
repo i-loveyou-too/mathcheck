@@ -56,7 +56,7 @@ function CircularProgress({
         />
       </svg>
       <div className="absolute inset-0 flex items-center justify-center">
-        <span className="text-[13px] font-black text-[#17213B]">{Math.round(value)}%</span>
+        <span className="text-[13px] font-black text-[#1F2933]">{Math.round(value)}%</span>
       </div>
     </div>
   );
@@ -132,7 +132,7 @@ export default function StudentSubjectsPage() {
   }, [router]);
 
   return (
-    <ScreenShell withBottomNav>
+    <ScreenShell withBottomNav variant="student">
       <Header
         logoutType="student"
         subtitle="수1, 수2, 확률과 통계 교재를 선택해서 진도를 확인해요."
@@ -148,7 +148,7 @@ export default function StudentSubjectsPage() {
 
           return (
             <Link
-              className="block rounded-3xl bg-white p-5 shadow-card transition hover:-translate-y-0.5"
+              className="block rounded-[20px] border border-[#E5E7EB] bg-white p-5 shadow-card transition hover:-translate-y-0.5"
               href={subject.href}
               key={subject.href}
             >
@@ -159,7 +159,7 @@ export default function StudentSubjectsPage() {
                   {subject.iconContent}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <h2 className="text-xl font-black text-[#17213B]">{subject.title}</h2>
+                  <h2 className="text-xl font-black text-[#1F2933]">{subject.title}</h2>
                   <p className="mt-0.5 text-xs font-medium leading-relaxed text-gray-400">
                     {subject.description}
                   </p>
@@ -189,9 +189,9 @@ export default function StudentSubjectsPage() {
         })}
       </div>
 
-      <div className="flex items-start gap-2.5 rounded-2xl bg-indigo-50 px-4 py-3.5">
+      <div className="flex items-start gap-2.5 rounded-2xl bg-[#FFF1F0] px-4 py-3.5">
         <span className="shrink-0 text-base">ℹ️</span>
-        <p className="text-xs font-medium leading-relaxed text-indigo-400">
+        <p className="text-xs font-medium leading-relaxed text-[#C8433F]">
           교재를 선택하면 문제별 진도와 정답률을 자세히 확인할 수 있어요.
         </p>
       </div>

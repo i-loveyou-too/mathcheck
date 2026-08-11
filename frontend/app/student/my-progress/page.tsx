@@ -17,15 +17,15 @@ export default function StudentMyProgressPage() {
   }, [router]);
 
   return (
-    <ScreenShell withBottomNav>
+    <ScreenShell withBottomNav variant="student">
       <Header logoutType="student" subtitle="매일 해낸 기록이 나의 루틴이 돼요." title="갓생챌린지" />
 
       <section className="rounded-2xl bg-white p-6 text-center shadow-card md:mx-auto md:max-w-[520px]">
-        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#EEF2FF] text-2xl font-black text-[#635BFF]">
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#FFF1F0] text-2xl font-black text-[#E86F6B]">
           %
         </div>
-        <h2 className="mt-4 text-lg font-black text-[#17213B]">아직 준비중입니다.</h2>
-        <p className="mt-2 text-sm font-medium leading-relaxed text-[#98A1B3]">
+        <h2 className="mt-4 text-lg font-black text-[#1F2933]">아직 준비중입니다.</h2>
+        <p className="mt-2 text-sm font-medium leading-relaxed text-[#98A2B3]">
           체크한 문제와 질문 표시를 모아서 더 자세한 진도 흐름을 보여줄 예정이에요.
         </p>
       </section>

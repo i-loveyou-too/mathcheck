@@ -103,13 +103,13 @@ export default function UnitChecklistPage() {
   const isAllDone = tasks.length > 0 && completedCount === tasks.length;
 
   return (
-    <ScreenShell withBottomNav>
+    <ScreenShell withBottomNav variant="student">
       <Header backHref="/student" logoutType="student" subtitle="체크할수록 진도가 쌓여요" title={unitName} />
 
       {/* Progress summary card */}
       <div
-        className={`rounded-3xl p-6 transition-colors duration-500 ${
-          isAllDone ? "bg-emerald-50" : "bg-white shadow-card"
+        className={`rounded-[20px] border p-6 transition-colors duration-500 ${
+          isAllDone ? "border-emerald-100 bg-emerald-50" : "border-[#E5E7EB] bg-white shadow-card"
         }`}
       >
         <div className="flex items-center justify-between gap-4">
@@ -135,7 +135,7 @@ export default function UnitChecklistPage() {
           </div>
         </div>
         <div className="mt-5">
-          <ProgressBar tone={isAllDone ? "green" : "blue"} value={progress} />
+          <ProgressBar tone={isAllDone ? "green" : "red"} value={progress} />
         </div>
       </div>
 

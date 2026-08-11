@@ -42,7 +42,7 @@ export function UnitCard({
       </div>
 
       <div className="mt-4">
-        <ProgressBar tone={isComplete ? "green" : "blue"} value={progressPercentage} />
+        <ProgressBar tone={isComplete ? "green" : "red"} value={progressPercentage} />
       </div>
 
       <div className="mt-4">

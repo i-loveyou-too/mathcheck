@@ -38,18 +38,18 @@ export default function SubjectDetailPage() {
   }, [subject]);
 
   return (
-    <ScreenShell withBottomNav>
+    <ScreenShell withBottomNav variant="student">
       <Header backHref="/student" logoutType="student" subtitle={helper} title={subject?.name ?? "과목 상세"} />
 
       {/* Subject progress card */}
-      <div className="rounded-3xl bg-[#EEF2FF] p-6">
-        <p className="text-xs font-semibold uppercase tracking-widest text-[#635BFF]">과목 전체 진도</p>
+      <div className="rounded-[20px] border border-[#F1D8D7] bg-[#FFF8F7] p-6">
+        <p className="text-xs font-semibold uppercase tracking-widest text-[#E86F6B]">과목 전체 진도</p>
         <p className="mt-2 text-4xl font-black tracking-tight text-gray-900">
           {subject ? `${Math.round(subject.progress_percentage)}%` : "0%"}
         </p>
         <p className="mt-1 text-sm text-gray-500">단원 카드를 눌러 체크리스트로 이동해요.</p>
         <div className="mt-4">
-          <ProgressBar tone="blue" value={subject?.progress_percentage ?? 0} />
+          <ProgressBar tone="red" value={subject?.progress_percentage ?? 0} />
         </div>
       </div>
 

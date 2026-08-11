@@ -115,20 +115,20 @@ export default function StudentTrackerPage() {
   const completionRate = tracker?.monthly_completion_rate ?? 0;
 
   return (
-    <ScreenShell withBottomNav>
+    <ScreenShell withBottomNav variant="student">
 
       {/* 헤더 */}
       <div className="flex items-start justify-between gap-4 pt-1">
         <div>
-          <h1 className="text-2xl font-black tracking-tight text-[#17213B]">
+          <h1 className="text-2xl font-black tracking-tight text-[#1F2933]">
             {STUDENT_PAGE_TITLES.tracker}
           </h1>
-          <p className="mt-1 text-sm leading-relaxed text-gray-500">
+          <p className="mt-1 text-sm leading-relaxed text-[#667085]">
             매일 해낸 기록이 나의 루틴이 돼요.
           </p>
         </div>
         <button
-          className="flex shrink-0 items-center gap-1.5 rounded-2xl bg-white px-3 py-2 text-xs font-bold text-gray-500 shadow-sm"
+          className="flex shrink-0 items-center gap-1.5 rounded-2xl border border-[#E5E7EB] bg-white px-3 py-2 text-xs font-bold text-[#1F2933]"
           type="button"
         >
           <span>📅</span>
@@ -137,31 +137,21 @@ export default function StudentTrackerPage() {
       </div>
 
       {/* Hero 카드 */}
-      <section
-        className="relative overflow-hidden rounded-[28px] shadow-[0_8px_40px_rgba(130,110,200,0.15)] md:mx-auto md:w-full md:max-w-[760px]"
-        style={{
-          background: "linear-gradient(120deg, #FFE5D5 0%, #EDE8FF 55%, #D9D0FF 100%)",
-        }}
-      >
-        {/* 별 장식 */}
-        <span className="pointer-events-none absolute left-[43%] top-[14%] select-none text-[11px] text-purple-300">✦</span>
-        <span className="pointer-events-none absolute right-[10%] top-[9%] select-none text-[16px] text-yellow-300/80">✦</span>
-        <span className="pointer-events-none absolute bottom-[8%] right-[28%] select-none text-[10px] text-purple-200">✦</span>
-
+      <section className="relative overflow-hidden rounded-[20px] border border-[#F1D8D7] bg-[#FFF8F7] shadow-card md:mx-auto md:w-full md:max-w-[760px]">
         <div className="flex min-h-[160px] items-center">
 
           {/* 왼쪽 텍스트 영역 */}
           <div className="flex min-w-0 flex-1 flex-col py-5 pl-5 pr-2">
 
             {/* 오늘의 챌린지 pill */}
-            <span className="inline-flex w-fit items-center gap-1 rounded-full bg-white/60 px-2.5 py-0.5 text-[10px] font-bold text-purple-500 backdrop-blur-sm">
-              ✦ 오늘의 챌린지
+            <span className="inline-flex w-fit items-center gap-1 rounded-full bg-white px-2.5 py-0.5 text-[10px] font-bold text-[#E86F6B]">
+              오늘의 챌린지
             </span>
 
             {/* 메인 타이틀 */}
             <p className="mt-1.5 text-[1.6rem] font-black leading-[1.1] tracking-tight">
-              <span className="text-purple-500">갓생</span>
-              <span className="text-[#1A1F4E]"> 챌린지</span>
+              <span className="text-[#E86F6B]">갓생</span>
+              <span className="text-[#1F2933]"> 챌린지</span>
             </p>
 
             {/* 서브텍스트 */}
@@ -171,11 +161,11 @@ export default function StudentTrackerPage() {
 
             {/* 연속 학습 pill */}
             <div className="mt-2.5">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-white/80 px-3 py-1.5 text-[12px] font-bold text-gray-700 shadow-sm backdrop-blur-sm">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-[12px] font-bold text-gray-700 shadow-sm">
                 🔥
                 <span>
                   연속 학습{" "}
-                  <span className="font-black text-purple-500">{streak}</span>
+                  <span className="font-black text-[#E86F6B]">{streak}</span>
                   일째
                 </span>
               </span>
@@ -183,7 +173,7 @@ export default function StudentTrackerPage() {
 
             {/* 하단 소문구 */}
             <p className="mt-2 text-[10px] font-medium text-gray-400">
-              <span className="mr-1 text-purple-300">✦</span>꾸준함이 실력을 만들어요
+              꾸준함이 실력을 만들어요
             </p>
           </div>
 
@@ -197,8 +187,8 @@ export default function StudentTrackerPage() {
               priority
             />
             {/* DAY 배지 */}
-            <div className="absolute bottom-[8%] right-[5%] z-10 flex h-[54px] w-[54px] flex-col items-center justify-center rounded-full bg-white shadow-[0_4px_16px_rgba(130,110,200,0.25)]">
-              <span className="text-[22px] font-black leading-none text-purple-500">{streak}</span>
+            <div className="absolute bottom-[8%] right-[5%] z-10 flex h-[54px] w-[54px] flex-col items-center justify-center rounded-full bg-white shadow-card">
+              <span className="text-[22px] font-black leading-none text-[#E86F6B]">{streak}</span>
               <span className="mt-0.5 text-[9px] font-black tracking-widest text-gray-400">DAY</span>
             </div>
           </div>
@@ -207,10 +197,10 @@ export default function StudentTrackerPage() {
       </section>
 
       {/* 월간 챌린지 기록 */}
-      <section className="rounded-3xl bg-white p-5 shadow-card md:mx-auto md:w-full md:max-w-[760px]">
+      <section className="rounded-[20px] border border-[#E5E7EB] bg-white p-5 shadow-card md:mx-auto md:w-full md:max-w-[760px]">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h2 className="text-xl font-black text-[#17213B]">{month}월 챌린지 기록</h2>
+            <h2 className="text-xl font-black text-[#1F2933]">{month}월 챌린지 기록</h2>
             <p className="mt-0.5 text-sm font-bold text-gray-400">
               {tracker
                 ? `${tracker.monthly_done_days} / ${tracker.monthly_total_task_days}일 완료`
@@ -241,11 +231,11 @@ export default function StudentTrackerPage() {
         <div className="mt-4 rounded-2xl bg-gray-50 px-4 py-3">
           <div className="flex items-center justify-between text-sm">
             <span className="font-bold text-gray-500">월간 완료율</span>
-            <span className="font-black text-purple-500">{completionRate}%</span>
+            <span className="font-black text-[#E86F6B]">{completionRate}%</span>
           </div>
           <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-gray-200">
             <div
-              className="h-full rounded-full bg-gradient-to-r from-orange-400 via-pink-400 to-purple-500 transition-all duration-500"
+              className="h-full rounded-full bg-[#E86F6B] transition-all duration-500"
               style={{ width: `${completionRate}%` }}
             />
           </div>
@@ -281,11 +271,11 @@ export default function StudentTrackerPage() {
                       inMonth && !hasTasks && "text-gray-300",
                       inMonth && hasTasks && !isCompleted && "bg-gray-100 text-gray-500",
                       isCompleted &&
-                        "bg-gradient-to-br from-red-400 to-orange-400 text-white shadow-[0_4px_12px_rgba(255,80,60,0.25)]",
+                        "bg-[#E86F6B] text-white shadow-[0_4px_12px_rgba(232,111,107,0.25)]",
                       isToday &&
                         !isCompleted &&
-                        "ring-2 ring-purple-400 ring-offset-1 ring-offset-white",
-                      isToday && isCompleted && "ring-2 ring-purple-400 ring-offset-1",
+                        "ring-2 ring-[#E86F6B] ring-offset-1 ring-offset-white",
+                      isToday && isCompleted && "ring-2 ring-[#C8433F] ring-offset-1",
                     )}
                     key={dateKey}
                   >
@@ -312,8 +302,8 @@ export default function StudentTrackerPage() {
       </section>
 
       {/* 격려 카드 */}
-      <div className="flex items-center gap-4 rounded-3xl bg-gradient-to-r from-orange-50 to-pink-50 p-4 md:mx-auto md:w-full md:max-w-[760px]">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-orange-100 text-lg">
+      <div className="flex items-center gap-4 rounded-[20px] border border-[#F1D8D7] bg-[#FFF8F7] p-4 md:mx-auto md:w-full md:max-w-[760px]">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#FFF1F0] text-lg">
           🔥
         </div>
         <div className="flex-1">

@@ -161,7 +161,7 @@ function getStatusClass(status: DailyTaskStatus) {
 
 function getTaskCardClass(status: DailyTaskStatus) {
   if (status === "done") {
-    return "border border-[#EEF2FF] bg-[#F8FAFF]";
+    return "border border-[#E5E7EB] bg-[#F2F4F6]";
   }
 
   if (status === "in_progress") {
@@ -297,24 +297,24 @@ function HomeworkTaskCardItem({
   return (
     <article
       className={cn(
-        "rounded-[24px] px-4 py-4 shadow-card transition",
-        isDone ? "border border-[#EEF2FF] bg-[#F8FAFF]" : "border border-gray-100 bg-white",
+        "rounded-2xl px-4 py-4 shadow-card transition",
+        isDone ? "border border-[#E5E7EB] bg-[#F2F4F6]" : "border border-gray-100 bg-white",
       )}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           {card.textbook_title ? (
-            <p className="truncate text-xs font-bold text-[#635BFF]">{card.textbook_title}</p>
+            <p className="truncate text-xs font-bold text-[#E86F6B]">{card.textbook_title}</p>
           ) : null}
           <h3
             className={cn(
-              "mt-0.5 truncate text-[1rem] font-black leading-snug text-[#17213B]",
-              isDone ? "text-[#9AA3B6] line-through" : "",
+              "mt-0.5 truncate text-[1rem] font-black leading-snug text-[#1F2933]",
+              isDone ? "text-[#98A2B3] line-through" : "",
             )}
           >
             {card.range_label ?? card.title}
           </h3>
-          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs font-semibold text-[#98A1B3]">
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs font-semibold text-[#98A2B3]">
             <span>{formatCardDate(card.task_date)}</span>
             {card.due_date ? <span>· 마감 {formatCardDate(card.due_date)}</span> : null}
             {card.is_overdue ? (
@@ -322,23 +322,23 @@ function HomeworkTaskCardItem({
             ) : null}
           </div>
           {card.detail ? (
-            <p className="mt-1.5 truncate text-xs font-medium text-[#98A1B3]">메모 {card.detail}</p>
+            <p className="mt-1.5 truncate text-xs font-medium text-[#98A2B3]">메모 {card.detail}</p>
           ) : null}
 
           <div className="mt-3">
-            <div className="h-1.5 overflow-hidden rounded-full bg-indigo-50">
+            <div className="h-1.5 overflow-hidden rounded-full bg-[#FFF1F0]">
               <div
-                className="h-full rounded-full bg-[linear-gradient(90deg,#635BFF_0%,#7C71FF_100%)] transition-all duration-500"
+                className="h-full rounded-full bg-[#E86F6B] transition-all duration-500"
                 style={{ width: `${card.progress_rate}%` }}
               />
             </div>
-            <p className="mt-1 text-right text-xs font-bold text-indigo-400">{card.progress_rate}%</p>
+            <p className="mt-1 text-right text-xs font-bold text-[#E86F6B]">{card.progress_rate}%</p>
           </div>
         </div>
 
         <div className="flex shrink-0 flex-col items-end gap-2">
           <button
-            className="rounded-full bg-[#0F172A] px-3.5 py-2 text-xs font-black text-white transition hover:bg-[#1E293B] disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded-full border border-[#E5E7EB] bg-white px-3.5 py-2 text-xs font-black text-[#1F2933] transition hover:bg-[#F7F8FA] disabled:cursor-not-allowed disabled:opacity-40"
             disabled={!card.textbook_key}
             onClick={() => onOpenTextbook(card)}
             type="button"
@@ -363,7 +363,7 @@ function StandardTaskItem({
   return (
     <article
       className={cn(
-        "flex min-h-[96px] w-full items-center gap-3 rounded-[28px] px-4 py-4 text-left shadow-card transition",
+        "flex min-h-[96px] w-full items-center gap-3 rounded-2xl px-4 py-4 text-left shadow-card transition",
         task.textbook_key ? "cursor-pointer" : "",
         getTaskCardClass(task.status),
       )}
@@ -371,20 +371,20 @@ function StandardTaskItem({
     >
       <button
         aria-label={`${task.title} 완료 상태 변경`}
-        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 border-[#B8C1FF] bg-white text-sm font-black text-transparent transition"
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 border-[#F1D8D7] bg-white text-sm font-black text-transparent transition"
         onClick={(event) => void onToggleTaskStatus(task, event)}
         type="button"
       >
         ✓
       </button>
       <div className="min-w-0 flex-1">
-        <h3 className="truncate text-[1.05rem] font-black leading-snug text-[#17213B]">{task.title}</h3>
+        <h3 className="truncate text-[1.05rem] font-black leading-snug text-[#1F2933]">{task.title}</h3>
         <div className="mt-2 flex flex-wrap gap-2">
-          <span className="rounded-full bg-[#F1F0FF] px-3 py-1 text-xs font-bold text-[#635BFF]">
+          <span className="rounded-full bg-[#FFF1F0] px-3 py-1 text-xs font-bold text-[#E86F6B]">
             {task.category ?? "기타"}
           </span>
           {task.detail ? (
-            <span className="rounded-full bg-[#F1F0FF] px-3 py-1 text-xs font-bold text-[#635BFF]">
+            <span className="rounded-full bg-[#FFF1F0] px-3 py-1 text-xs font-bold text-[#E86F6B]">
               {task.detail}
             </span>
           ) : null}
@@ -404,7 +404,7 @@ function StandardTaskItem({
           ) : null}
         </div>
       </div>
-      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#F7F8FC] text-2xl font-black text-[#8A94A8]">
+      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#F2F4F6] text-2xl font-black text-[#667085]">
         ·
       </div>
     </article>
@@ -431,15 +431,15 @@ function LectureTaskItem({
   return (
     <article
       className={cn(
-        "flex min-h-[108px] w-full items-center gap-3 rounded-[24px] border px-4 py-4 shadow-card transition",
-        isDone ? "border-[#DCFCE7] bg-[#F8FAFC]" : "border-[#C7D2FE] bg-white",
+        "flex min-h-[108px] w-full items-center gap-3 rounded-2xl border px-4 py-4 shadow-card transition",
+        isDone ? "border-[#DCFCE7] bg-[#F2F4F6]" : "border-[#F1D8D7] bg-white",
       )}
     >
       <button
         aria-label={`${task.title} 완료 상태 변경`}
         className={cn(
           "hidden h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 text-sm font-black transition",
-          isDone ? "border-[#22C55E] bg-[#22C55E] text-white" : "border-[#C7D2FE] bg-white text-transparent",
+          isDone ? "border-[#22C55E] bg-[#22C55E] text-white" : "border-[#F1D8D7] bg-white text-transparent",
         )}
         onClick={() => {}}
         type="button"
@@ -448,31 +448,31 @@ function LectureTaskItem({
       </button>
       <div className="min-w-0 flex-1">
         {display.subject ? (
-          <p className="truncate text-[11px] font-bold text-[#635BFF]">{display.subject}</p>
+          <p className="truncate text-[11px] font-bold text-[#E86F6B]">{display.subject}</p>
         ) : null}
         <h3
           className={cn(
-            "mt-0.5 truncate text-[15px] font-bold leading-snug text-[#17213B]",
-            isDone ? "text-[#9AA3B6] line-through" : "",
+            "mt-0.5 truncate text-[15px] font-bold leading-snug text-[#1F2933]",
+            isDone ? "text-[#98A2B3] line-through" : "",
           )}
         >
           {display.courseTitle}
         </h3>
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          <span className="rounded-full bg-[#EEF2FF] px-2.5 py-1 text-[11px] font-bold text-[#635BFF]">
+          <span className="rounded-full bg-[#FFF1F0] px-2.5 py-1 text-[11px] font-bold text-[#E86F6B]">
             {display.rangeLabel}
           </span>
-          <span className="text-xs font-medium text-[#98A1B3]">
+          <span className="text-xs font-medium text-[#98A2B3]">
             {formatCardDate(taskDate)}
           </span>
           {task.due_date ? (
-            <span className="text-xs font-medium text-[#98A1B3]">
+            <span className="text-xs font-medium text-[#98A2B3]">
               마감 {formatCardDate(task.due_date)}
             </span>
           ) : null}
         </div>
         {display.memo ? (
-          <p className="mt-2 truncate text-xs font-medium text-[#98A1B3]">{display.memo}</p>
+          <p className="mt-2 truncate text-xs font-medium text-[#98A2B3]">{display.memo}</p>
         ) : null}
         {(task.lecture_items ?? []).length > 0 ? (
           <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -484,7 +484,7 @@ function LectureTaskItem({
                   "flex items-center gap-2 rounded-2xl border px-3 py-2 text-left transition",
                   lectureItem.is_done
                     ? "border-[#BBF7D0] bg-[#F0FDF4]"
-                    : "border-[#E5E7EB] bg-white hover:border-[#C7D2FE]",
+                    : "border-[#E5E7EB] bg-white hover:border-[#F1D8D7]",
                 )}
                 onClick={(event) => {
                   event.stopPropagation();
@@ -521,14 +521,14 @@ function LectureTaskItem({
         </span>
       ) : (
         <button
-          className="hidden shrink-0 rounded-full bg-[#0F172A] px-3.5 py-2 text-xs font-black text-white transition hover:bg-[#1E293B]"
+          className="hidden shrink-0 rounded-full border border-[#E5E7EB] bg-white px-3.5 py-2 text-xs font-black text-[#1F2933] transition hover:bg-[#F7F8FA]"
           onClick={() => {}}
           type="button"
         >
           완료하기
         </button>
       )}
-      <div className="hidden h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#F7F8FC] text-2xl">
+      <div className="hidden h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#F2F4F6] text-2xl">
         🎬
       </div>
     </article>
@@ -543,16 +543,16 @@ function CompletedStandardTaskItem({
   onToggleTaskStatus: (task: DailyTask, event: MouseEvent<HTMLButtonElement>) => Promise<void>;
 }) {
   return (
-    <article className="flex items-center gap-3 rounded-[22px] border border-[#EEF2FF] bg-[#F8FAFF] px-4 py-3 opacity-55">
+    <article className="flex items-center gap-3 rounded-2xl border border-[#E5E7EB] bg-[#F2F4F6] px-4 py-3 opacity-55">
       <button
         aria-label={`${task.title} 완료 상태 변경`}
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-[#635BFF] bg-[#635BFF] text-sm font-black text-white shadow-[0_4px_10px_rgba(99,91,255,0.22)] transition"
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-[#E86F6B] bg-[#E86F6B] text-sm font-black text-white shadow-[0_4px_10px_rgba(232,111,107,0.22)] transition"
         onClick={(event) => void onToggleTaskStatus(task, event)}
         type="button"
       >
         ✓
       </button>
-      <p className="min-w-0 flex-1 truncate text-sm font-semibold text-[#9AA3B6] line-through">{task.title}</p>
+      <p className="min-w-0 flex-1 truncate text-sm font-semibold text-[#98A2B3] line-through">{task.title}</p>
     </article>
   );
 }
@@ -582,35 +582,35 @@ function LectureTaskCard({
   return (
     <article
       className={cn(
-        "rounded-[24px] border border-[#D9D6FF] bg-white px-5 py-5 shadow-[0_16px_40px_rgba(109,115,255,0.08)] transition",
-        task.lecture_assignment_id ? "cursor-pointer hover:border-[#C4B5FD]" : "",
+        "rounded-2xl border border-[#F1D8D7] bg-white px-5 py-5 shadow-card transition",
+        task.lecture_assignment_id ? "cursor-pointer hover:border-[#E86F6B]" : "",
       )}
       onClick={task.lecture_assignment_id ? () => onOpenLecture(task) : undefined}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           {display.subject ? (
-            <span className="inline-flex rounded-2xl bg-[#F1EDFF] px-4 py-2 text-sm font-black text-[#635BFF]">
+            <span className="inline-flex rounded-2xl bg-[#FFF1F0] px-4 py-2 text-sm font-black text-[#E86F6B]">
               {display.subject}
             </span>
           ) : null}
-          <h3 className="mt-4 truncate text-[16px] font-black leading-snug text-[#17213B]">
+          <h3 className="mt-4 truncate text-[16px] font-black leading-snug text-[#1F2933]">
             {display.courseTitle}
           </h3>
           <div className="mt-4 flex flex-wrap items-center gap-3">
-            <span className="rounded-full bg-[#F3F0FF] px-4 py-2 text-[13px] font-black text-[#635BFF]">
+            <span className="rounded-full bg-[#FFF1F0] px-4 py-2 text-[13px] font-black text-[#E86F6B]">
               {display.rangeLabel}
             </span>
-            <span className="text-[13px] font-bold text-[#98A1B3]">{formatCardDate(taskDate)}</span>
+            <span className="text-[13px] font-bold text-[#98A2B3]">{formatCardDate(taskDate)}</span>
             {task.due_date ? (
-              <span className="text-[13px] font-bold text-[#635BFF]">마감 {formatCardDate(task.due_date)}</span>
+              <span className="text-[13px] font-bold text-[#E86F6B]">마감 {formatCardDate(task.due_date)}</span>
             ) : null}
           </div>
         </div>
         <span
           className={cn(
             "shrink-0 rounded-full px-4 py-2 text-sm font-black",
-            isDone ? "bg-[#E8F8EC] text-[#2BA24C]" : "bg-[#F1EDFF] text-[#635BFF]",
+            isDone ? "bg-[#E8F8EC] text-[#2BA24C]" : "bg-[#FFF1F0] text-[#E86F6B]",
           )}
         >
           {isDone ? "완료" : "진행 중"}
@@ -625,8 +625,8 @@ function LectureTaskCard({
             className={cn(
               "flex min-h-[40px] items-center gap-1.5 rounded-[14px] border px-2.5 py-2 text-left transition",
               lectureItem.is_done
-                ? "border-[#E5E7EB] bg-[#F8FAFC] text-[#98A2B3] opacity-65"
-                : "border-[#DDD6FE] bg-white text-[#17213B] shadow-[0_4px_14px_rgba(109,115,255,0.08)] hover:border-[#C4B5FD]",
+                ? "border-[#E5E7EB] bg-[#F2F4F6] text-[#98A2B3] opacity-65"
+                : "border-[#F1D8D7] bg-white text-[#1F2933] shadow-[0_4px_14px_rgba(23,33,59,0.06)] hover:border-[#E86F6B]",
             )}
             onClick={(event) => {
               event.stopPropagation();
@@ -647,7 +647,7 @@ function LectureTaskCard({
             <span
               className={cn(
                 "truncate text-[11px] font-black",
-                lectureItem.is_done ? "text-[#98A2B3]" : "text-[#17213B]",
+                lectureItem.is_done ? "text-[#98A2B3]" : "text-[#1F2933]",
               )}
             >
               {lectureItem.title}
@@ -657,16 +657,16 @@ function LectureTaskCard({
       </div>
 
       <div className="mt-5 flex items-center gap-4">
-        <p className="shrink-0 text-sm font-black text-[#635BFF]">
+        <p className="shrink-0 text-sm font-black text-[#E86F6B]">
           {doneCount}/{totalCount}강 완료
         </p>
-        <div className="h-3 flex-1 overflow-hidden rounded-full bg-[#F1EEFF]">
+        <div className="h-3 flex-1 overflow-hidden rounded-full bg-[#FFF1F0]">
           <div
-            className="h-full rounded-full bg-[linear-gradient(90deg,#635BFF_0%,#7C71FF_100%)] transition-all duration-500"
+            className="h-full rounded-full bg-[#E86F6B] transition-all duration-500"
             style={{ width: `${progressRate}%` }}
           />
         </div>
-        <p className="shrink-0 text-sm font-black text-[#635BFF]">{progressRate}%</p>
+        <p className="shrink-0 text-sm font-black text-[#E86F6B]">{progressRate}%</p>
       </div>
     </article>
   );
@@ -682,20 +682,20 @@ function CompletedMissionTaskCard({
   onOpenTask: (task: DailyTask) => void;
 }) {
   return (
-    <article className="rounded-[24px] border border-[#D9D6FF] bg-white px-5 py-5 shadow-[0_16px_40px_rgba(109,115,255,0.08)]">
+    <article className="rounded-2xl border border-[#F1D8D7] bg-white px-5 py-5 shadow-card">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <span className="inline-flex rounded-2xl bg-[#F1EDFF] px-4 py-2 text-sm font-black text-[#635BFF]">
+          <span className="inline-flex rounded-2xl bg-[#FFF1F0] px-4 py-2 text-sm font-black text-[#E86F6B]">
             {task.category ?? "완료"}
           </span>
-          <h3 className="mt-4 truncate text-[16px] font-black leading-snug text-[#17213B]">
+          <h3 className="mt-4 truncate text-[16px] font-black leading-snug text-[#1F2933]">
             {task.title}
           </h3>
           {task.detail ? (
             <p className="mt-2 truncate text-sm font-bold text-[#A0A7B8] line-through">{task.detail}</p>
           ) : null}
           <div className="mt-4 flex flex-wrap items-center gap-3">
-            <span className="text-[13px] font-bold text-[#98A1B3]">{formatCardDate(taskDate)}</span>
+            <span className="text-[13px] font-bold text-[#98A2B3]">{formatCardDate(taskDate)}</span>
           </div>
         </div>
         <span className="shrink-0 rounded-full bg-[#E8F8EC] px-4 py-2 text-sm font-black text-[#2BA24C]">
@@ -703,15 +703,15 @@ function CompletedMissionTaskCard({
         </span>
       </div>
       <div className="mt-5 flex items-center gap-4">
-        <div className="h-3 flex-1 overflow-hidden rounded-full bg-[#F1EEFF]">
-          <div className="h-full w-full rounded-full bg-[linear-gradient(90deg,#635BFF_0%,#7C71FF_100%)]" />
+        <div className="h-3 flex-1 overflow-hidden rounded-full bg-[#FFF1F0]">
+          <div className="h-full w-full rounded-full bg-[#E86F6B]" />
         </div>
-        <p className="shrink-0 text-sm font-black text-[#635BFF]">100%</p>
+        <p className="shrink-0 text-sm font-black text-[#E86F6B]">100%</p>
       </div>
       {task.textbook_key ? (
         <div className="mt-5 flex justify-end">
           <button
-            className="rounded-full border border-[#635BFF] bg-white px-4 py-2 text-sm font-black text-[#635BFF] transition hover:bg-[#F8FAFF]"
+            className="rounded-full border border-[#E86F6B] bg-white px-4 py-2 text-sm font-black text-[#E86F6B] transition hover:bg-[#F2F4F6]"
             onClick={() => onOpenTask(task)}
             type="button"
           >
@@ -731,24 +731,24 @@ function CompletedHomeworkTaskCard({
   onOpenTextbook: (card: ItemRangeTaskCard) => void;
 }) {
   return (
-    <article className="rounded-[24px] border border-[#D9D6FF] bg-white px-5 py-5 shadow-[0_16px_40px_rgba(109,115,255,0.08)]">
+    <article className="rounded-2xl border border-[#F1D8D7] bg-white px-5 py-5 shadow-card">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           {card.textbook_title ? (
-            <span className="inline-flex rounded-2xl bg-[#F1EDFF] px-4 py-2 text-sm font-black text-[#635BFF]">
+            <span className="inline-flex rounded-2xl bg-[#FFF1F0] px-4 py-2 text-sm font-black text-[#E86F6B]">
               {card.textbook_title}
             </span>
           ) : null}
-          <h3 className="mt-4 truncate text-[16px] font-black leading-snug text-[#17213B]">
+          <h3 className="mt-4 truncate text-[16px] font-black leading-snug text-[#1F2933]">
             {card.title}
           </h3>
           <p className="mt-2 truncate text-sm font-bold text-[#A0A7B8] line-through">
             {card.range_label ?? "-"}
           </p>
           <div className="mt-4 flex flex-wrap items-center gap-3">
-            <span className="text-[13px] font-bold text-[#98A1B3]">{formatCardDate(card.task_date)}</span>
+            <span className="text-[13px] font-bold text-[#98A2B3]">{formatCardDate(card.task_date)}</span>
             {card.due_date ? (
-              <span className="text-[13px] font-bold text-[#635BFF]">마감 {formatCardDate(card.due_date)}</span>
+              <span className="text-[13px] font-bold text-[#E86F6B]">마감 {formatCardDate(card.due_date)}</span>
             ) : null}
           </div>
         </div>
@@ -757,15 +757,15 @@ function CompletedHomeworkTaskCard({
         </span>
       </div>
       <div className="mt-5 flex items-center gap-4">
-        <div className="h-3 flex-1 overflow-hidden rounded-full bg-[#F1EEFF]">
-          <div className="h-full w-full rounded-full bg-[linear-gradient(90deg,#635BFF_0%,#7C71FF_100%)]" />
+        <div className="h-3 flex-1 overflow-hidden rounded-full bg-[#FFF1F0]">
+          <div className="h-full w-full rounded-full bg-[#E86F6B]" />
         </div>
-        <p className="shrink-0 text-sm font-black text-[#635BFF]">100%</p>
+        <p className="shrink-0 text-sm font-black text-[#E86F6B]">100%</p>
       </div>
       {card.textbook_key ? (
         <div className="mt-5 flex justify-end">
           <button
-            className="rounded-full border border-[#635BFF] bg-white px-4 py-2 text-sm font-black text-[#635BFF] transition hover:bg-[#F8FAFF]"
+            className="rounded-full border border-[#E86F6B] bg-white px-4 py-2 text-sm font-black text-[#E86F6B] transition hover:bg-[#F2F4F6]"
             onClick={() => onOpenTextbook(card)}
             type="button"
           >
@@ -1094,31 +1094,31 @@ export default function StudentTodayPage() {
   };
 
   return (
-    <ScreenShell withBottomNav>
+    <ScreenShell withBottomNav variant="student">
       <div className="flex items-start justify-between gap-4 pt-1">
         <div>
-          <h1 className="text-[1.5rem] font-black tracking-tight text-[#17213B]">
+          <h1 className="text-[1.5rem] font-black tracking-tight text-[#1F2933]">
             {STUDENT_PAGE_TITLES.today}
           </h1>
-          <p className="mt-1 text-sm font-medium text-[#8A94A8]">오늘 해야 할 일을 하나씩 해내요</p>
+          <p className="mt-1 text-sm font-medium text-[#667085]">오늘 해야 할 일을 하나씩 해내요</p>
         </div>
         <StudentLogoutButton onClick={handleLogout} />
       </div>
 
-      <div className="rounded-[20px] border border-[#EEF2FF] bg-white px-5 py-3.5 shadow-card">
+      <div className="rounded-[20px] border border-[#E5E7EB] bg-white px-5 py-3.5 shadow-card">
         <div className="flex items-center justify-between gap-3">
-          <p className="text-sm font-bold text-[#17213B]">
+          <p className="text-sm font-bold text-[#1F2933]">
             {loading
               ? "불러오는 중..."
               : progressRemaining === 0 && progressSummary.total > 0
                 ? "오늘 미션 모두 완료"
                 : `${progressRemaining}개 남아있어요`}
           </p>
-          <span className="shrink-0 text-sm font-black text-[#635BFF]">{progressCompletionRate}%</span>
+          <span className="shrink-0 text-sm font-black text-[#E86F6B]">{progressCompletionRate}%</span>
         </div>
         <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#E9EDF7]">
           <div
-            className="h-full rounded-full bg-[linear-gradient(90deg,#635BFF_0%,#7C71FF_100%)] transition-all duration-500"
+            className="h-full rounded-full bg-[#E86F6B] transition-all duration-500"
             style={{ width: `${progressCompletionRate}%` }}
           />
         </div>
@@ -1126,12 +1126,12 @@ export default function StudentTodayPage() {
 
       <section>
         <div className="mb-3 flex items-center justify-between gap-4">
-          <h2 className="text-[1.2rem] font-black tracking-tight text-[#17213B]">
+          <h2 className="text-[1.2rem] font-black tracking-tight text-[#1F2933]">
             {selectedDateKey === todayKey ? "오늘의 미션" : formatSelectedDate(selectedDate)}
           </h2>
           <button
             aria-label="직접 추가"
-            className="inline-flex h-9 items-center justify-center rounded-full bg-white px-4 text-sm font-black text-[#635BFF] shadow-card transition hover:bg-gray-50"
+            className="inline-flex h-9 items-center justify-center rounded-full bg-white px-4 text-sm font-black text-[#E86F6B] shadow-card transition hover:bg-gray-50"
             type="button"
           >
             + 직접 추가
@@ -1169,7 +1169,7 @@ export default function StudentTodayPage() {
 
             {completedRegularTasks.length > 0 || completedItemRangeCards.length > 0 ? (
               <>
-                <p className="mb-2 mt-5 text-xs font-bold text-[#98A1B3]">이미 완료한 미션</p>
+                <p className="mb-2 mt-5 text-xs font-bold text-[#98A2B3]">이미 완료한 미션</p>
                 <div className="space-y-2 md:grid md:grid-cols-2 md:gap-3 md:space-y-0 lg:grid-cols-2">
                   {completedRegularTasks.map((task) => (
                     <CompletedMissionTaskCard
@@ -1192,7 +1192,7 @@ export default function StudentTodayPage() {
 
             {lectureTasks.length > 0 ? (
               <div className="mt-5">
-                <p className="mb-2 text-xs font-bold text-[#98A1B3]">인강 수강</p>
+                <p className="mb-2 text-xs font-bold text-[#98A2B3]">인강 수강</p>
                 <div className="space-y-3 lg:grid lg:grid-cols-2 lg:gap-3 lg:space-y-0">
                   {lectureTasks.map((task) => (
                     <LectureTaskCard
@@ -1208,28 +1208,28 @@ export default function StudentTodayPage() {
             ) : null}
 
             {selectedTasks.length === 0 ? (
-              <div className="flex min-h-[160px] flex-col items-center justify-center rounded-[28px] border border-dashed border-[#E4EAF6] bg-white px-4 py-6 text-center shadow-card">
-                <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-[#F5F7FB] text-2xl">
+              <div className="flex min-h-[160px] flex-col items-center justify-center rounded-[20px] border border-dashed border-[#D0D5DD] bg-white px-4 py-6 text-center shadow-card">
+                <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-[#F2F4F6] text-2xl">
                   ·
                 </div>
-                <p className="text-sm font-black text-[#17213B]">오늘 배정된 미션이 없어요</p>
-                <p className="mt-1 text-xs font-semibold text-[#98A1B3]">잠깐 쉬어가도 괜찮아요.</p>
+                <p className="text-sm font-black text-[#1F2933]">오늘 배정된 미션이 없어요</p>
+                <p className="mt-1 text-xs font-semibold text-[#98A2B3]">잠깐 쉬어가도 괜찮아요.</p>
               </div>
             ) : null}
           </>
         ) : null}
       </section>
 
-      <section className="rounded-[30px] border border-[#EEF2FF] bg-white p-5 shadow-card">
+      <section className="rounded-[20px] border border-[#E5E7EB] bg-white p-5 shadow-card">
         <div className="mb-4 flex items-center justify-between gap-3">
           <div>
-            <h2 className="text-base font-black text-[#17213B]">이번 주 미션</h2>
-            <p className="mt-1 text-xs font-semibold text-[#98A1B3]">{weekLabel}</p>
+            <h2 className="text-base font-black text-[#1F2933]">이번 주 미션</h2>
+            <p className="mt-1 text-xs font-semibold text-[#98A2B3]">{weekLabel}</p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <button
               aria-label="이전 주"
-              className="flex h-10 w-10 items-center justify-center rounded-full bg-[#F5F7FB] text-lg font-black text-[#7A859F] transition hover:bg-[#EAEFF7]"
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-[#F2F4F6] text-lg font-black text-[#667085] transition hover:bg-[#E5E7EB]"
               onClick={() => moveWeek(-7)}
               type="button"
             >
@@ -1239,8 +1239,8 @@ export default function StudentTodayPage() {
               className={cn(
                 "rounded-full px-3.5 py-2 text-xs font-black transition",
                 isSameLocalWeek(currentWeekStart, today)
-                  ? "bg-[#EEF2FF] text-[#635BFF]"
-                  : "bg-[#0F172A] text-white",
+                  ? "bg-[#FFF1F0] text-[#E86F6B]"
+                  : "bg-[#E86F6B] text-white",
               )}
               onClick={returnToThisWeek}
               type="button"
@@ -1249,7 +1249,7 @@ export default function StudentTodayPage() {
             </button>
             <button
               aria-label="다음 주"
-              className="flex h-10 w-10 items-center justify-center rounded-full bg-[#F5F7FB] text-lg font-black text-[#7A859F] transition hover:bg-[#EAEFF7]"
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-[#F2F4F6] text-lg font-black text-[#667085] transition hover:bg-[#E5E7EB]"
               onClick={() => moveWeek(7)}
               type="button"
             >
@@ -1269,21 +1269,21 @@ export default function StudentTodayPage() {
                 className={cn(
                   "flex h-[92px] flex-col items-center justify-center gap-1 rounded-[22px] border px-1 text-center transition",
                   isSelected
-                    ? "border-[#635BFF] bg-[#635BFF] text-white shadow-sm"
-                    : "border-[#EEF2FF] bg-white text-[#17213B] hover:border-[#D9E1F5] hover:bg-[#F8FAFF]",
+                    ? "border-[#E86F6B] bg-[#E86F6B] text-white shadow-sm"
+                    : "border-[#E5E7EB] bg-white text-[#1F2933] hover:border-[#D0D5DD] hover:bg-[#F2F4F6]",
                 )}
                 key={dateKey}
                 onClick={() => setSelectedDateKey(dateKey)}
                 type="button"
               >
-                <span className={cn("text-sm font-bold", isSelected ? "text-white/68" : "text-[#8A94A8]")}>
+                <span className={cn("text-sm font-bold", isSelected ? "text-white/68" : "text-[#667085]")}>
                   {dayLabels[index]}
                 </span>
                 <span className="text-[1.35rem] font-black leading-none">{date.getDate()}</span>
                 <span
                   className={cn(
                     "text-[12px] font-black",
-                    isSelected ? "text-white/78" : isToday ? "text-[#635BFF]" : "text-transparent",
+                    isSelected ? "text-white/78" : isToday ? "text-[#E86F6B]" : "text-transparent",
                   )}
                 >
                   오늘
@@ -1294,8 +1294,8 @@ export default function StudentTodayPage() {
         </div>
       </section>
 
-      <section className="rounded-[30px] border border-[#EEF2FF] bg-white p-5 shadow-card">
-        <p className="mb-4 text-sm font-black text-[#17213B]">주간 분석</p>
+      <section className="rounded-[20px] border border-[#E5E7EB] bg-white p-5 shadow-card">
+        <p className="mb-4 text-sm font-black text-[#1F2933]">주간 분석</p>
         <div className="grid grid-cols-3 divide-x divide-[#EEF1F7]">
           {[
             { key: "rate" as const, label: "진도율", value: `${weeklySummary.rate}%` },
@@ -1306,14 +1306,14 @@ export default function StudentTodayPage() {
               <div
                 className={cn(
                   "flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-xl",
-                  item.key === "done" ? "bg-orange-50 text-orange-500" : "bg-[#F3F2FF] text-[#635BFF]",
+                  item.key === "done" ? "bg-orange-50 text-orange-500" : "bg-[#FFF1F0] text-[#E86F6B]",
                 )}
               >
                 {getSummaryIcon(item.key)}
               </div>
               <div className="min-w-0">
-                <p className="text-[12px] font-semibold leading-tight text-[#8A94A8]">{item.label}</p>
-                <p className="mt-1 text-[1.35rem] font-black leading-none tracking-tight text-[#17213B]">
+                <p className="text-[12px] font-semibold leading-tight text-[#667085]">{item.label}</p>
+                <p className="mt-1 text-[1.35rem] font-black leading-none tracking-tight text-[#1F2933]">
                   {item.value}
                 </p>
               </div>

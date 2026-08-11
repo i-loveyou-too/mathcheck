@@ -303,7 +303,7 @@ export function TextbookChecklistPage({
   };
 
   return (
-    <ScreenShell withBottomNav>
+    <ScreenShell withBottomNav variant="student">
       <Header
         backHref={backHref}
         logoutType="student"
@@ -338,13 +338,13 @@ export function TextbookChecklistPage({
         </button>
       ) : null}
 
-      <section className="rounded-3xl bg-white p-5 shadow-card">
-        <h2 className="text-base font-bold text-indigo-500">진도 요약</h2>
+      <section className="rounded-[20px] border border-[#E5E7EB] bg-white p-5 shadow-card">
+        <h2 className="text-base font-bold text-[#C8433F]">진도 요약</h2>
         <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
-          <div className="rounded-2xl bg-[#EEF2FF] p-4">
+          <div className="rounded-2xl bg-[#FFF1F0] p-4">
             <p className="text-xl leading-none">📋</p>
-            <p className="mt-2 text-xs font-semibold text-indigo-400">전체</p>
-            <p className="mt-0.5 text-2xl font-black text-indigo-900">{summary.total}문항</p>
+            <p className="mt-2 text-xs font-semibold text-[#E86F6B]">전체</p>
+            <p className="mt-0.5 text-2xl font-black text-[#7A2B28]">{summary.total}문항</p>
           </div>
           <div className={cn("rounded-2xl p-4", statusStyles.done.card)}>
             <p className="text-xl leading-none">✅</p>
@@ -430,9 +430,9 @@ export function TextbookChecklistPage({
         </div>
       </section>
 
-      <div className="flex items-start gap-2.5 rounded-2xl bg-indigo-50 px-4 py-3.5">
+      <div className="flex items-start gap-2.5 rounded-2xl bg-[#FFF1F0] px-4 py-3.5">
         <span className="shrink-0 text-base">ℹ️</span>
-        <p className="text-xs font-medium leading-relaxed text-indigo-400">
+        <p className="text-xs font-medium leading-relaxed text-[#C8433F]">
           상태를 변경하면 자동으로 저장돼요.
         </p>
       </div>

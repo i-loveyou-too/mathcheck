@@ -26,12 +26,12 @@ export function StudentBottomNav() {
 
   return (
     <nav className="fixed bottom-4 left-1/2 z-20 w-[calc(100%-1.5rem)] max-w-[430px] -translate-x-1/2 px-2 md:max-w-[760px] lg:max-w-[1180px]">
-      <div className="rounded-[1.8rem] bg-[#0F172A] px-2 py-3 shadow-nav">
+      <div className="rounded-[1.8rem] border border-[#E5E7EB] bg-white px-2 py-3 shadow-[0_12px_30px_rgba(31,41,51,0.10)]">
         <div className="grid grid-cols-5 gap-1">
           {items.map((item) => (
             <Link key={item.href} href={item.href} className={cn(
               "flex min-w-0 flex-col items-center gap-1.5 rounded-[1.15rem] px-0.5 py-2.5 text-[9px] font-semibold transition-all",
-              item.active ? "bg-white text-[#0F172A]" : "text-white/50 hover:text-white/75",
+              item.active ? "bg-[#FFF1F0] text-[#E86F6B]" : "text-[#98A2B3] hover:text-[#667085]",
             )}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">{icons[item.icon]}</svg>
               <span className="truncate">{item.label}</span>
