@@ -13,7 +13,7 @@ from zipfile import ZipFile
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field, model_validator
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -594,6 +594,24 @@ def ensure_no_active_overlap(
         query = query.filter(models.VocabularyChallenge.id != exclude_id)
     if query.first():
         raise HTTPException(status_code=400, detail="This student already has an overlapping active challenge.")
+
+
+def ensure_no_active_challenge_for_student(
+    db: Session,
+    student_id: int,
+    is_active: bool,
+    exclude_id: int | None = None,
+) -> None:
+    if not is_active:
+        return
+    query = db.query(models.VocabularyChallenge).filter(
+        models.VocabularyChallenge.student_id == student_id,
+        models.VocabularyChallenge.is_active.is_(True),
+    )
+    if exclude_id is not None:
+        query = query.filter(models.VocabularyChallenge.id != exclude_id)
+    if query.first():
+        raise HTTPException(status_code=400, detail="This student already has an active vocabulary challenge. Complete it before creating a new one.")
 
 
 def bank_dict(db: Session, bank: models.VocabularyBank) -> dict:
@@ -1179,6 +1197,7 @@ def admin_create_challenge(payload: ChallengeIn, db: Session = Depends(get_db)):
         values["start_bank_day"] = values.get("start_bank_day") or (bank.total_days if values.get("bank_day_direction") == "descending" else 1)
         if values["start_bank_day"] < 1 or values["start_bank_day"] > bank.total_days:
             raise HTTPException(status_code=400, detail="start_bank_day is outside the selected bank.")
+    ensure_no_active_challenge_for_student(db, payload.student_id, payload.is_active)
     ensure_no_active_overlap(db, payload.student_id, payload.start_date, payload.end_date, payload.is_active)
     challenge = models.VocabularyChallenge(**values)
     db.add(challenge)
@@ -1228,6 +1247,12 @@ def admin_update_challenge(challenge_id: int, payload: ChallengeUpdate, db: Sess
         if "max_question_count" not in values:
             values["max_question_count"] = challenge.max_question_count or values["daily_test_question_count"]
     get_student_or_404(db, candidate["student_id"])
+    ensure_no_active_challenge_for_student(
+        db,
+        candidate["student_id"],
+        candidate["is_active"],
+        exclude_id=challenge.id,
+    )
     ensure_no_active_overlap(
         db,
         candidate["student_id"],
@@ -1238,6 +1263,15 @@ def admin_update_challenge(challenge_id: int, payload: ChallengeUpdate, db: Sess
     )
     for key, value in values.items():
         setattr(challenge, key, value)
+    db.commit()
+    db.refresh(challenge)
+    return challenge_dict(db, challenge, include_words=True)
+
+
+@router.patch("/admin/vocabulary-challenges/{challenge_id}/complete")
+def admin_complete_challenge(challenge_id: int, db: Session = Depends(get_db)):
+    challenge = get_challenge_or_404(db, challenge_id)
+    challenge.is_active = False
     db.commit()
     db.refresh(challenge)
     return challenge_dict(db, challenge, include_words=True)
@@ -1419,6 +1453,120 @@ def admin_result(session_id: int, db: Session = Depends(get_db)):
     return serialize_session(db, session, include_result=True, for_admin=True)
 
 
+def pending_manual_review_count(db: Session, session_id: int) -> int:
+    return db.query(func.count(models.VocabularyTestAnswer.id)).join(
+        models.VocabularyTestQuestion,
+        models.VocabularyTestAnswer.question_id == models.VocabularyTestQuestion.id,
+    ).filter(
+        models.VocabularyTestAnswer.session_id == session_id,
+        models.VocabularyTestAnswer.is_correct.is_(False),
+        models.VocabularyTestAnswer.manual_is_correct.is_(None),
+    ).scalar() or 0
+
+
+@router.get("/admin/vocabulary-review-items")
+def admin_vocabulary_review_items(
+    student_id: int | None = Query(default=None),
+    study_date: date | None = Query(default=None),
+    day_or_name: str | None = Query(default=None),
+    review_status: Literal["pending", "completed", "all"] = Query(default="pending"),
+    query: str | None = Query(default=None),
+    include_reviewed: bool = Query(default=False),
+    db: Session = Depends(get_db),
+    admin: models.Admin = Depends(admin_auth.require_admin),
+):
+    del admin
+    rows = db.query(
+        models.VocabularyTestSession,
+        models.VocabularyChallenge,
+        models.Student,
+        models.VocabularyTestQuestion,
+        models.VocabularyTestAnswer,
+    ).join(
+        models.VocabularyChallenge,
+        models.VocabularyTestSession.challenge_id == models.VocabularyChallenge.id,
+    ).join(
+        models.Student,
+        models.VocabularyTestSession.student_id == models.Student.id,
+    ).join(
+        models.VocabularyTestQuestion,
+        models.VocabularyTestQuestion.session_id == models.VocabularyTestSession.id,
+    ).join(
+        models.VocabularyTestAnswer,
+        models.VocabularyTestAnswer.question_id == models.VocabularyTestQuestion.id,
+    ).filter(
+        models.VocabularyTestSession.status == "submitted",
+        models.VocabularyTestSession.session_type == "main",
+        models.VocabularyTestAnswer.is_correct.is_(False),
+    )
+    if not include_reviewed:
+        rows = rows.filter(models.VocabularyTestSession.admin_reviewed_at.is_(None))
+    if student_id is not None:
+        rows = rows.filter(models.VocabularyTestSession.student_id == student_id)
+    if study_date is not None:
+        rows = rows.filter(models.VocabularyTestSession.study_date == study_date)
+    if review_status == "pending":
+        rows = rows.filter(models.VocabularyTestAnswer.manual_is_correct.is_(None))
+    elif review_status == "completed":
+        rows = rows.filter(models.VocabularyTestAnswer.manual_is_correct.isnot(None))
+    if query:
+        like = f"%{query.strip().lower()}%"
+        rows = rows.filter(or_(
+            func.lower(models.VocabularyTestQuestion.english_snapshot).like(like),
+            func.lower(models.VocabularyTestAnswer.input_answer).like(like),
+            func.lower(models.Student.name).like(like),
+        ))
+    rows = rows.order_by(
+        models.VocabularyTestSession.study_date.desc(),
+        models.Student.name,
+        models.VocabularyTestQuestion.order_index,
+    ).limit(500).all()
+
+    items = []
+    for session, challenge, student, question, answer in rows:
+        day_info = vocabulary_day_info(db, challenge, session.study_date)
+        bank = db.get(models.VocabularyBank, challenge.word_bank_id) if challenge.word_bank_id else None
+        day_text = " ".join(
+            str(value or "") for value in [
+                challenge.name,
+                day_info.get("learning_day"),
+                day_info.get("new_bank_day_label"),
+                day_info.get("cumulative_bank_day_label"),
+            ]
+        ).lower()
+        if day_or_name and day_or_name.strip().lower() not in day_text:
+            continue
+        items.append({
+            "id": answer.id,
+            "session_id": session.id,
+            "challenge_id": challenge.id,
+            "challenge_name": challenge.name,
+            "student_id": student.id,
+            "student_name": student.name,
+            "study_date": session.study_date,
+            "learning_day": day_info.get("learning_day"),
+            "new_bank_day_label": day_info.get("new_bank_day_label"),
+            "cumulative_bank_day_label": day_info.get("cumulative_bank_day_label"),
+            "word_bank_title": bank.title if bank else None,
+            "question_id": question.id,
+            "order_index": question.order_index,
+            "english": question.english_snapshot,
+            "accepted_answers": question.accepted_answers_snapshot,
+            "input_answer": answer.input_answer,
+            "auto_is_correct": bool(answer.is_correct),
+            "final_is_correct": final_is_correct(answer),
+            "is_manual_override": answer.manual_is_correct is not None,
+            "manual_is_correct": answer.manual_is_correct,
+            "manual_graded_at": answer.manual_graded_at,
+            "admin_reviewed_at": session.admin_reviewed_at,
+            "session_score": session.score,
+            "session_correct_count": session.correct_count,
+            "session_total_count": session.total_count,
+            "pending_count_for_session": pending_manual_review_count(db, session.id),
+        })
+    return {"items": items, "count": len(items)}
+
+
 @router.patch("/admin/vocabulary-results/{session_id}/review")
 def admin_set_session_reviewed(
     session_id: int,
@@ -1445,16 +1593,12 @@ def active_challenge(db: Session, student_id: int, study_date: date):
     ).first()
 
 
-@router.get("/student/vocabulary/current")
-def student_current_vocabulary(
+def vocabulary_progress_days(
+    db: Session,
+    challenge: models.VocabularyChallenge,
     student_id: int,
-    study_date: date | None = None,
-    db: Session = Depends(get_db),
-):
-    target_date = study_date or get_study_date()
-    challenge = active_challenge(db, student_id, target_date)
-    if challenge is None:
-        return {"challenge": None, "today": target_date, "days": []}
+    target_date: date,
+) -> list[dict]:
     assignment_counts = dict(db.query(
         models.VocabularyDailyAssignment.assignment_date,
         func.count(models.VocabularyDailyAssignment.id),
@@ -1463,10 +1607,6 @@ def student_current_vocabulary(
         challenge_id=challenge.id, student_id=student_id, session_type="main"
     ).all()
     by_date = {session.study_date: session for session in sessions}
-    unresolved_count = db.query(func.count(models.VocabularyWrongNote.id)).filter(
-        models.VocabularyWrongNote.student_id == student_id,
-        models.VocabularyWrongNote.status == "unresolved",
-    ).scalar() or 0
     days = []
     cursor = challenge.start_date
     while cursor <= challenge.end_date:
@@ -1498,6 +1638,46 @@ def student_current_vocabulary(
             "score": session.score if session else None,
         })
         cursor += timedelta(days=1)
+    return days
+
+
+def completed_challenge_summaries(db: Session, student_id: int, target_date: date) -> list[dict]:
+    challenges = db.query(models.VocabularyChallenge).filter(
+        models.VocabularyChallenge.student_id == student_id,
+        models.VocabularyChallenge.is_active.is_(False),
+    ).order_by(models.VocabularyChallenge.end_date.desc(), models.VocabularyChallenge.id.desc()).all()
+    summaries = []
+    for challenge in challenges:
+        days = vocabulary_progress_days(db, challenge, student_id, target_date)
+        result_days = [day for day in days if day["session_id"] is not None]
+        summaries.append({
+            "challenge": challenge_dict(db, challenge),
+            "days": days,
+            "result_days": result_days,
+        })
+    return summaries
+
+
+@router.get("/student/vocabulary/current")
+def student_current_vocabulary(
+    student_id: int,
+    study_date: date | None = None,
+    db: Session = Depends(get_db),
+):
+    target_date = study_date or get_study_date()
+    challenge = active_challenge(db, student_id, target_date)
+    if challenge is None:
+        return {
+            "challenge": None,
+            "today": target_date,
+            "days": [],
+            "completed_challenges": completed_challenge_summaries(db, student_id, target_date),
+        }
+    unresolved_count = db.query(func.count(models.VocabularyWrongNote.id)).filter(
+        models.VocabularyWrongNote.student_id == student_id,
+        models.VocabularyWrongNote.status == "unresolved",
+    ).scalar() or 0
+    days = vocabulary_progress_days(db, challenge, student_id, target_date)
     today_item = next(item for item in days if item["date"] == target_date)
     return {
         "challenge": challenge_dict(db, challenge),
@@ -1505,6 +1685,7 @@ def student_current_vocabulary(
         "today_progress": today_item,
         "unresolved_count": unresolved_count,
         "days": days,
+        "completed_challenges": completed_challenge_summaries(db, student_id, target_date),
     }
 
 
@@ -1679,6 +1860,29 @@ def admin_update_manual_grading(
     full = serialize_session(db, session, include_result=True, for_admin=True)
     updated_question = next((item for item in full["questions"] if item["id"] == question.id), None)
     return {"question": updated_question, "session": full}
+
+
+@router.patch("/admin/vocabulary-review-items/{session_id}/responses/{answer_id}/grading")
+def admin_update_integrated_manual_grading(
+    session_id: int,
+    answer_id: int,
+    payload: GradingActionIn,
+    auto_review: bool = Query(default=True),
+    db: Session = Depends(get_db),
+    admin: models.Admin = Depends(admin_auth.require_admin),
+):
+    result = admin_update_manual_grading(session_id, answer_id, payload, db, admin)
+    session = db.get(models.VocabularyTestSession, session_id)
+    if session and auto_review and session.admin_reviewed_at is None and pending_manual_review_count(db, session.id) == 0:
+        session.admin_reviewed_at = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(session)
+        result["session"]["admin_reviewed_at"] = session.admin_reviewed_at
+        result["auto_reviewed"] = True
+    else:
+        result["auto_reviewed"] = False
+    result["pending_count_for_session"] = pending_manual_review_count(db, session_id)
+    return result
 
 
 def submit_session(db: Session, session: models.VocabularyTestSession):

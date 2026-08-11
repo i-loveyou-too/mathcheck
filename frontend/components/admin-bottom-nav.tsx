@@ -15,6 +15,7 @@ const items = [
   ["/admin/curriculums", "지도맵", "M6 3a3 3 0 1 0 0 6 3 3 0 0 0 0-6Zm12 0a3 3 0 1 0 0 6 3 3 0 0 0 0-6Zm-6 12a3 3 0 1 0 0 6 3 3 0 0 0 0-6ZM8.5 8l2.5 7m4.5-7L13 15"],
   ["/admin/vocabulary-banks", "단어뱅크", "M4 4h16v3H4V4Zm0 5h16v11H4V9Zm3 3v2h4v-2H7Zm0 4v2h7v-2H7Zm8-4v2h2v-2h-2Z"],
   ["/admin/vocabulary-challenges", "단어", "M5 3h14v18H5V3Zm3 4v2h8V7H8Zm0 4v2h5v-2H8Zm0 4v2h7v-2H8Z"],
+  ["/admin/suteuk-challenges", "수특10일", "M6 3h12v18H6V3Zm3 4h6v2H9V7Zm0 4h6v2H9v-2Zm0 4h4v2H9v-2Z"],
   ["/admin/sprints", "SPRINT", "M13 2 4.5 12.5 11 13l-1 9 8.5-10.5L12 11l1-9Z"],
   ["/admin/class-schedule", "수업 일정", calendarIcon],
   ["/admin/lesson-schedules", "일정 관리", calendarIcon],
@@ -26,7 +27,7 @@ export function AdminBottomNav() {
   return (
     <nav className="fixed bottom-4 left-1/2 z-20 w-[calc(100%-1.5rem)] max-w-[980px] -translate-x-1/2 px-2">
       <div className="rounded-[1.8rem] bg-[#0F172A] px-2 py-3 shadow-nav">
-        <div className="grid grid-cols-11 gap-1">
+        <div className="grid grid-cols-12 gap-1">
           {items.map(([href, label, path]) => {
             const active = href === "/admin" ? pathname === href : pathname.startsWith(href);
             return (

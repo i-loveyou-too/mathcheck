@@ -2,7 +2,12 @@
   "permissions": {
     "allow": [
       "Bash(python -m pytest backend/test_sprint_exam_v2_retake_approval.py -v)",
-      "Bash(python -m py_compile backend/sprint_exam_v2_assignment_service.py backend/sprint_exam_v2_attempt_service.py backend/sprint_exam_v2_retake_approval_service.py)"
+      "Bash(python -m py_compile backend/sprint_exam_v2_assignment_service.py backend/sprint_exam_v2_attempt_service.py backend/sprint_exam_v2_retake_approval_service.py)",
+      "Bash(python3 -)",
+      "Bash(py -3 --version)",
+      "Bash(node \"C:\\\\Users\\\\klbyun\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-klbyun-Downloads-mathcheck-main\\\\1c46b1c8-2982-4e41-8516-f784f9e3a1d9\\\\scratchpad\\\\check_katex.js\")",
+      "Bash(node -e ' *)",
+      "Bash(node \"C:\\\\Users\\\\klbyun\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-klbyun-Downloads-mathcheck-main\\\\1c46b1c8-2982-4e41-8516-f784f9e3a1d9\\\\scratchpad\\\\check_katex2.js\")"
     ]
   }
 }

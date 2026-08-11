@@ -758,6 +758,121 @@ class VocabularyWrongNote(Base):
 # ---------------------------------------------------------------------------
 
 
+class SuteukChallengeAssignment(Base):
+    __tablename__ = "suteuk_challenge_assignments"
+    __table_args__ = (
+        Index("ix_suteuk_challenge_assignments_student_status", "student_id", "status"),
+        Index("ix_suteuk_challenge_assignments_student_type_status", "student_id", "challenge_type", "status"),
+        Index(
+            "uq_suteuk_challenge_assignments_active_student_type",
+            "student_id",
+            "challenge_type",
+            unique=True,
+            postgresql_where=text("status = 'active'"),
+            sqlite_where=text("status = 'active'"),
+        ),
+    )
+
+    id = Column(Integer, primary_key=True)
+    student_id = Column(Integer, ForeignKey("math_students.id", ondelete="CASCADE"), nullable=False)
+    challenge_type = Column(String(50), nullable=False, default="suteuk_10day", server_default=text("'suteuk_10day'"))
+    start_date = Column(Date, nullable=False)
+    status = Column(String(20), nullable=False, default="active", server_default=text("'active'"))
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    student = relationship("Student")
+    task_progress = relationship(
+        "SuteukChallengeTaskProgress",
+        back_populates="assignment",
+        cascade="all, delete-orphan",
+    )
+    concept_progress = relationship(
+        "SuteukChallengeConceptProgress",
+        back_populates="assignment",
+        cascade="all, delete-orphan",
+    )
+    formula_responses = relationship(
+        "SuteukChallengeFormulaResponse",
+        back_populates="assignment",
+        cascade="all, delete-orphan",
+    )
+
+
+class SuteukChallengeTaskProgress(Base):
+    __tablename__ = "suteuk_challenge_task_progress"
+    __table_args__ = (
+        UniqueConstraint(
+            "assignment_id",
+            "day_number",
+            "task_code",
+            name="uq_suteuk_challenge_task_progress_assignment_day_task",
+        ),
+        Index("ix_suteuk_challenge_task_progress_assignment_day", "assignment_id", "day_number"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    assignment_id = Column(
+        Integer,
+        ForeignKey("suteuk_challenge_assignments.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    day_number = Column(Integer, nullable=False)
+    task_code = Column(String(100), nullable=False)
+    completed = Column(Boolean, nullable=False, default=False, server_default=text("FALSE"))
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+
+    assignment = relationship("SuteukChallengeAssignment", back_populates="task_progress")
+
+
+class SuteukChallengeConceptProgress(Base):
+    __tablename__ = "suteuk_challenge_concept_progress"
+    __table_args__ = (
+        UniqueConstraint("assignment_id", "concept_code", name="uq_suteuk_concept_progress_assignment_code"),
+        Index("ix_suteuk_concept_progress_assignment_day", "assignment_id", "day_number"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    assignment_id = Column(
+        Integer,
+        ForeignKey("suteuk_challenge_assignments.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    day_number = Column(Integer, nullable=False)
+    concept_code = Column(String(120), nullable=False)
+    response = Column(String(20), nullable=True)
+    final_status = Column(String(40), nullable=True)
+    completed = Column(Boolean, nullable=False, default=False, server_default=text("FALSE"))
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    assignment = relationship("SuteukChallengeAssignment", back_populates="concept_progress")
+
+
+class SuteukChallengeFormulaResponse(Base):
+    __tablename__ = "suteuk_challenge_formula_responses"
+    __table_args__ = (
+        UniqueConstraint("assignment_id", "question_code", name="uq_suteuk_formula_response_assignment_question"),
+        Index("ix_suteuk_formula_responses_assignment_day", "assignment_id", "day_number"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    assignment_id = Column(
+        Integer,
+        ForeignKey("suteuk_challenge_assignments.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    day_number = Column(Integer, nullable=False)
+    question_code = Column(String(120), nullable=False)
+    concept_code = Column(String(120), nullable=True)
+    selected_answer = Column(String(20), nullable=False)
+    is_correct = Column(Boolean, nullable=False, default=False, server_default=text("FALSE"))
+    answered_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    assignment = relationship("SuteukChallengeAssignment", back_populates="formula_responses")
+
+
 class SprintProgram(Base):
     __tablename__ = "sprint_programs"
     __table_args__ = (

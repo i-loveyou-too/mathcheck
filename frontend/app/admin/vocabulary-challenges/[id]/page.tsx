@@ -53,6 +53,7 @@ export default function VocabularyChallengeDetailPage() {
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState({ name: "", start_date: "", end_date: "" });
   const [deleting, setDeleting] = useState(false);
+  const [completing, setCompleting] = useState(false);
   const [reviewingSessionId, setReviewingSessionId] = useState<number | null>(null);
 
   const load = async () => {
@@ -170,6 +171,22 @@ export default function VocabularyChallengeDetailPage() {
     }
   };
 
+  const completeChallenge = async () => {
+    if (!challenge) return;
+    if (!window.confirm("이 영단어 챌린지를 완료 처리할까요?")) return;
+    setCompleting(true);
+    setError("");
+    try {
+      await apiFetch(`/admin/vocabulary-challenges/${challengeId}/complete`, { method: "PATCH" });
+      await load();
+      setNotice("챌린지를 완료 처리했습니다. 기존 결과와 오답은 그대로 보존됩니다.");
+    } catch (reason) {
+      setError(reason instanceof ApiError ? reason.message : "챌린지를 완료 처리하지 못했습니다.");
+    } finally {
+      setCompleting(false);
+    }
+  };
+
   if (!challenge) {
     return <main className="min-h-screen bg-[#EEF2F6] p-10 text-center font-bold text-[#7A859F]">{error || "불러오는 중..."}</main>;
   }
@@ -186,7 +203,12 @@ export default function VocabularyChallengeDetailPage() {
           </div>
           <div className="flex flex-wrap gap-2">
             <button onClick={() => setEditing((value) => !value)} className="rounded-full bg-white px-4 py-2 text-sm font-black text-[#17213B] shadow-sm">{editing ? "수정 닫기" : "정보 수정"}</button>
-            <button onClick={() => void run(() => apiFetch(`/admin/vocabulary-challenges/${challengeId}`, { method: "PATCH", body: { is_active: !challenge.is_active } }), challenge.is_active ? "비활성화했습니다." : "활성화했습니다.")} className={`rounded-full px-4 py-2 text-sm font-black ${challenge.is_active ? "bg-emerald-100 text-emerald-700" : "bg-gray-200 text-gray-600"}`}>{challenge.is_active ? "활성 운영 중" : "비활성"}</button>
+            {challenge.is_active ? (
+              <button disabled={completing} onClick={() => void completeChallenge()} className="rounded-full bg-amber-100 px-4 py-2 text-sm font-black text-amber-800 disabled:opacity-50">{completing ? "완료 처리 중..." : "챌린지 완료"}</button>
+            ) : (
+              <span className="rounded-full bg-gray-200 px-4 py-2 text-sm font-black text-gray-600">완료</span>
+            )}
+            {!challenge.is_active && <Link href={`/admin/vocabulary-challenges?student_id=${challenge.student_id}`} className="rounded-full bg-[#17213B] px-4 py-2 text-sm font-black text-white">+ 새 챌린지 배정</Link>}
             <button disabled={deleting} onClick={() => void deleteChallenge()} className="rounded-full bg-red-50 px-4 py-2 text-sm font-black text-red-600 disabled:opacity-50">{deleting ? "삭제 중..." : "삭제"}</button>
           </div>
         </div>
