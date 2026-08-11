@@ -24,7 +24,7 @@ const items: AdminNavItem[] = [
     href: "/admin/challenges",
     label: "챌린지",
     path: "M4 5a2 2 0 0 1 2-2h6l2 2h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5Zm4 4v2h8V9H8Zm0 4v2h5v-2H8Z",
-    activePaths: ["/admin/challenges", "/admin/vocabulary-banks", "/admin/vocabulary-challenges", "/admin/vocabulary-review", "/admin/suteuk-challenges", "/admin/sprints"],
+    activePaths: ["/admin/challenges", "/admin/vocabulary-banks", "/admin/vocabulary-challenges", "/admin/vocabulary-review", "/admin/suteuk-challenges", "/admin/sprints", "/admin/sprint-proof-review"],
   },
   { href: "/admin/class-schedule", label: "수업 일정", path: calendarIcon },
   { href: "/admin/lesson-schedules", label: "일정 관리", path: calendarIcon },

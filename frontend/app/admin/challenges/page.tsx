@@ -28,6 +28,7 @@ const sections = [
     description: "단기 집중 학습을 위한 스프린트 운영 메뉴입니다.",
     links: [
       { href: "/admin/sprints", label: "스프린트 관리", description: "스프린트 생성과 학생별 진행 관리" },
+      { href: "/admin/sprint-proof-review", label: "인증 통합 검토", description: "착석·플래너·공부시간 인증과 미제출 학생 확인" },
     ],
   },
 ] as const;

@@ -280,6 +280,13 @@ class DailyProofRejectIn(BaseModel):
     reviewed_by: int | None = None
 
 
+class UnifiedProofReviewIn(BaseModel):
+    approved_minutes: int | None = Field(default=None, ge=1, le=1440)
+    review_note: str | None = Field(default=None, max_length=500)
+    comment: str | None = Field(default=None, max_length=500)
+    reviewed_by: int | None = None
+
+
 class MissingProofJudgeIn(BaseModel):
     learning_date: date
     proof_type: Literal["planner", "seat_check", "all"] = "all"
@@ -1181,6 +1188,178 @@ def strike_dict(strike: models.SprintStrike) -> dict:
     }
 
 
+UNIFIED_PROOF_TYPES = {"seat_check", "planner", "study_time"}
+UNIFIED_REVIEW_STATUSES = {"pending", "approved", "rejected"}
+
+
+def unified_proof_label(proof_type: str) -> str:
+    return {
+        "seat_check": "착석 인증",
+        "planner": "플래너 인증",
+        "study_time": "공부시간 인증",
+    }.get(proof_type, proof_type)
+
+
+def active_programs_for_proof_date(db: Session, target_date: date) -> list[models.SprintProgram]:
+    return (
+        db.query(models.SprintProgram)
+        .filter(
+            models.SprintProgram.is_active.is_(True),
+            models.SprintProgram.start_date <= target_date,
+            models.SprintProgram.end_date >= target_date,
+        )
+        .order_by(models.SprintProgram.id)
+        .all()
+    )
+
+
+def active_proof_types_for_program(program: models.SprintProgram) -> list[str]:
+    proof_types: list[str] = []
+    if program.enable_seat_check:
+        proof_types.append("seat_check")
+    if program.enable_planner_submission:
+        proof_types.append("planner")
+    if program.enable_study_time_submission:
+        proof_types.append("study_time")
+    return proof_types
+
+
+def proof_has_valid_submission(status: str | None) -> bool:
+    return status in {"pending", "approved"}
+
+
+def build_unified_missing_summary(db: Session, target_date: date) -> dict:
+    programs = active_programs_for_proof_date(db, target_date)
+    daily_rows = db.query(models.SprintDailyProofSubmission).filter(
+        models.SprintDailyProofSubmission.learning_date == target_date,
+    ).all()
+    daily_by_key = {
+        (row.sprint_program_id, row.student_id, row.proof_type): row.workflow_status
+        for row in daily_rows
+    }
+    study_rows = db.query(models.SprintStudySubmission).filter(
+        models.SprintStudySubmission.learning_date == target_date,
+    ).all()
+    study_by_key = {
+        (row.sprint_program_id, row.student_id): row.status
+        for row in study_rows
+    }
+
+    counts = {"seat_check": 0, "planner": 0, "study_time": 0}
+    students: dict[int, dict] = {}
+    for program in programs:
+        student = db.get(models.Student, program.student_id)
+        if student is None:
+            continue
+        missing_types: list[str] = []
+        for proof_type in active_proof_types_for_program(program):
+            if proof_type == "study_time":
+                status = study_by_key.get((program.id, program.student_id))
+            else:
+                status = daily_by_key.get((program.id, program.student_id, proof_type))
+            if proof_has_valid_submission(status):
+                continue
+            counts[proof_type] += 1
+            missing_types.append(proof_type)
+        if missing_types:
+            students[student.id] = {
+                "student_id": student.id,
+                "student_name": student.name,
+                "program_id": program.id,
+                "program_title": program.title,
+                "missing_types": missing_types,
+            }
+
+    return {
+        "proof_date": target_date,
+        "counts": counts,
+        "student_count": len(students),
+        "students": sorted(students.values(), key=lambda item: item["student_name"]),
+    }
+
+
+def unified_daily_proof_item(
+    submission: models.SprintDailyProofSubmission,
+    program: models.SprintProgram,
+    student: models.Student,
+) -> dict:
+    images = [proof_image_dict(image) for image in submission.images]
+    return {
+        "id": submission.id,
+        "student_id": student.id,
+        "student_name": student.name,
+        "program_id": program.id,
+        "program_title": program.title,
+        "proof_type": submission.proof_type,
+        "proof_label": unified_proof_label(submission.proof_type),
+        "proof_date": submission.learning_date,
+        "submitted_at": submission.submitted_at,
+        "image_url": images[0]["admin_url"] if images else None,
+        "images": images,
+        "review_status": submission.workflow_status,
+        "metadata": {
+            "memo": submission.memo,
+            "timing_status": submission.timing_override or submission.timing_status,
+            "raw_timing_status": submission.timing_status,
+            "deadline_time": proof_deadline_value(program, submission.proof_type),
+            "review_note": submission.review_note,
+        },
+    }
+
+
+def unified_study_time_item(
+    submission: models.SprintStudySubmission,
+    program: models.SprintProgram,
+    student: models.Student,
+) -> dict:
+    images = [image_dict(image) for image in submission.images]
+    return {
+        "id": submission.id,
+        "student_id": student.id,
+        "student_name": student.name,
+        "program_id": program.id,
+        "program_title": program.title,
+        "proof_type": "study_time",
+        "proof_label": unified_proof_label("study_time"),
+        "proof_date": submission.learning_date,
+        "submitted_at": submission.submitted_at,
+        "image_url": images[0]["admin_url"] if images else None,
+        "images": images,
+        "review_status": submission.status,
+        "metadata": {
+            "memo": submission.memo,
+            "total_minutes": submission.total_minutes,
+            "approved_minutes": submission.approved_minutes,
+            "subject_breakdown": submission.subject_breakdown or {},
+            "review_note": submission.review_note,
+        },
+    }
+
+
+def unified_pending_counts(db: Session) -> dict:
+    daily_rows = db.query(models.SprintDailyProofSubmission.proof_type, func.count(models.SprintDailyProofSubmission.id)).filter(
+        models.SprintDailyProofSubmission.workflow_status == "pending",
+    ).group_by(models.SprintDailyProofSubmission.proof_type).all()
+    counts = {"seat_check": 0, "planner": 0, "study_time": 0}
+    for proof_type, count in daily_rows:
+        if proof_type in counts:
+            counts[proof_type] = count
+    counts["study_time"] = db.query(func.count(models.SprintStudySubmission.id)).filter(
+        models.SprintStudySubmission.status == "pending",
+    ).scalar() or 0
+    counts["total"] = counts["seat_check"] + counts["planner"] + counts["study_time"]
+    return counts
+
+
+def submitted_sort_value(item: dict) -> float:
+    submitted_at = item.get("submitted_at")
+    if isinstance(submitted_at, datetime):
+        if submitted_at.tzinfo is None:
+            submitted_at = submitted_at.replace(tzinfo=timezone.utc)
+        return submitted_at.timestamp()
+    return 0.0
+
+
 # ---------------------------------------------------------------------------
 # Admin endpoints
 # ---------------------------------------------------------------------------
@@ -1201,6 +1380,141 @@ def admin_list_sprints(
     if status != "all":
         result = [item for item in result if item["status"] == status]
     return result
+
+
+@router.get("/admin/sprint-proof-review")
+def admin_unified_proof_review(
+    review_status: Literal["all", "pending", "approved", "rejected"] = Query(default="pending"),
+    proof_type: Literal["all", "seat_check", "planner", "study_time"] = Query(default="all"),
+    student_id: int | None = None,
+    proof_date: date | None = None,
+    db: Session = Depends(get_db),
+):
+    today = get_study_date()
+    status_values = list(UNIFIED_REVIEW_STATUSES) if review_status == "all" else [review_status]
+    type_values = list(UNIFIED_PROOF_TYPES) if proof_type == "all" else [proof_type]
+    items: list[dict] = []
+
+    daily_types = [value for value in type_values if value in {"seat_check", "planner"}]
+    if daily_types:
+        daily_query = db.query(
+            models.SprintDailyProofSubmission,
+            models.SprintProgram,
+            models.Student,
+        ).join(
+            models.SprintProgram,
+            models.SprintDailyProofSubmission.sprint_program_id == models.SprintProgram.id,
+        ).join(
+            models.Student,
+            models.SprintDailyProofSubmission.student_id == models.Student.id,
+        ).filter(
+            models.SprintDailyProofSubmission.proof_type.in_(daily_types),
+            models.SprintDailyProofSubmission.workflow_status.in_(status_values),
+        )
+        if student_id is not None:
+            daily_query = daily_query.filter(models.SprintDailyProofSubmission.student_id == student_id)
+        if proof_date is not None:
+            daily_query = daily_query.filter(models.SprintDailyProofSubmission.learning_date == proof_date)
+        for submission, program, student in daily_query.all():
+            items.append(unified_daily_proof_item(submission, program, student))
+
+    if "study_time" in type_values:
+        study_query = db.query(
+            models.SprintStudySubmission,
+            models.SprintProgram,
+            models.Student,
+        ).join(
+            models.SprintProgram,
+            models.SprintStudySubmission.sprint_program_id == models.SprintProgram.id,
+        ).join(
+            models.Student,
+            models.SprintStudySubmission.student_id == models.Student.id,
+        ).filter(
+            models.SprintStudySubmission.status.in_(status_values),
+        )
+        if student_id is not None:
+            study_query = study_query.filter(models.SprintStudySubmission.student_id == student_id)
+        if proof_date is not None:
+            study_query = study_query.filter(models.SprintStudySubmission.learning_date == proof_date)
+        for submission, program, student in study_query.all():
+            items.append(unified_study_time_item(submission, program, student))
+
+    items.sort(key=submitted_sort_value, reverse=True)
+    pending_counts = unified_pending_counts(db)
+    missing = build_unified_missing_summary(db, today)
+    return {
+        "today": today,
+        "proof_date": proof_date or today,
+        "summary": {
+            "pending_total": pending_counts["total"],
+            "pending_by_type": {
+                "seat_check": pending_counts["seat_check"],
+                "planner": pending_counts["planner"],
+                "study_time": pending_counts["study_time"],
+            },
+            "missing_student_count": missing["student_count"],
+        },
+        "missing": missing,
+        "items": items[:500],
+        "count": min(len(items), 500),
+    }
+
+
+@router.post("/admin/sprint-proof-review/{proof_type}/{submission_id}/approve")
+def admin_unified_approve_proof(
+    proof_type: Literal["seat_check", "planner", "study_time"],
+    submission_id: int,
+    payload: UnifiedProofReviewIn,
+    db: Session = Depends(get_db),
+):
+    if proof_type == "study_time":
+        return admin_approve_study_submission(
+            submission_id,
+            StudySubmissionReviewIn(
+                approved_minutes=payload.approved_minutes,
+                comment=payload.comment,
+                review_note=payload.review_note,
+                reviewed_by=payload.reviewed_by,
+            ),
+            db,
+        )
+    return admin_approve_daily_proof(
+        submission_id,
+        DailyProofReviewIn(
+            comment=payload.comment,
+            review_note=payload.review_note,
+            reviewed_by=payload.reviewed_by,
+        ),
+        db,
+    )
+
+
+@router.post("/admin/sprint-proof-review/{proof_type}/{submission_id}/reject")
+def admin_unified_reject_proof(
+    proof_type: Literal["seat_check", "planner", "study_time"],
+    submission_id: int,
+    payload: UnifiedProofReviewIn,
+    db: Session = Depends(get_db),
+):
+    if proof_type == "study_time":
+        return admin_reject_study_submission(
+            submission_id,
+            StudySubmissionRejectIn(
+                comment=payload.comment,
+                review_note=payload.review_note,
+                reviewed_by=payload.reviewed_by,
+            ),
+            db,
+        )
+    return admin_reject_daily_proof(
+        submission_id,
+        DailyProofRejectIn(
+            comment=payload.comment,
+            review_note=payload.review_note,
+            reviewed_by=payload.reviewed_by,
+        ),
+        db,
+    )
 
 
 @router.post("/admin/sprints", status_code=201)
