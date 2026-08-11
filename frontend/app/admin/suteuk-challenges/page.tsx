@@ -27,6 +27,7 @@ type FormulaSummary = {
 } | null;
 type ChallengeDay = {
   day: number;
+  scheduled_date: string | null;
   total_tasks: number;
   completed_tasks: number;
   progress_rate: number;
@@ -59,6 +60,8 @@ type Assignment = {
   total_days: number;
   schedule_ends_on: string;
   schedule_finished: boolean;
+  is_rest_day: boolean;
+  rest_dates: string[];
   overall_total_tasks: number;
   overall_completed_tasks: number;
   overall_progress_rate: number;
@@ -90,6 +93,7 @@ export default function AdminSuteukChallengesPage() {
   const [detail, setDetail] = useState<Assignment | null>(null);
   const [formulaDetail, setFormulaDetail] = useState<FormulaAdminDetail | null>(null);
   const [form, setForm] = useState({ student_id: "", challenge_type: "suteuk_level2_5day", start_date: today });
+  const [restDate, setRestDate] = useState(today);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -179,6 +183,33 @@ export default function AdminSuteukChallengesPage() {
     await load();
   };
 
+  const addRestDate = async () => {
+    if (!selected || !restDate) return;
+    setError("");
+    try {
+      const updated = await apiFetch<Assignment>(`/admin/suteuk-challenges/${selected.id}/rest-dates`, {
+        method: "POST",
+        body: { rest_date: restDate },
+      });
+      setAssignments((rows) => rows.map((row) => (row.id === updated.id ? updated : row)));
+      setDetail(updated);
+    } catch (reason) {
+      setError(reason instanceof ApiError ? reason.message : "쉬는날을 지정하지 못했습니다.");
+    }
+  };
+
+  const removeRestDate = async (dateValue: string) => {
+    if (!selected) return;
+    setError("");
+    try {
+      const updated = await apiFetch<Assignment>(`/admin/suteuk-challenges/${selected.id}/rest-dates/${dateValue}`, { method: "DELETE" });
+      setAssignments((rows) => rows.map((row) => (row.id === updated.id ? updated : row)));
+      setDetail(updated);
+    } catch (reason) {
+      setError(reason instanceof ApiError ? reason.message : "쉬는날을 해제하지 못했습니다.");
+    }
+  };
+
   return (
     <main className="min-h-screen bg-[#F6F7FB] pb-32">
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
@@ -232,7 +263,7 @@ export default function AdminSuteukChallengesPage() {
                   <span className="font-black text-[#17213B]">{assignment.student_name} <span className="font-semibold text-[#98A2B3]">{assignment.student_grade}</span></span>
                   <span className="text-sm font-black text-[#17213B]">{assignment.challenge_title}</span>
                   <span className="text-sm font-bold text-[#667085]">{assignment.start_date}</span>
-                  <span className="text-sm font-black text-[#E13D3D]">DAY {assignment.current_day}{assignment.schedule_finished ? " 종료" : ""}</span>
+                  <span className="text-sm font-black text-[#E13D3D]">{assignment.is_rest_day ? "쉬는날" : `DAY ${assignment.current_day}${assignment.schedule_finished ? " 종료" : ""}`}</span>
                   <span className="text-sm font-bold text-[#667085]">{assignment.today.completed_tasks} / {assignment.today.total_tasks}</span>
                   <span className="text-sm font-black text-[#17213B]">{assignment.overall_completed_tasks}/{assignment.overall_total_tasks} · {assignment.overall_progress_rate}%</span>
                   <StatusPill status={assignment.status} />
@@ -258,10 +289,32 @@ export default function AdminSuteukChallengesPage() {
                     <button onClick={() => deleteAssignment(selected)} className="h-10 rounded-2xl bg-red-50 px-4 text-sm font-black text-red-600">배정 취소</button>
                   </div>
                 </div>
+                <section className="mt-5 rounded-[22px] bg-[#FFF7F7] p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                    <div>
+                      <p className="text-sm font-black text-[#E13D3D]">쉬는날</p>
+                      <p className="mt-1 text-xs font-bold text-[#7A859F]">지정한 날짜는 Day 계산에서 제외되고 이후 Day가 하루씩 밀립니다.</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <input type="date" value={restDate} onChange={(event) => setRestDate(event.target.value)} className="h-10 rounded-2xl border border-[#DDE4EF] px-3 text-sm font-bold" />
+                      <button type="button" onClick={() => void addRestDate()} className="h-10 rounded-2xl bg-[#E13D3D] px-4 text-sm font-black text-white">쉬는날 지정</button>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {(detail?.rest_dates ?? []).length === 0 ? (
+                      <span className="rounded-full bg-white px-3 py-2 text-xs font-bold text-[#98A2B3]">지정된 쉬는날 없음</span>
+                    ) : detail?.rest_dates.map((dateValue) => (
+                      <button key={dateValue} type="button" onClick={() => void removeRestDate(dateValue)} className="rounded-full bg-white px-3 py-2 text-xs font-black text-[#E13D3D] ring-1 ring-[#FFD1D1]">
+                        {dateValue} 해제
+                      </button>
+                    ))}
+                  </div>
+                </section>
                 <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
                   {(detail?.days ?? []).map((day) => (
                     <article key={day.day} className="rounded-[20px] border border-[#EEF2F7] p-4">
                       <p className="text-lg font-black text-[#17213B]">DAY {day.day}</p>
+                      <p className="mt-1 text-xs font-black text-[#E13D3D]">{day.scheduled_date ?? "-"}</p>
                       <p className="mt-1 text-sm font-bold text-[#98A2B3]">{day.completed_tasks} / {day.total_tasks} task</p>
                       {day.concept_summary ? <p className="mt-1 text-xs font-black text-[#E13D3D]">개념 {day.concept_summary.completed}/{day.concept_summary.total}</p> : null}
                       {day.formula_summary ? <p className="mt-1 text-xs font-black text-[#4F46E5]">공식 {day.formula_summary.correct}/{day.formula_summary.total} · {day.formula_summary.score_rate}%</p> : null}

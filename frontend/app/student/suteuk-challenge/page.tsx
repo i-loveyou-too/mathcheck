@@ -25,6 +25,7 @@ type Task = {
 type Day = {
   day: number;
   title: string;
+  scheduled_date: string | null;
   tasks: Task[];
   total_tasks: number;
   completed_tasks: number;
@@ -47,6 +48,8 @@ type Assignment = {
   total_days: number;
   schedule_ends_on: string;
   schedule_finished: boolean;
+  is_rest_day: boolean;
+  rest_dates: string[];
   overall_total_tasks: number;
   overall_completed_tasks: number;
   overall_progress_rate: number;
@@ -186,6 +189,20 @@ function StudentSuteukChallengeContent() {
 
         {!assignment || !day ? (
           <div className="rounded-[28px] bg-white p-8 text-center text-sm font-bold text-[#98A2B3]">챌린지 정보를 불러오는 중입니다.</div>
+        ) : assignment.is_rest_day ? (
+          <section className="rounded-[28px] bg-white p-8 text-center shadow-[0_16px_36px_rgba(225,61,61,0.12)]">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#FFF0F0] text-xl font-black text-[#E13D3D]">休</div>
+            <h2 className="mt-5 text-2xl font-black text-[#17213B]">오늘은 쉬는날이에요</h2>
+            <p className="mt-2 text-sm font-bold leading-6 text-[#7A859F]">오늘은 수특 챌린지 Day를 진행하지 않습니다. 다음 학습일에 DAY {actualCurrentDay}부터 이어집니다.</p>
+            <div className="mt-5 grid grid-cols-5 gap-2">
+              {assignment.days.map((item) => (
+                <div key={item.day} className="rounded-2xl bg-[#FFF7F7] px-2 py-3 text-center text-xs font-black text-[#17213B]">
+                  <span className="block">DAY {item.day}</span>
+                  <span className="mt-1 block text-[11px] text-[#98A2B3]">{item.scheduled_date?.slice(5).replace("-", "/") ?? addDays(assignment.start_date, item.day - 1)}</span>
+                </div>
+              ))}
+            </div>
+          </section>
         ) : (
           <>
             <section className="mb-4 rounded-[28px] bg-white p-5 shadow-[0_16px_36px_rgba(225,61,61,0.12)]">
@@ -240,7 +257,7 @@ function StudentSuteukChallengeContent() {
                     }`}
                   >
                     <span className="block">DAY {item.day}</span>
-                    <span className="mt-1 block text-[11px] opacity-75">{addDays(assignment.start_date, item.day - 1)}</span>
+                    <span className="mt-1 block text-[11px] opacity-75">{item.scheduled_date?.slice(5).replace("-", "/") ?? addDays(assignment.start_date, item.day - 1)}</span>
                     <span className="mt-1 block text-[11px]">
                       {isComplete ? "✓ 완료" : isToday ? "● 오늘" : isFuture ? "예정" : `${item.completed_tasks}/${item.total_tasks}`}
                     </span>

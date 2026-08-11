@@ -836,7 +836,7 @@ def student_suteuk_detail(
     if assignment.status != "active":
         raise HTTPException(status_code=404, detail="No active challenge.")
     if day_number is not None:
-        ensure_student_day_access(assignment, day_number, study_date)
+        ensure_student_day_access(assignment, day_number, study_date or get_study_date(), rest_date_set(db, assignment.id))
     return serialize_assignment(db, assignment, target_date=study_date, include_days=True, selected_day=day_number)
 
 
@@ -856,7 +856,7 @@ def student_suteuk_concept_recall(
         raise HTTPException(status_code=404, detail="Concept recall is available for the 10-day challenge only.")
     if day_number not in {1, 2, 3}:
         raise HTTPException(status_code=404, detail="Concept recall is available for DAY 1-3 only.")
-    ensure_student_day_access(assignment, day_number)
+    ensure_student_day_access(assignment, day_number, get_study_date(), rest_date_set(db, assignment.id))
     return serialize_concept_recall(db, assignment, day_number)
 
 
@@ -876,7 +876,7 @@ def student_suteuk_formula_check(
         raise HTTPException(status_code=404, detail="Formula check is available for the 10-day challenge only.")
     if day_number not in {1, 2, 3}:
         raise HTTPException(status_code=404, detail="Formula check is available for DAY 1-3 only.")
-    ensure_student_day_access(assignment, day_number)
+    ensure_student_day_access(assignment, day_number, get_study_date(), rest_date_set(db, assignment.id))
     return serialize_formula_quiz(db, assignment, day_number)
 
 
@@ -894,7 +894,7 @@ def student_update_suteuk_concept_progress(payload: ConceptProgressIn, db: Sessi
         raise HTTPException(status_code=404, detail="Concept item not found.")
     if concept["day"] not in {1, 2, 3}:
         raise HTTPException(status_code=400, detail="Concept recall is available for DAY 1-3 only.")
-    ensure_student_day_access(assignment, concept["day"])
+    ensure_student_day_access(assignment, concept["day"], get_study_date(), rest_date_set(db, assignment.id))
 
     row = (
         db.query(models.SuteukChallengeConceptProgress)
@@ -954,7 +954,7 @@ def student_answer_suteuk_formula_check(payload: FormulaAnswerIn, db: Session = 
         raise HTTPException(status_code=404, detail="Formula question not found.")
     if question["day"] not in {1, 2, 3}:
         raise HTTPException(status_code=400, detail="Formula check is available for DAY 1-3 only.")
-    ensure_student_day_access(assignment, question["day"])
+    ensure_student_day_access(assignment, question["day"], get_study_date(), rest_date_set(db, assignment.id))
     if payload.selected_answer >= len(question["choices"]):
         raise HTTPException(status_code=400, detail="Invalid selected_answer.")
 
@@ -992,7 +992,7 @@ def student_update_suteuk_progress(payload: StudentProgressIn, db: Session = Dep
     if assignment.status != "active":
         raise HTTPException(status_code=400, detail="Challenge is not active.")
     day = day_config(assignment.challenge_type, payload.day_number)
-    ensure_student_day_access(assignment, payload.day_number)
+    ensure_student_day_access(assignment, payload.day_number, get_study_date(), rest_date_set(db, assignment.id))
     task = next((item for item in day["tasks"] if item["code"] == payload.task_code), None)
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found.")
@@ -1119,6 +1119,32 @@ def admin_update_suteuk_challenge(assignment_id: int, payload: AssignmentUpdateI
         db.rollback()
         raise HTTPException(status_code=409, detail="이미 같은 종류의 active 수특 챌린지가 있습니다.")
     db.refresh(assignment)
+    return serialize_assignment(db, assignment, include_days=True)
+
+
+@router.post("/admin/suteuk-challenges/{assignment_id}/rest-dates")
+def admin_add_suteuk_rest_date(assignment_id: int, payload: RestDateIn, db: Session = Depends(get_db)):
+    assignment = assignment_or_404(db, assignment_id)
+    ensure_can_add_rest_date(db, assignment, payload.rest_date)
+    existing = db.query(models.SuteukChallengeRestDate).filter_by(
+        assignment_id=assignment.id,
+        rest_date=payload.rest_date,
+    ).first()
+    if existing is None:
+        db.add(models.SuteukChallengeRestDate(assignment_id=assignment.id, rest_date=payload.rest_date))
+        db.commit()
+    return serialize_assignment(db, assignment, include_days=True)
+
+
+@router.delete("/admin/suteuk-challenges/{assignment_id}/rest-dates/{rest_date}")
+def admin_remove_suteuk_rest_date(assignment_id: int, rest_date: date, db: Session = Depends(get_db)):
+    assignment = assignment_or_404(db, assignment_id)
+    ensure_can_remove_rest_date(db, assignment, rest_date)
+    db.query(models.SuteukChallengeRestDate).filter_by(
+        assignment_id=assignment.id,
+        rest_date=rest_date,
+    ).delete(synchronize_session=False)
+    db.commit()
     return serialize_assignment(db, assignment, include_days=True)
 
 
