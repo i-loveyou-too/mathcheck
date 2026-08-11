@@ -21,12 +21,14 @@ type Day = {
   session_id: number | null;
   score: number | null;
 };
+type ChallengeSummary = { id: number; name: string; start_date: string; end_date: string; word_bank_title: string | null; allow_student_answer_pdf: boolean };
 type Dashboard = {
-  challenge: null | { id: number; name: string; start_date: string; end_date: string; word_bank_title: string | null; allow_student_answer_pdf: boolean };
+  challenge: null | ChallengeSummary;
   today: string;
   today_progress?: Day;
   unresolved_count?: number;
   days: Day[];
+  completed_challenges?: { challenge: ChallengeSummary; result_days: Day[]; days: Day[] }[];
 };
 type Session = { id: number; status: string };
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "";
@@ -155,6 +157,7 @@ export default function StudentSprintVocabularyPage() {
   }
 
   if (!data.challenge || !data.today_progress) {
+    const completedChallenges = data.completed_challenges ?? [];
     return (
       <ScreenShell withBottomNav>
         <div className="-mx-5 -mt-7 min-h-screen bg-[radial-gradient(circle_at_50%_-5%,#D9F6FF_0,#EEF9FF_34%,#F8FBFF_68%)] px-5 pb-36 pt-10">
@@ -163,7 +166,35 @@ export default function StudentSprintVocabularyPage() {
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-[#EAF5FF] text-2xl font-black text-[#2874E8]">Aa</div>
             <h1 className="mt-5 text-xl font-black text-[#10213D]">진행 중인 영단어 챌린지가 없습니다.</h1>
             <p className="mt-2 text-sm font-semibold leading-6 text-[#6E7F99]">관리자가 챌린지를 배정하면 SPRINT 안에서 바로 시작할 수 있습니다.</p>
+            <Link href="/student/sprint/vocabulary/wrong-notes" className="mt-5 inline-flex rounded-full bg-[#17213B] px-4 py-2 text-sm font-black text-white">오답노트 보기</Link>
           </section>
+          {completedChallenges.length > 0 && (
+            <section className="mt-6">
+              <h2 className="text-lg font-black text-[#10213D]">완료된 챌린지</h2>
+              <div className="mt-3 space-y-3">
+                {completedChallenges.map((item) => (
+                  <article key={item.challenge.id} className="rounded-[24px] bg-white p-5 shadow-sm ring-1 ring-[#E6F0FA]">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-black text-[#19A879]">완료</p>
+                        <h3 className="mt-1 text-lg font-black text-[#10213D]">{item.challenge.name}</h3>
+                        <p className="mt-1 text-xs font-bold text-[#8CA0BD]">{item.challenge.start_date} ~ {item.challenge.end_date}</p>
+                      </div>
+                      <Link href="/student/sprint/vocabulary/wrong-notes" className="shrink-0 rounded-full bg-[#F0F7FF] px-3 py-2 text-xs font-black text-[#2874E8]">오답</Link>
+                    </div>
+                    <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                      {item.result_days.map((day) => (
+                        <Link key={`${item.challenge.id}-${day.date}`} href={`/student/sprint/vocabulary/result/${day.session_id}`} className="rounded-2xl bg-[#F7F9FC] px-4 py-3 text-sm font-black text-[#17213B]">
+                          DAY {day.learning_day ?? day.day_number} · {day.date}
+                          <span className="ml-2 text-[#19A879]">{day.score ?? "-"}점</span>
+                        </Link>
+                      ))}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
+          )}
         </div>
       </ScreenShell>
     );

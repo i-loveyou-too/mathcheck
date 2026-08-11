@@ -41,6 +41,28 @@ type WeeklyTasksResponse = {
   week_start: string;
 };
 
+type SuteukChallengeAssignment = {
+  id: number;
+  challenge_type: string;
+  challenge_title: string;
+  challenge_short_title: string;
+  start_date: string;
+  current_day: number;
+  total_days: number;
+  schedule_finished: boolean;
+  overall_progress_rate: number;
+  today: {
+    completed_tasks: number;
+    total_tasks: number;
+    progress_rate: number;
+  };
+};
+
+type SuteukChallengeSummary = {
+  assignment: SuteukChallengeAssignment | null;
+  assignments?: SuteukChallengeAssignment[];
+};
+
 function BarChartIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
@@ -175,6 +197,7 @@ export default function StudentDashboardPage() {
   const [student, setStudent] = useState<StoredStudent | null>(null);
   const [summary, setSummary] = useState<StudentDashboardProgressSummary | null>(null);
   const [weeklyTasks, setWeeklyTasks] = useState<WeeklyTasksResponse | null>(null);
+  const [suteukChallenges, setSuteukChallenges] = useState<SuteukChallengeAssignment[]>([]);
   const [summaryError, setSummaryError] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -191,12 +214,15 @@ export default function StudentDashboardPage() {
       const weekStart = getCurrentStudyWeekStart();
 
       try {
-        const [summaryResult, weeklyResult] = await Promise.allSettled([
+        const [summaryResult, weeklyResult, suteukResult] = await Promise.allSettled([
           apiFetch<StudentDashboardProgressSummary>(
             `/student/progress-summary?student_id=${storedStudent.id}`,
           ),
           apiFetch<WeeklyTasksResponse>(
             `/student/weekly-tasks?student_id=${storedStudent.id}&week_start=${weekStart}`,
+          ),
+          apiFetch<SuteukChallengeSummary>(
+            `/student/suteuk-challenge/summary?student_id=${storedStudent.id}&study_date=${getStudyDate()}`,
           ),
         ]);
 
@@ -211,6 +237,12 @@ export default function StudentDashboardPage() {
           setWeeklyTasks(weeklyResult.value);
         } else {
           setWeeklyTasks(null);
+        }
+
+        if (suteukResult.status === "fulfilled") {
+          setSuteukChallenges(suteukResult.value.assignments ?? (suteukResult.value.assignment ? [suteukResult.value.assignment] : []));
+        } else {
+          setSuteukChallenges([]);
         }
       } finally {
         setLoading(false);
@@ -329,6 +361,42 @@ export default function StudentDashboardPage() {
           </div>
         </Link>
       </div>
+
+      {suteukChallenges.map((suteukChallenge) => (
+        <Link
+          key={suteukChallenge.id}
+          href={`/student/suteuk-challenge?assignment_id=${suteukChallenge.id}`}
+          className="group relative block min-w-0 overflow-hidden rounded-[30px] bg-[linear-gradient(135deg,#E13D3D_0%,#FF5A5F_52%,#FF8A5C_100%)] p-5 text-white shadow-[0_18px_38px_rgba(225,61,61,0.24)] transition hover:-translate-y-0.5"
+        >
+          <div className="pointer-events-none absolute -right-10 -top-12 h-36 w-36 rounded-full bg-white/18 blur-3xl" />
+          <div className="relative grid min-w-0 gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,auto)] sm:items-end">
+            <div className="min-w-0">
+              <p className="text-xs font-black tracking-[0.18em] text-white/78">{suteukChallenge.challenge_type.toUpperCase()}</p>
+              <h2 className="mt-2 break-words text-[1.55rem] font-black leading-tight tracking-tight">
+                {suteukChallenge.challenge_title}
+              </h2>
+              <p className="mt-2 break-words text-sm font-bold text-white/78">
+                {suteukChallenge.schedule_finished ? "챌린지 기간 종료" : `DAY ${suteukChallenge.current_day} / ${suteukChallenge.total_days}`} · {suteukChallenge.start_date} 시작
+              </p>
+              <div className="mt-4 h-2.5 overflow-hidden rounded-full bg-white/22">
+                <div
+                  className="h-full rounded-full bg-white transition-all duration-500"
+                  style={{ width: `${suteukChallenge.overall_progress_rate}%` }}
+                />
+              </div>
+            </div>
+            <div className="flex min-w-0 flex-col gap-3 sm:items-end">
+              <div className="min-w-0 text-left sm:text-right">
+                <p className="text-sm font-bold text-white/75">전체 진행률</p>
+                <p className="text-3xl font-black">{suteukChallenge.overall_progress_rate}%</p>
+              </div>
+              <span className="inline-flex min-h-11 max-w-full items-center justify-center rounded-full bg-white px-4 py-2 text-center text-sm font-black leading-tight text-[#E13D3D] shadow-[0_12px_26px_rgba(16,33,61,0.16)] sm:max-w-[180px]">
+                {suteukChallenge.today.completed_tasks > 0 ? "오늘 분량 이어하기" : "오늘 분량 시작"}
+              </span>
+            </div>
+          </div>
+        </Link>
+      ))}
 
       <section className="relative overflow-hidden rounded-[20px] border border-[#E5E7EB] bg-white px-5 py-4 shadow-card">
         <div className="relative flex items-start justify-between gap-2">

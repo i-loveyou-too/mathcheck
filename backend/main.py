@@ -30,6 +30,7 @@ import sprint_goals
 import sprint_worksheets
 import student_auth
 import student_electives
+import suteuk_challenge
 import vocabulary
 from database import Base, SessionLocal, engine, get_db
 from study_dates import get_study_date
@@ -216,6 +217,37 @@ def ensure_student_lecture_progress_table():
         )
 
 
+def ensure_suteuk_challenge_type_column():
+    inspector = inspect(engine)
+    if not inspector.has_table("suteuk_challenge_assignments"):
+        return
+
+    column_names = {column["name"] for column in inspector.get_columns("suteuk_challenge_assignments")}
+
+    with engine.begin() as connection:
+        if "challenge_type" not in column_names:
+            connection.execute(
+                text(
+                    "ALTER TABLE suteuk_challenge_assignments "
+                    "ADD COLUMN challenge_type VARCHAR(50) NOT NULL DEFAULT 'suteuk_10day'"
+                )
+            )
+        connection.execute(text("DROP INDEX IF EXISTS uq_suteuk_challenge_assignments_active_student"))
+        connection.execute(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_suteuk_challenge_assignments_active_student_type "
+                "ON suteuk_challenge_assignments(student_id, challenge_type) "
+                "WHERE status = 'active'"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_suteuk_challenge_assignments_student_type_status "
+                "ON suteuk_challenge_assignments(student_id, challenge_type, status)"
+            )
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     if os.getenv("ALLOW_SCHEMA_CREATE_ALL", "").strip().lower() in {"1", "true", "yes"}:
@@ -230,6 +262,7 @@ async def lifespan(app: FastAPI):
         ensure_daily_task_homework_columns()
         ensure_daily_task_lecture_columns()
         ensure_student_lecture_progress_table()
+        ensure_suteuk_challenge_type_column()
         db = SessionLocal()
         try:
             crud.sync_textbook_keys(db)
@@ -255,6 +288,7 @@ app.include_router(sprint_goals.router)
 app.include_router(sprint_worksheets.router)
 app.include_router(student_electives.router)
 app.include_router(lessons.router)
+app.include_router(suteuk_challenge.router)
 
 def extract_student_id_from_json(value: object) -> int | None:
     if isinstance(value, dict):
