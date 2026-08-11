@@ -246,6 +246,10 @@ class AssignmentUpdateIn(BaseModel):
     status: Literal["active", "paused"] | None = None
 
 
+class RestDateIn(BaseModel):
+    rest_date: date
+
+
 class StudentProgressIn(BaseModel):
     student_id: int
     assignment_id: int
@@ -277,22 +281,65 @@ def current_day_number(start_date: date, target_date: date, total_days: int) -> 
     return max(1, min(total_days, (target_date - start_date).days + 1))
 
 
-def schedule_end_date(start_date: date, total_days: int) -> date:
-    return start_date + timedelta(days=total_days - 1)
+def rest_date_set(db: Session, assignment_id: int) -> set[date]:
+    return {
+        row[0]
+        for row in db.query(models.SuteukChallengeRestDate.rest_date)
+        .filter(models.SuteukChallengeRestDate.assignment_id == assignment_id)
+        .all()
+    }
 
 
-def schedule_finished(start_date: date, target_date: date, total_days: int) -> bool:
-    return target_date > schedule_end_date(start_date, total_days)
+def effective_day_number(start_date: date, target_date: date, total_days: int, rest_dates: set[date]) -> int:
+    if target_date < start_date:
+        return 1
+    active_days = 0
+    cursor = start_date
+    while cursor <= target_date:
+        if cursor not in rest_dates:
+            active_days += 1
+        cursor += timedelta(days=1)
+    if target_date in rest_dates:
+        active_days += 1
+    return max(1, min(total_days, active_days))
+
+
+def day_number_for_date(start_date: date, target_date: date, total_days: int, rest_dates: set[date]) -> int | None:
+    if target_date < start_date or target_date in rest_dates:
+        return None
+    return effective_day_number(start_date, target_date, total_days, rest_dates)
+
+
+def calendar_date_for_day(start_date: date, day_number: int, rest_dates: set[date]) -> date:
+    cursor = start_date
+    active_days = 0
+    while True:
+        if cursor not in rest_dates:
+            active_days += 1
+            if active_days == day_number:
+                return cursor
+        cursor += timedelta(days=1)
+
+
+def schedule_end_date(start_date: date, total_days: int, rest_dates: set[date] | None = None) -> date:
+    return calendar_date_for_day(start_date, total_days, rest_dates or set())
+
+
+def schedule_finished(start_date: date, target_date: date, total_days: int, rest_dates: set[date] | None = None) -> bool:
+    return target_date > schedule_end_date(start_date, total_days, rest_dates or set())
 
 
 def ensure_student_day_access(
     assignment: models.SuteukChallengeAssignment,
     day_number: int,
     target_date: date | None = None,
+    rest_dates: set[date] | None = None,
 ) -> None:
     config = challenge_config(assignment.challenge_type)
     if not 1 <= day_number <= int(config["total_days"]):
         raise HTTPException(status_code=400, detail="Invalid day_number.")
+    if target_date is not None and rest_dates is not None and target_date in rest_dates:
+        raise HTTPException(status_code=400, detail="Today is marked as a rest day.")
 
 
 def day_config(challenge_type: str | None, day_number: int) -> dict:
@@ -337,6 +384,42 @@ def active_assignments(db: Session, student_id: int) -> list[models.SuteukChalle
         .order_by(models.SuteukChallengeAssignment.start_date.desc(), models.SuteukChallengeAssignment.id.desc())
         .all()
     )
+
+
+def day_has_activity(db: Session, assignment_id: int, day_number: int) -> bool:
+    if db.query(models.SuteukChallengeTaskProgress.id).filter_by(assignment_id=assignment_id, day_number=day_number).first():
+        return True
+    if db.query(models.SuteukChallengeConceptProgress.id).filter_by(assignment_id=assignment_id, day_number=day_number).first():
+        return True
+    if db.query(models.SuteukChallengeFormulaResponse.id).filter_by(assignment_id=assignment_id, day_number=day_number).first():
+        return True
+    return False
+
+
+def ensure_can_add_rest_date(db: Session, assignment: models.SuteukChallengeAssignment, target: date) -> None:
+    config = challenge_config(assignment.challenge_type)
+    rests = rest_date_set(db, assignment.id)
+    if target in rests:
+        return
+    day_number = day_number_for_date(assignment.start_date, target, int(config["total_days"]), rests)
+    if day_number is not None and day_has_activity(db, assignment.id, day_number):
+        raise HTTPException(status_code=400, detail="This date already has challenge progress and cannot be marked as a rest day.")
+
+
+def ensure_can_remove_rest_date(db: Session, assignment: models.SuteukChallengeAssignment, target: date) -> None:
+    config = challenge_config(assignment.challenge_type)
+    rests = rest_date_set(db, assignment.id)
+    if target not in rests:
+        return
+    active_days_before = 0
+    cursor = assignment.start_date
+    while cursor < target:
+        if cursor not in rests:
+            active_days_before += 1
+        cursor += timedelta(days=1)
+    for day_number in range(active_days_before + 1, int(config["total_days"]) + 1):
+        if day_has_activity(db, assignment.id, day_number):
+            raise HTTPException(status_code=400, detail="Later challenge days already have progress, so this rest day cannot be removed safely.")
 
 
 def active_assignment(
@@ -570,6 +653,7 @@ def day_summary(
     challenge_type: str = DEFAULT_CHALLENGE_TYPE,
     concepts: dict[str, models.SuteukChallengeConceptProgress] | None = None,
     formula_responses: dict[str, models.SuteukChallengeFormulaResponse] | None = None,
+    scheduled_date: date | None = None,
 ) -> dict:
     tasks = [serialize_task(day["day"], task, progress) for task in sorted(day["tasks"], key=lambda item: item["order"])]
     checkable = [task for task in tasks if task["checkable"]]
@@ -583,6 +667,7 @@ def day_summary(
         "completed_tasks": completed,
         "progress_rate": round(completed * 100 / total) if total else 0,
         "total_problems": total_problems,
+        "scheduled_date": scheduled_date,
         "concept_summary": concept_summary_for_day(day["day"], concepts or {}) if challenge_type == DEFAULT_CHALLENGE_TYPE and CONCEPTS_BY_DAY.get(day["day"]) else None,
         "formula_summary": formula_summary_for_day(day["day"], formula_responses or {}) if challenge_type == DEFAULT_CHALLENGE_TYPE and day["day"] in {1, 2, 3} else None,
     }
@@ -599,10 +684,12 @@ def serialize_assignment(
     target = target_date or get_study_date()
     config = challenge_config(assignment.challenge_type)
     total_days = int(config["total_days"])
+    rests = rest_date_set(db, assignment.id)
+    is_rest_day = target in rests
     progress = progress_map(db, assignment.id)
     concepts = concept_progress_map(db, assignment.id)
     formula_responses = formula_response_map(db, assignment.id)
-    current_day = current_day_number(assignment.start_date, target, total_days)
+    current_day = effective_day_number(assignment.start_date, target, total_days, rests)
     all_tasks = all_checkable_tasks(assignment.challenge_type)
     overall_total = len(all_tasks)
     overall_completed = sum(
@@ -612,6 +699,7 @@ def serialize_assignment(
     )
     selected_day_number = selected_day or current_day
     selected = day_config(assignment.challenge_type, selected_day_number)
+    selected_scheduled_date = calendar_date_for_day(assignment.start_date, selected_day_number, rests)
     payload = {
         "id": assignment.id,
         "student_id": assignment.student_id,
@@ -625,17 +713,29 @@ def serialize_assignment(
         "current_day": current_day,
         "selected_day": selected_day_number,
         "total_days": total_days,
-        "schedule_ends_on": schedule_end_date(assignment.start_date, total_days),
-        "schedule_finished": schedule_finished(assignment.start_date, target, total_days),
+        "schedule_ends_on": schedule_end_date(assignment.start_date, total_days, rests),
+        "schedule_finished": schedule_finished(assignment.start_date, target, total_days, rests),
+        "is_rest_day": is_rest_day,
+        "rest_dates": sorted(rests),
         "overall_total_tasks": overall_total,
         "overall_completed_tasks": overall_completed,
         "overall_progress_rate": round(overall_completed * 100 / overall_total) if overall_total else 0,
-        "today": day_summary(selected, progress, assignment.challenge_type, concepts, formula_responses),
+        "today": day_summary(selected, progress, assignment.challenge_type, concepts, formula_responses, scheduled_date=selected_scheduled_date),
         "created_at": assignment.created_at,
         "updated_at": assignment.updated_at,
     }
     if include_days:
-        payload["days"] = [day_summary(day, progress, assignment.challenge_type, concepts, formula_responses) for day in config["days"]]
+        payload["days"] = [
+            day_summary(
+                day,
+                progress,
+                assignment.challenge_type,
+                concepts,
+                formula_responses,
+                scheduled_date=calendar_date_for_day(assignment.start_date, day["day"], rests),
+            )
+            for day in config["days"]
+        ]
     return payload
 
 

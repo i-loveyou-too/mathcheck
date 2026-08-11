@@ -797,6 +797,30 @@ class SuteukChallengeAssignment(Base):
         back_populates="assignment",
         cascade="all, delete-orphan",
     )
+    rest_dates = relationship(
+        "SuteukChallengeRestDate",
+        back_populates="assignment",
+        cascade="all, delete-orphan",
+    )
+
+
+class SuteukChallengeRestDate(Base):
+    __tablename__ = "suteuk_challenge_rest_dates"
+    __table_args__ = (
+        UniqueConstraint("assignment_id", "rest_date", name="uq_suteuk_rest_date_assignment_date"),
+        Index("ix_suteuk_rest_dates_assignment_date", "assignment_id", "rest_date"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    assignment_id = Column(
+        Integer,
+        ForeignKey("suteuk_challenge_assignments.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    rest_date = Column(Date, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    assignment = relationship("SuteukChallengeAssignment", back_populates="rest_dates")
 
 
 class SuteukChallengeTaskProgress(Base):
