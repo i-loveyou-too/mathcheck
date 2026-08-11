@@ -73,7 +73,7 @@ export default function AdminVocabularyReviewPage() {
         apiFetch<ReviewResponse>(`/admin/vocabulary-review-items?${params}`),
         apiFetch<Student[]>("/admin/students"),
       ]);
-      setItems(reviewRows.items);
+      setItems(reviewRows.items.filter((item) => (item.input_answer ?? "").trim().length > 0));
       setStudents(studentRows);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "검토 목록을 불러오지 못했습니다.");
@@ -201,7 +201,7 @@ export default function AdminVocabularyReviewPage() {
                     </td>
                     <td className="font-black text-[#17213B]">{item.english}</td>
                     <td className="max-w-[240px] text-[#667085]">{item.accepted_answers.join(" · ")}</td>
-                    <td className="max-w-[220px] font-bold text-red-500">{item.input_answer || "(빈 답안)"}</td>
+                    <td className="max-w-[220px] font-bold text-red-500">{item.input_answer}</td>
                     <td>
                       <span className={`rounded-full px-2 py-1 text-xs font-black ${item.final_is_correct ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-500"}`}>
                         {item.final_is_correct ? "정답" : "오답"}

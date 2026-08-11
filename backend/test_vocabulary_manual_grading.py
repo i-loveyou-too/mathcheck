@@ -19,8 +19,10 @@ from database import Base
 from vocabulary import (
     GradingActionIn,
     admin_update_manual_grading,
+    admin_vocabulary_review_items,
     create_session,
     final_is_correct,
+    pending_manual_review_count,
     serialize_session,
     submit_session,
     unresolved_review_questions,
@@ -366,6 +368,44 @@ class ManualGradingLogicTests(TestCase):
             admin_update_manual_grading(
                 session_id=session.id, answer_id=answer.id,
                 payload=GradingActionIn(action="mark_correct"), db=self.db, admin=self.admin,
+            )
+        self.assertEqual(context.exception.status_code, 400)
+
+    def test_blank_answer_is_auto_confirmed_wrong_without_pending_review(self):
+        session = self._submitted_session(self.challenge, date(2026, 7, 20), {"apple": "   ", "run": "틀림"})
+        blank_answer = self._answer_for(session, "apple")
+        text_wrong_answer = self._answer_for(session, "run")
+
+        self.assertFalse(blank_answer.is_correct)
+        self.assertFalse(blank_answer.manual_is_correct)
+        self.assertEqual(blank_answer.input_answer, "")
+        self.assertFalse(final_is_correct(blank_answer))
+        self.assertFalse(text_wrong_answer.is_correct)
+        self.assertIsNone(text_wrong_answer.manual_is_correct)
+        self.assertEqual(pending_manual_review_count(self.db, session.id), 1)
+
+    def test_existing_pending_blank_answer_is_excluded_from_integrated_review(self):
+        session = self._submitted_session(self.challenge, date(2026, 7, 20), {"apple": "   ", "run": "달리다"})
+        blank_answer = self._answer_for(session, "apple")
+        blank_answer.input_answer = "   "
+        blank_answer.manual_is_correct = None
+        self.db.commit()
+
+        self.assertEqual(pending_manual_review_count(self.db, session.id), 0)
+        result = admin_vocabulary_review_items(review_status="pending", db=self.db, admin=self.admin)
+        self.assertEqual(result["items"], [])
+
+    def test_blank_answer_cannot_be_marked_correct_manually(self):
+        session = self._submitted_session(self.challenge, date(2026, 7, 20), {"apple": "", "run": "달리다"})
+        blank_answer = self._answer_for(session, "apple")
+
+        with self.assertRaises(HTTPException) as context:
+            admin_update_manual_grading(
+                session_id=session.id,
+                answer_id=blank_answer.id,
+                payload=GradingActionIn(action="mark_correct"),
+                db=self.db,
+                admin=self.admin,
             )
         self.assertEqual(context.exception.status_code, 400)
 

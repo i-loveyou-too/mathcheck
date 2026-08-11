@@ -115,7 +115,17 @@ def answer_candidate_set(value: str) -> set[str]:
     return {c for c in candidates if c}
 
 
-def is_answer_correct(input_answer: str, accepted_answers: list[str]) -> bool:
+def is_blank_answer(input_answer: str | None) -> bool:
+    return not (input_answer or "").strip()
+
+
+def normalize_input_answer(input_answer: str | None) -> str:
+    if is_blank_answer(input_answer):
+        return ""
+    return input_answer or ""
+
+
+def is_answer_correct(input_answer: str | None, accepted_answers: list[str]) -> bool:
     raw_input = (input_answer or "").strip()
     if not raw_input or not accepted_answers:
         return False
@@ -523,7 +533,7 @@ class SessionCreateIn(BaseModel):
 
 class AnswerItemIn(BaseModel):
     question_id: int
-    input_answer: str = Field(default="", max_length=1000)
+    input_answer: str | None = Field(default="", max_length=1000)
 
 
 class AnswersIn(BaseModel):
@@ -1461,6 +1471,8 @@ def pending_manual_review_count(db: Session, session_id: int) -> int:
         models.VocabularyTestAnswer.session_id == session_id,
         models.VocabularyTestAnswer.is_correct.is_(False),
         models.VocabularyTestAnswer.manual_is_correct.is_(None),
+        models.VocabularyTestAnswer.input_answer.isnot(None),
+        func.length(func.trim(models.VocabularyTestAnswer.input_answer)) > 0,
     ).scalar() or 0
 
 
@@ -1498,6 +1510,8 @@ def admin_vocabulary_review_items(
         models.VocabularyTestSession.status == "submitted",
         models.VocabularyTestSession.session_type == "main",
         models.VocabularyTestAnswer.is_correct.is_(False),
+        models.VocabularyTestAnswer.input_answer.isnot(None),
+        func.length(func.trim(models.VocabularyTestAnswer.input_answer)) > 0,
     )
     if not include_reviewed:
         rows = rows.filter(models.VocabularyTestSession.admin_reviewed_at.is_(None))
@@ -1718,12 +1732,13 @@ def student_save_answers(session_id: int, payload: AnswersIn, db: Session = Depe
     for item in payload.answers:
         if item.question_id not in question_ids:
             raise HTTPException(status_code=400, detail="Question does not belong to this test.")
+        input_answer = normalize_input_answer(item.input_answer)
         answer = db.query(models.VocabularyTestAnswer).filter_by(question_id=item.question_id).first()
         if answer:
-            answer.input_answer = item.input_answer
+            answer.input_answer = input_answer
         else:
             db.add(models.VocabularyTestAnswer(
-                session_id=session.id, question_id=item.question_id, input_answer=item.input_answer
+                session_id=session.id, question_id=item.question_id, input_answer=input_answer
             ))
     db.commit()
     return {"saved": True}
@@ -1815,6 +1830,9 @@ def admin_update_manual_grading(
     question = db.get(models.VocabularyTestQuestion, answer.question_id)
     if question is None:
         raise HTTPException(status_code=404, detail="문항을 찾을 수 없습니다.")
+    blank_answer = is_blank_answer(answer.input_answer)
+    if blank_answer and payload.action == "mark_correct":
+        raise HTTPException(status_code=400, detail="빈 답안은 정답으로 인정할 수 없습니다.")
 
     previous_final = final_is_correct(answer)
     auto_value = bool(answer.is_correct)
@@ -1832,6 +1850,12 @@ def admin_update_manual_grading(
         answer.manual_reason = payload.reason
         answer.manual_graded_by = admin.id
         answer.manual_graded_at = now
+    elif blank_answer:
+        new_final = False
+        answer.manual_is_correct = False
+        answer.manual_reason = None
+        answer.manual_graded_by = None
+        answer.manual_graded_at = None
     else:
         new_final = auto_value
         answer.manual_is_correct = None
@@ -1901,7 +1925,13 @@ def submit_session(db: Session, session: models.VocabularyTestSession):
                 session_id=session.id, question_id=question.id, input_answer=""
             )
             db.add(answer)
+        answer.input_answer = normalize_input_answer(answer.input_answer)
         answer.is_correct = is_answer_correct(answer.input_answer, question.accepted_answers_snapshot)
+        if is_blank_answer(answer.input_answer):
+            answer.manual_is_correct = False
+            answer.manual_reason = None
+            answer.manual_graded_by = None
+            answer.manual_graded_at = None
         if answer.is_correct:
             correct_count += 1
             if session.session_type == "review":
