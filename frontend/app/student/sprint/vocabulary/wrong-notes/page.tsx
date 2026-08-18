@@ -8,7 +8,7 @@ import { apiFetch, ApiError } from "@/lib/api";
 import { getStudent } from "@/lib/storage";
 
 type Filter = "all" | "unresolved" | "mastered";
-type Note = { id: number; english: string; accepted_answers: string[]; latest_wrong_answer: string; latest_wrong_date: string; wrong_count: number; status: "unresolved" | "mastered" };
+type Note = { id: number; english: string; accepted_answers: string[]; latest_wrong_answer: string; latest_wrong_date: string; wrong_count: number; status: "unresolved" | "mastered"; gemini_explanation?: string | null };
 type Session = { id: number; status: string };
 
 export default function SprintVocabularyWrongNotesPage() {
@@ -67,6 +67,7 @@ export default function SprintVocabularyWrongNotesPage() {
             <article key={note.id} className="h-full rounded-[22px] bg-white p-5 shadow-[0_12px_28px_rgba(71,104,143,0.12)] ring-1 ring-[#DFEAF6]">
               <div className="flex items-start justify-between"><div><h2 className="text-xl font-black text-[#17213B]">{note.english}</h2><p className="mt-1 text-sm font-bold text-[#19A879]">{note.accepted_answers.join(" · ")}</p></div><span className={`rounded-full px-2.5 py-1 text-[11px] font-black ${note.status === "mastered" ? "bg-emerald-50 text-emerald-600" : "bg-orange-50 text-orange-600"}`}>{note.status === "mastered" ? "익힘 완료" : "미해결"}</span></div>
               <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 border-t border-[#F0F2F5] pt-3 text-xs text-[#8A94A8]"><span>최근 오답 <b className="text-[#D95D48]">{note.latest_wrong_answer || "빈 답안"}</b></span><span>틀린 횟수 <b>{note.wrong_count}회</b></span><span>{note.latest_wrong_date}</span></div>
+              {note.gemini_explanation && <div className="mt-3 rounded-2xl bg-[#F7F9FB] p-3"><p className="text-[11px] font-black text-[#667085]">Gemini 설명</p><p className="mt-1 text-sm font-semibold leading-6 text-[#344054]">{note.gemini_explanation}</p></div>}
             </article>
           ))}
         </div>

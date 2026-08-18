@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { apiFetch, ApiError } from "@/lib/api";
 import { getStudent } from "@/lib/storage";
 
-type ResultQuestion = { id: number; order_index: number; english: string; input_answer: string; accepted_answers: string[]; is_correct: boolean };
+type ResultQuestion = { id: number; order_index: number; english: string; input_answer: string; accepted_answers: string[]; is_correct: boolean; gemini_explanation?: string | null };
 type Result = { id: number; challenge_name: string; study_date: string; session_type: string; score: number; correct_count: number; total_count: number; questions: ResultQuestion[] };
 type Session = { id: number; status: string };
 
@@ -107,6 +107,7 @@ export default function SprintVocabularyResultPage() {
                   {question.input_answer || "미응답"}
                 </span>
               </div>
+              {question.gemini_explanation && <div className="mt-3 rounded-2xl bg-[#F7F9FB] p-3"><p className="text-[11px] font-black text-[#667085]">Gemini 설명</p><p className="mt-1 text-sm font-semibold leading-6 text-[#344054]">{question.gemini_explanation}</p></div>}
             </article>
           ))}
         </div>

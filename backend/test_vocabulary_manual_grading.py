@@ -31,6 +31,8 @@ from vocabulary import (
 VOCAB_TABLES = [
     models.Student.__table__,
     models.Admin.__table__,
+    models.VocabularyBank.__table__,
+    models.VocabularyBankWord.__table__,
     models.VocabularyChallenge.__table__,
     models.VocabularyWord.__table__,
     models.VocabularyDailyAssignment.__table__,
@@ -38,6 +40,7 @@ VOCAB_TABLES = [
     models.VocabularyTestQuestion.__table__,
     models.VocabularyTestAnswer.__table__,
     models.VocabularyWrongNote.__table__,
+    models.VocabularyGradingRule.__table__,
     models.VocabularyManualGradingLog.__table__,
 ]
 
@@ -392,7 +395,15 @@ class ManualGradingLogicTests(TestCase):
         self.db.commit()
 
         self.assertEqual(pending_manual_review_count(self.db, session.id), 0)
-        result = admin_vocabulary_review_items(review_status="pending", db=self.db, admin=self.admin)
+        result = admin_vocabulary_review_items(
+            student_id=None,
+            study_date=None,
+            day_or_name=None,
+            review_status="pending",
+            query=None,
+            db=self.db,
+            admin=self.admin,
+        )
         self.assertEqual(result["items"], [])
 
     def test_blank_answer_cannot_be_marked_correct_manually(self):
@@ -484,12 +495,15 @@ class ManualGradingAuthTests(TestCase):
 
     def tearDown(self):
         self.db.query(models.VocabularyManualGradingLog).delete()
+        self.db.query(models.VocabularyGradingRule).delete()
         self.db.query(models.VocabularyTestAnswer).delete()
         self.db.query(models.VocabularyTestQuestion).delete()
         self.db.query(models.VocabularyWrongNote).delete()
         self.db.query(models.VocabularyTestSession).delete()
         self.db.query(models.VocabularyDailyAssignment).delete()
         self.db.query(models.VocabularyWord).delete()
+        self.db.query(models.VocabularyBankWord).delete()
+        self.db.query(models.VocabularyBank).delete()
         self.db.query(models.VocabularyChallenge).delete()
         self.db.query(models.Admin).delete()
         self.db.query(models.Student).delete()
