@@ -553,6 +553,14 @@ def parse_blacklabel_preview(path: Path, workbook: dict) -> dict:
             related_normalized.add(normalized)
         return normalized
 
+    def resequence_day_orders() -> None:
+        next_order_by_day: dict[int, int] = {}
+        for index, word in enumerate(words, start=1):
+            day_no = word["day_no"]
+            next_order_by_day[day_no] = next_order_by_day.get(day_no, 0) + 1
+            word["order_index"] = index
+            word["day_order"] = next_order_by_day[day_no]
+
     for row_number, row in enumerate(rows[1:], start=2):
         day_match = re.fullmatch(r"Day\s*0*(\d{1,3})", row.get("B", "").strip(), flags=re.IGNORECASE)
         if not day_match:
@@ -597,6 +605,8 @@ def parse_blacklabel_preview(path: Path, workbook: dict) -> dict:
                     "related_normalized_english": related_normalized_value,
                     "relation_type": "related",
                 })
+
+    resequence_day_orders()
 
     if missing_meanings:
         errors.extend(f"missing meaning: {item}" for item in missing_meanings[:20])

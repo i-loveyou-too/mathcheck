@@ -1,3 +1,4 @@
+from collections import Counter
 from datetime import date
 from unittest import TestCase
 
@@ -7,6 +8,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 import models
+import import_blacklabel_voca as blacklabel_importer
 from database import Base
 from vocabulary import (
     assigned_word_ids,
@@ -75,6 +77,10 @@ class VocabularyTests(TestCase):
     def tearDown(self):
         self.db.close()
         self.engine.dispose()
+
+    def blacklabel_path(self) -> Path | None:
+        candidates = list(Path(__file__).resolve().parents[1].glob("블랙라벨*.xlsx"))
+        return candidates[0] if candidates else None
 
     def test_normalization_is_predictable(self):
         self.assertEqual(normalize_text("  APPLE   PIE "), "apple pie")
@@ -173,6 +179,144 @@ class VocabularyTests(TestCase):
             "related_normalized_english": "competition",
             "relation_type": "related",
         }, preview["relations"])
+
+    def test_actual_blacklabel_day_orders_are_final_flattened_sequence(self):
+        path = self.blacklabel_path()
+        if path is None:
+            self.skipTest("Blacklabel workbook is not present in this checkout.")
+        preview = preview_bank_xlsx(path)
+        self.assertEqual(preview["source_format"], "blacklabel_related_flat_sheet")
+        self.assertEqual(preview["total_days"], 50)
+        self.assertEqual(preview["main_word_count"], 2087)
+        self.assertEqual(preview["relation_count"], 774)
+        self.assertEqual(preview["total_words"], 2642)
+        self.assertEqual(preview["duplicate_removed_count"], 219)
+        self.assertEqual(preview["errors"], [])
+        day_order_counts = Counter((word["day_no"], word["day_order"]) for word in preview["words"])
+        self.assertEqual([key for key, count in day_order_counts.items() if count > 1], [])
+        for day_no in range(1, preview["total_days"] + 1):
+            day_orders = [word["day_order"] for word in preview["words"] if word["day_no"] == day_no]
+            self.assertEqual(day_orders, list(range(1, len(day_orders) + 1)))
+        self.assertEqual(
+            [(word["day_order"], word["english"], word["word_type"]) for word in preview["words"][:5]],
+            [
+                (1, "organism", "main"),
+                (2, "organic", "main"),
+                (3, "ecology", "main"),
+                (4, "ecologist", "related"),
+                (5, "ecological", "related"),
+            ],
+        )
+
+    def test_blacklabel_import_is_idempotent_and_recovers_partial_bank(self):
+        path = self.blacklabel_path()
+        if path is None:
+            self.skipTest("Blacklabel workbook is not present in this checkout.")
+        preview = preview_bank_xlsx(path)
+        unrelated = models.VocabularyBank(title="Unrelated Bank", total_words=1, total_days=1, words_per_day=1)
+        self.db.add(unrelated)
+        self.db.flush()
+        self.db.add(models.VocabularyBankWord(
+            bank_id=unrelated.id,
+            day_no=1,
+            order_index=1,
+            day_order=1,
+            english="keepme",
+            normalized_english="keepme",
+            accepted_meanings=["keep"],
+            raw_meaning="keep",
+            word_type="main",
+        ))
+        partial_bank = models.VocabularyBank(
+            title=preview["title"],
+            total_words=1,
+            total_days=1,
+            words_per_day=1,
+            source_filename=preview["source_filename"],
+            source_format=preview["source_format"],
+            is_active=True,
+        )
+        self.db.add(partial_bank)
+        self.db.flush()
+        organism = models.VocabularyBankWord(
+            bank_id=partial_bank.id,
+            day_no=1,
+            order_index=1,
+            day_order=1,
+            english="organism",
+            normalized_english="organism",
+            accepted_meanings=["wrong"],
+            raw_meaning="wrong",
+            word_type="main",
+        )
+        stale = models.VocabularyBankWord(
+            bank_id=partial_bank.id,
+            day_no=1,
+            order_index=2,
+            day_order=2,
+            english="stale-blacklabel-word",
+            normalized_english="stale-blacklabel-word",
+            accepted_meanings=["stale"],
+            raw_meaning="stale",
+            word_type="related",
+        )
+        self.db.add_all([organism, stale])
+        self.db.flush()
+        self.db.add(models.VocabularyBankWordRelation(parent_word_id=organism.id, related_word_id=stale.id))
+        self.db.commit()
+
+        original_session_local = blacklabel_importer.SessionLocal
+        blacklabel_importer.SessionLocal = sessionmaker(bind=self.engine)
+        try:
+            first = blacklabel_importer.import_blacklabel_voca(path, "Recovered")
+            second = blacklabel_importer.import_blacklabel_voca(path, "Recovered again")
+        finally:
+            blacklabel_importer.SessionLocal = original_session_local
+
+        self.assertTrue(first["ok"])
+        self.assertFalse(first["created"])
+        self.assertEqual(first["unique_testable_word_count"], 2642)
+        self.assertEqual(first["source_relation_count"], 774)
+        self.assertEqual(first["relation_count"], 772)
+        self.assertEqual(first["duplicate_relation_skipped"], 2)
+        self.assertEqual(second["unique_testable_word_count"], 2642)
+        self.assertEqual(second["source_relation_count"], 774)
+        self.assertEqual(second["relation_count"], 772)
+        self.assertEqual(second["duplicate_relation_skipped"], 2)
+        self.assertEqual(
+            self.db.query(models.VocabularyBankWord).filter_by(bank_id=partial_bank.id).count(),
+            2642,
+        )
+        self.assertIsNone(
+            self.db.query(models.VocabularyBankWord).filter_by(
+                bank_id=partial_bank.id,
+                normalized_english="stale-blacklabel-word",
+            ).first()
+        )
+        organism = self.db.query(models.VocabularyBankWord).filter_by(
+            bank_id=partial_bank.id,
+            normalized_english="organism",
+        ).one()
+        self.assertIn("유기체", organism.accepted_meanings)
+        competitor = self.db.query(models.VocabularyBankWord).filter_by(
+            bank_id=partial_bank.id,
+            normalized_english="competitor",
+        ).one()
+        competition = self.db.query(models.VocabularyBankWord).filter_by(
+            bank_id=partial_bank.id,
+            normalized_english="competition",
+        ).one()
+        self.assertIsNotNone(
+            self.db.query(models.VocabularyBankWordRelation).filter_by(
+                parent_word_id=competitor.id,
+                related_word_id=competition.id,
+                relation_type="related",
+            ).first()
+        )
+        self.assertEqual(
+            self.db.query(models.VocabularyBankWord).filter_by(bank_id=unrelated.id).count(),
+            1,
+        )
 
     def test_ebs_part_of_speech_is_not_required_in_answers(self):
         from vocabulary import parse_ebs_meanings

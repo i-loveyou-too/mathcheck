@@ -44,10 +44,34 @@ def import_blacklabel_voca(source_path: Path, description: str | None = None) ->
             word.normalized_english: word
             for word in db.query(models.VocabularyBankWord).filter_by(bank_id=bank.id).all()
         }
+        existing_word_ids = [word.id for word in existing_words.values()]
+        if existing_word_ids:
+            db.query(models.VocabularyBankWordRelation).filter(
+                models.VocabularyBankWordRelation.parent_word_id.in_(existing_word_ids)
+            ).delete(synchronize_session=False)
+            db.query(models.VocabularyBankWordRelation).filter(
+                models.VocabularyBankWordRelation.related_word_id.in_(existing_word_ids)
+            ).delete(synchronize_session=False)
+            db.flush()
+
         for word in existing_words.values():
             word.day_order = -word.id
             word.order_index = -word.id
         db.flush()
+
+        preview_normalized = {item["normalized_english"] for item in preview["words"]}
+        stale_words = [
+            word for normalized, word in existing_words.items()
+            if normalized not in preview_normalized
+        ]
+        for word in stale_words:
+            db.delete(word)
+        db.flush()
+        existing_words = {
+            normalized: word
+            for normalized, word in existing_words.items()
+            if normalized in preview_normalized
+        }
 
         inserted_words = 0
         updated_words = 0
@@ -63,11 +87,6 @@ def import_blacklabel_voca(source_path: Path, description: str | None = None) ->
                 for key, value in item.items():
                     setattr(word, key, value)
                 updated_words += 1
-        db.flush()
-
-        db.query(models.VocabularyBankWordRelation).filter(
-            models.VocabularyBankWordRelation.parent_word_id.in_([word.id for word in existing_words.values()])
-        ).delete(synchronize_session=False)
         db.flush()
 
         relation_keys: set[tuple[int, int, str]] = set()
@@ -105,8 +124,14 @@ def import_blacklabel_voca(source_path: Path, description: str | None = None) ->
             "related_word_count": preview.get("related_word_count", 0),
             "unique_testable_word_count": word_count,
             "relation_count": relation_count,
+            "source_relation_count": preview.get("relation_count", len(preview.get("relations", []))),
             "inserted_words": inserted_words,
             "updated_words": updated_words,
+            "inserted_relations": inserted_relations,
+            "duplicate_relation_skipped": max(
+                0,
+                preview.get("relation_count", len(preview.get("relations", []))) - inserted_relations,
+            ),
             "warnings": preview["warnings"],
             "duplicate_related_skipped": preview.get("duplicate_related_skipped", 0),
             "missing_meaning_count": 0,
