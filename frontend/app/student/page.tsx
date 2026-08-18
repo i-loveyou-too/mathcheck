@@ -63,6 +63,37 @@ type SuteukChallengeSummary = {
   assignments?: SuteukChallengeAssignment[];
 };
 
+type VocabularyDayStatus = "scheduled" | "missed" | "in_progress" | "completed" | "not_started";
+
+type VocabularyDay = {
+  date: string;
+  day_number: number;
+  learning_day: number;
+  new_bank_day_label: string | null;
+  cumulative_bank_day_label: string | null;
+  cumulative_pool_count: number;
+  new_word_count: number;
+  question_count: number;
+  status: VocabularyDayStatus;
+  session_id: number | null;
+  score: number | null;
+};
+
+type VocabularyDashboard = {
+  challenge: null | {
+    id: number;
+    name: string;
+    start_date: string;
+    end_date: string;
+    word_bank_title: string | null;
+    allow_student_answer_pdf: boolean;
+  };
+  today: string;
+  today_progress?: VocabularyDay;
+  unresolved_count?: number;
+  days: VocabularyDay[];
+};
+
 function BarChartIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
@@ -198,6 +229,8 @@ export default function StudentDashboardPage() {
   const [summary, setSummary] = useState<StudentDashboardProgressSummary | null>(null);
   const [weeklyTasks, setWeeklyTasks] = useState<WeeklyTasksResponse | null>(null);
   const [suteukChallenges, setSuteukChallenges] = useState<SuteukChallengeAssignment[]>([]);
+  const [vocabularyDashboard, setVocabularyDashboard] = useState<VocabularyDashboard | null>(null);
+  const [vocabularyUnavailable, setVocabularyUnavailable] = useState(false);
   const [summaryError, setSummaryError] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -214,7 +247,7 @@ export default function StudentDashboardPage() {
       const weekStart = getCurrentStudyWeekStart();
 
       try {
-        const [summaryResult, weeklyResult, suteukResult] = await Promise.allSettled([
+        const [summaryResult, weeklyResult, suteukResult, vocabularyResult] = await Promise.allSettled([
           apiFetch<StudentDashboardProgressSummary>(
             `/student/progress-summary?student_id=${storedStudent.id}`,
           ),
@@ -223,6 +256,9 @@ export default function StudentDashboardPage() {
           ),
           apiFetch<SuteukChallengeSummary>(
             `/student/suteuk-challenge/summary?student_id=${storedStudent.id}&study_date=${getStudyDate()}`,
+          ),
+          apiFetch<VocabularyDashboard>(
+            `/student/vocabulary/current?student_id=${storedStudent.id}&study_date=${getStudyDate()}`,
           ),
         ]);
 
@@ -243,6 +279,14 @@ export default function StudentDashboardPage() {
           setSuteukChallenges(suteukResult.value.assignments ?? (suteukResult.value.assignment ? [suteukResult.value.assignment] : []));
         } else {
           setSuteukChallenges([]);
+        }
+
+        if (vocabularyResult.status === "fulfilled") {
+          setVocabularyDashboard(vocabularyResult.value);
+          setVocabularyUnavailable(false);
+        } else {
+          setVocabularyDashboard(null);
+          setVocabularyUnavailable(true);
         }
       } finally {
         setLoading(false);
@@ -277,6 +321,29 @@ export default function StudentDashboardPage() {
     todo: 0,
     total: 0,
   };
+  const vocabularyToday = vocabularyDashboard?.today_progress ?? null;
+  const vocabularyHasToday = Boolean(vocabularyDashboard?.challenge && vocabularyToday && vocabularyToday.question_count > 0);
+  const vocabularyCompleted = vocabularyToday?.status === "completed";
+  const vocabularyStarted = vocabularyToday?.status === "in_progress";
+  const vocabularyProgressRate = vocabularyCompleted ? 100 : 0;
+  const vocabularyProgressText = vocabularyCompleted
+    ? `${vocabularyToday?.question_count ?? 0} / ${vocabularyToday?.question_count ?? 0} 완료`
+    : vocabularyStarted
+      ? "진행 중"
+      : `0 / ${vocabularyToday?.question_count ?? 0} 완료`;
+  const vocabularyActionText = vocabularyCompleted
+    ? "결과 확인"
+    : vocabularyStarted
+      ? "영단어 이어서 하기"
+      : "오늘 영단어 시작하기";
+  const vocabularyHref = vocabularyCompleted && vocabularyToday?.session_id
+    ? `/student/sprint/vocabulary/result/${vocabularyToday.session_id}`
+    : vocabularyStarted && vocabularyToday?.session_id
+      ? `/student/sprint/vocabulary/test/${vocabularyToday.session_id}`
+      : "/student/vocabulary";
+  const vocabularyWordCountText = vocabularyToday
+    ? vocabularyToday.new_bank_day_label ?? `오늘 ${vocabularyToday.new_word_count || vocabularyToday.question_count}개`
+    : "오늘 예정 없음";
   const todayRemaining = todayTasks.filter((task) => task.status !== "done").length;
   const remainingTasks = todayTasks.filter((task) => task.status !== "done");
 
@@ -361,6 +428,75 @@ export default function StudentDashboardPage() {
           </div>
         </Link>
       </div>
+
+      {loading ? (
+        <section className="rounded-[28px] border border-[#E5E7EB] bg-white p-5 shadow-card">
+          <div className="flex items-center justify-between gap-4">
+            <div className="min-w-0 flex-1">
+              <div className="h-3 w-24 rounded-full bg-[#EEF1F7]" />
+              <div className="mt-3 h-6 w-48 max-w-full rounded-full bg-[#EEF1F7]" />
+              <div className="mt-4 h-2.5 rounded-full bg-[#F5F6FA]" />
+            </div>
+            <div className="h-12 w-24 rounded-full bg-[#EEF1F7]" />
+          </div>
+        </section>
+      ) : !vocabularyUnavailable ? (
+        <Link
+          href={vocabularyHref}
+          className="group relative block min-w-0 overflow-hidden rounded-[28px] border border-[#F1DADA] bg-white p-5 shadow-card transition hover:-translate-y-0.5 hover:border-[#F0C6C2]"
+        >
+          <div className="pointer-events-none absolute right-4 top-4 hidden h-16 w-16 items-center justify-center rounded-[22px] bg-[#FFF1F0] text-2xl font-black text-[#E86F6B] sm:flex">
+            Aa
+          </div>
+          <div className="relative grid min-w-0 gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,auto)] sm:items-end">
+            <div className="min-w-0 sm:pr-20">
+              <p className="text-xs font-black tracking-[0.18em] text-[#E86F6B]">VOCABULARY</p>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <h2 className="break-words text-[1.45rem] font-black leading-tight tracking-tight text-[#1F2933]">
+                  오늘의 영단어 챌린지
+                </h2>
+                {vocabularyCompleted ? (
+                  <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-black text-emerald-600">
+                    완료
+                  </span>
+                ) : null}
+              </div>
+              <p className="mt-2 break-words text-sm font-bold text-[#667085]">
+                {vocabularyHasToday
+                  ? `${vocabularyWordCountText} · ${vocabularyProgressText}`
+                  : "오늘 예정된 영단어가 없어요"}
+              </p>
+              {vocabularyHasToday ? (
+                <div className="mt-4">
+                  <div className="flex items-center justify-between gap-3 text-xs font-black text-[#8A94A8]">
+                    <span>{vocabularyStarted ? "이어 하는 중" : vocabularyCompleted ? "오늘 분량 완료" : "시작 전"}</span>
+                    <span className="text-[#E86F6B]">{vocabularyStarted ? "진행 중" : `${vocabularyProgressRate}%`}</span>
+                  </div>
+                  <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-[#FFF1F0]">
+                    <div
+                      className="h-full rounded-full bg-[#E86F6B] transition-all duration-500"
+                      style={{ width: `${vocabularyProgressRate}%` }}
+                    />
+                  </div>
+                </div>
+              ) : null}
+            </div>
+            <div className="flex min-w-0 flex-col gap-3 sm:items-end">
+              {vocabularyHasToday ? (
+                <div className="min-w-0 text-left sm:text-right">
+                  <p className="text-sm font-bold text-[#98A2B3]">{vocabularyCompleted ? "점수" : "출제 문항"}</p>
+                  <p className="text-3xl font-black text-[#1F2933]">
+                    {vocabularyCompleted && vocabularyToday?.score != null ? `${vocabularyToday.score}점` : vocabularyToday?.question_count ?? 0}
+                  </p>
+                </div>
+              ) : null}
+              <span className="inline-flex min-h-11 max-w-full items-center justify-center rounded-full bg-[#E86F6B] px-4 py-2 text-center text-sm font-black leading-tight text-white shadow-[0_12px_24px_rgba(232,111,107,0.20)] transition group-hover:translate-x-0.5">
+                {vocabularyHasToday ? vocabularyActionText : "영단어 홈 보기"}
+              </span>
+            </div>
+          </div>
+        </Link>
+      ) : null}
 
       {suteukChallenges.map((suteukChallenge) => (
         <Link
