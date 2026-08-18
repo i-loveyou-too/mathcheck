@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
+import re
 from dataclasses import dataclass
 from typing import Any, Literal
 
 from fastapi import HTTPException
 
+
+logger = logging.getLogger(__name__)
 
 GEMINI_VOCAB_DEFAULT_MODEL = "gemini-2.5-flash-lite"
 GEMINI_VOCAB_CHUNK_SIZE = 30
@@ -118,6 +122,41 @@ def _parse_gemini_payload(payload: str) -> list[GeminiReviewResult]:
     return parsed
 
 
+def _extract_gemini_status_code(exc: Exception) -> int | str | None:
+    for attr in ("status_code", "code"):
+        value = getattr(exc, attr, None)
+        if isinstance(value, int):
+            return value
+        if isinstance(value, str) and value.isdigit():
+            return value
+    response = getattr(exc, "response", None)
+    response_status = getattr(response, "status_code", None)
+    if isinstance(response_status, int):
+        return response_status
+    if isinstance(response_status, str) and response_status.isdigit():
+        return response_status
+    status = getattr(exc, "status", None)
+    if isinstance(status, int):
+        return status
+    if isinstance(status, str) and status.isdigit():
+        return status
+    return None
+
+
+def _safe_gemini_error_message(exc: Exception) -> str:
+    raw_message = getattr(exc, "message", None) or str(exc)
+    message = " ".join(str(raw_message).split())
+    api_key = os.getenv("GEMINI_API_KEY")
+    if api_key:
+        message = message.replace(api_key, "[REDACTED]")
+    message = re.sub(r"(?i)\bbearer\s+[A-Za-z0-9._~+/-]+=*", "Bearer [REDACTED]", message)
+    return re.sub(
+        r"(?i)\b(api[_-]?key|key|token|authorization|password)\s*[:=]\s*[^&\s,;]+",
+        r"\1=[REDACTED]",
+        message,
+    )
+
+
 def review_vocabulary_answers_with_gemini(items: list[dict[str, Any]]) -> list[GeminiReviewResult]:
     if not items:
         return []
@@ -134,9 +173,10 @@ def review_vocabulary_answers_with_gemini(items: list[dict[str, Any]]) -> list[G
         "instruction": VOCABULARY_GEMINI_PROMPT,
         "items": items,
     }
+    model = gemini_model_name()
     try:
         interaction = client.interactions.create(
-            model=gemini_model_name(),
+            model=model,
             input=json.dumps(prompt, ensure_ascii=False),
             response_format={
                 "type": "text",
@@ -148,7 +188,15 @@ def review_vocabulary_answers_with_gemini(items: list[dict[str, Any]]) -> list[G
     except HTTPException:
         raise
     except Exception as exc:
-        message = str(exc)
+        message = _safe_gemini_error_message(exc)
+        logger.warning(
+            "Gemini vocabulary review failed: model=%s, chunk_size=%s, error_type=%s, status=%s, message=%s",
+            model,
+            len(items),
+            type(exc).__name__,
+            _extract_gemini_status_code(exc),
+            message,
+        )
         if "429" in message or "RESOURCE_EXHAUSTED" in message or "quota" in message.lower():
             raise HTTPException(
                 status_code=429,

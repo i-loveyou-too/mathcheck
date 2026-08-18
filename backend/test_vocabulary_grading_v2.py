@@ -22,7 +22,13 @@ from vocabulary import (
     student_wrong_notes,
     submit_session,
 )
-from vocabulary_gemini import GeminiReviewResult, _parse_gemini_payload, should_auto_apply_gemini
+from vocabulary_gemini import (
+    GeminiReviewResult,
+    _extract_gemini_status_code,
+    _parse_gemini_payload,
+    _safe_gemini_error_message,
+    should_auto_apply_gemini,
+)
 
 
 VOCAB_TABLES = [
@@ -436,3 +442,26 @@ class GeminiAutoApplyPolicyRegressionTests(TestCase):
         self.assertTrue(answer.manual_is_correct)
         self.assertTrue(answer.gemini_auto_applied)
         self.assertEqual(answer.gemini_verdict, "ACCEPTABLE")
+
+
+class GeminiFailureLoggingTests(TestCase):
+    def test_extracts_status_code_from_exception_response(self):
+        class Response:
+            status_code = 503
+
+        class GeminiError(Exception):
+            response = Response()
+
+        self.assertEqual(_extract_gemini_status_code(GeminiError("unavailable")), 503)
+
+    def test_safe_error_message_redacts_api_key_values(self):
+        class GeminiError(Exception):
+            message = "request failed: api_key=secret-key-123 token=secret-token Authorization: Bearer secret-bearer status=429"
+
+        with patch.dict("os.environ", {"GEMINI_API_KEY": "secret-key-123"}):
+            message = _safe_gemini_error_message(GeminiError())
+
+        self.assertNotIn("secret-key-123", message)
+        self.assertNotIn("secret-token", message)
+        self.assertNotIn("secret-bearer", message)
+        self.assertIn("status=429", message)
