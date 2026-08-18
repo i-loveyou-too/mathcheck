@@ -17,6 +17,7 @@ from vocabulary import (
     is_answer_correct,
     normalize_text,
     preview_bank_xlsx,
+    select_bank_words,
     session_print_html,
     submit_session,
     vocabulary_day_info,
@@ -151,6 +152,27 @@ class VocabularyTests(TestCase):
         self.assertEqual(first["english"], "enthusiastic")
         self.assertEqual(first["raw_meaning"], "a. 열정적인")
         self.assertEqual(first["accepted_meanings"], ["열정적인"])
+
+    def test_actual_blacklabel_xlsx_preview_preserves_related_relations(self):
+        path = Path("..") / "블랙라벨 1등급 VOCA_전체 단어 및 연관어(파생어).xlsx"
+        if not path.exists():
+            self.skipTest("Blacklabel workbook is not present in this checkout.")
+        preview = preview_bank_xlsx(path)
+        self.assertEqual(preview["source_format"], "blacklabel_related_flat_sheet")
+        self.assertEqual(preview["title"], "블랙라벨 1등급 VOCA")
+        self.assertEqual(preview["total_days"], 50)
+        self.assertEqual(preview["main_word_count"], 2087)
+        self.assertEqual(preview["relation_count"], 774)
+        self.assertEqual(preview["errors"], [])
+        first = preview["sample_words"][0]
+        self.assertEqual(first["english"], "organism")
+        self.assertEqual(first["word_type"], "main")
+        self.assertIn("유기체", first["accepted_meanings"])
+        self.assertIn({
+            "parent_normalized_english": "competitor",
+            "related_normalized_english": "competition",
+            "relation_type": "related",
+        }, preview["relations"])
 
     def test_ebs_part_of_speech_is_not_required_in_answers(self):
         from vocabulary import parse_ebs_meanings
@@ -298,6 +320,78 @@ class VocabularyTests(TestCase):
         self.assertIn("TEST PAPER", paper)
         self.assertIn("ANSWER KEY", answer_key)
         self.assertIn("DAY 1 ~ DAY 6", paper)
+
+    def test_word_bank_related_words_are_assignment_option(self):
+        bank = models.VocabularyBank(
+            title="Related Bank",
+            total_words=4,
+            total_days=1,
+            words_per_day=2,
+            default_daily_test_question_count=10,
+        )
+        self.db.add(bank)
+        self.db.flush()
+        competitor = models.VocabularyBankWord(
+            bank_id=bank.id,
+            day_no=1,
+            order_index=1,
+            day_order=1,
+            english="competitor",
+            normalized_english="competitor",
+            accepted_meanings=["경쟁자"],
+            raw_meaning="경쟁자",
+            word_type="main",
+        )
+        ecology = models.VocabularyBankWord(
+            bank_id=bank.id,
+            day_no=1,
+            order_index=2,
+            day_order=2,
+            english="ecology",
+            normalized_english="ecology",
+            accepted_meanings=["생태학"],
+            raw_meaning="생태학",
+            word_type="main",
+        )
+        competition = models.VocabularyBankWord(
+            bank_id=bank.id,
+            day_no=1,
+            order_index=3,
+            day_order=3,
+            english="competition",
+            normalized_english="competition",
+            accepted_meanings=["경쟁"],
+            raw_meaning="경쟁",
+            word_type="related",
+        )
+        self.db.add_all([competitor, ecology, competition])
+        self.db.flush()
+        self.db.add_all([
+            models.VocabularyBankWordRelation(parent_word_id=competitor.id, related_word_id=competition.id),
+            models.VocabularyBankWordRelation(parent_word_id=ecology.id, related_word_id=competition.id),
+        ])
+        challenge = self.make_bank_challenge(bank, self.other_student.id, "Related option")
+        challenge.bank_days_per_learning_day = 1
+        challenge.max_question_count = 10
+        self.db.commit()
+
+        off_words = select_bank_words(self.db, challenge, date(2026, 7, 1))
+        self.assertEqual({word.english for word in off_words}, {"competitor", "ecology"})
+        self.assertEqual(vocabulary_day_info(self.db, challenge, date(2026, 7, 1))["cumulative_pool_count"], 2)
+
+        challenge.include_related_words = True
+        self.db.commit()
+        on_words = select_bank_words(self.db, challenge, date(2026, 7, 1))
+        self.assertEqual({word.english for word in on_words}, {"competitor", "ecology", "competition"})
+        self.assertEqual(len([word for word in on_words if word.english == "competition"]), 1)
+        self.assertEqual(vocabulary_day_info(self.db, challenge, date(2026, 7, 1))["cumulative_pool_count"], 3)
+
+        session = create_session(self.db, challenge, date(2026, 7, 1), "main")
+        related_question = self.db.query(models.VocabularyTestQuestion).filter_by(
+            session_id=session.id,
+            english_snapshot="competition",
+        ).one()
+        self.assertEqual(related_question.accepted_answers_snapshot, ["경쟁"])
 
     def test_existing_word_bank_draft_session_expands_after_day_count_change(self):
         ebs = self.import_preview_bank("2027_EBS_VOCA_1800.xlsx")

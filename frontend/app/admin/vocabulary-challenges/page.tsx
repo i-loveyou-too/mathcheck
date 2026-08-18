@@ -27,6 +27,7 @@ type Challenge = {
   accumulation_type: string;
   source_type: "direct" | "word_bank";
   word_bank_title: string | null;
+  include_related_words: boolean;
   is_active: boolean;
 };
 
@@ -55,6 +56,7 @@ export default function VocabularyChallengesPage() {
     end_bank_day: "50",
     bank_days_per_learning_day: "3",
     max_question_count: "100",
+    include_related_words: false,
     allow_student_answer_pdf: false,
   });
   const selectedBank = banks.find((bank) => String(bank.id) === form.word_bank_id) ?? null;
@@ -128,6 +130,7 @@ export default function VocabularyChallengesPage() {
           start_bank_day: isWordBank ? Number(form.start_bank_day || 1) : null,
           bank_days_per_learning_day: Number(form.bank_days_per_learning_day || 3),
           max_question_count: Number(form.max_question_count || form.daily_test_question_count || 100),
+          include_related_words: isWordBank ? form.include_related_words : false,
           allow_student_answer_pdf: form.allow_student_answer_pdf,
           is_active: true,
         },
@@ -196,6 +199,7 @@ export default function VocabularyChallengesPage() {
                     <label className="text-xs font-bold text-white/60">하루 bank DAY 수<input type="number" min="1" max="30" value={form.bank_days_per_learning_day} onChange={(event) => updateWordBankRange({ bank_days_per_learning_day: event.target.value })} className="mt-1.5 h-12 w-full rounded-2xl border-0 bg-white px-4 text-[#17213B]" /></label>
                     <label className="text-xs font-bold text-white/60">최대 시험 문항<input type="number" min="1" max="2000" value={form.max_question_count} onChange={(event) => setForm({ ...form, max_question_count: event.target.value, daily_test_question_count: event.target.value })} className="mt-1.5 h-12 w-full rounded-2xl border-0 bg-white px-4 text-[#17213B]" /></label>
                   </div>
+                  <label className="flex items-center gap-2 rounded-2xl bg-white/10 p-3 text-xs font-bold text-white/70"><input type="checkbox" checked={form.include_related_words} onChange={(event) => setForm({ ...form, include_related_words: event.target.checked })} className="h-4 w-4 accent-[#65E6BA]" /> 파생어/유의어 함께 출제</label>
                   <label className="flex items-center gap-2 rounded-2xl bg-white/10 p-3 text-xs font-bold text-white/70"><input type="checkbox" checked={form.allow_student_answer_pdf} onChange={(event) => setForm({ ...form, allow_student_answer_pdf: event.target.checked })} className="h-4 w-4 accent-[#65E6BA]" /> 학생 정답지 PDF 허용</label>
                 </>
               ) : (
@@ -224,7 +228,7 @@ export default function VocabularyChallengesPage() {
                     <span className={`rounded-full px-2 py-1 text-[10px] font-black ${challenge.is_active ? "bg-emerald-50 text-emerald-600" : "bg-gray-100 text-gray-500"}`}>{challenge.is_active ? "진행 중" : "완료"}</span>
                   </div>
                   <p className="mt-1 text-sm font-semibold text-[#7A859F]">{challenge.student_name} · {challenge.start_date} ~ {challenge.end_date}</p>
-                  <p className="mt-1 text-xs font-bold text-[#98A2B3]">{challenge.source_type === "word_bank" ? `워드뱅크: ${challenge.word_bank_title ?? "-"}` : `직접 등록 · ${challenge.accumulation_type}`}</p>
+                  <p className="mt-1 text-xs font-bold text-[#98A2B3]">{challenge.source_type === "word_bank" ? `워드뱅크: ${challenge.word_bank_title ?? "-"}${challenge.include_related_words ? " · 파생어 포함" : ""}` : `직접 등록 · ${challenge.accumulation_type}`}</p>
                 </div>
                 <span className="text-2xl text-[#B4BECD]">›</span>
               </Link>

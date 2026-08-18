@@ -559,10 +559,26 @@ class VocabularyBankWord(Base):
     normalized_english = Column(String(200), nullable=False)
     accepted_meanings = Column(JSON, nullable=False)
     raw_meaning = Column(Text, nullable=False)
+    word_type = Column(String(20), nullable=False, default="main", server_default=text("'main'"))
     part_of_speech = Column(String(100), nullable=True)
     memo = Column(String(300), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class VocabularyBankWordRelation(Base):
+    __tablename__ = "vocabulary_bank_word_relations"
+    __table_args__ = (
+        UniqueConstraint("parent_word_id", "related_word_id", "relation_type", name="uq_vocabulary_bank_word_relation"),
+        Index("ix_vocabulary_bank_word_relations_parent", "parent_word_id"),
+        Index("ix_vocabulary_bank_word_relations_related", "related_word_id"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    parent_word_id = Column(Integer, ForeignKey("vocabulary_bank_words.id", ondelete="CASCADE"), nullable=False)
+    related_word_id = Column(Integer, ForeignKey("vocabulary_bank_words.id", ondelete="CASCADE"), nullable=False)
+    relation_type = Column(String(30), nullable=False, default="related", server_default=text("'related'"))
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
 class VocabularyChallenge(Base):
@@ -588,6 +604,7 @@ class VocabularyChallenge(Base):
     start_bank_day = Column(Integer, nullable=True)
     bank_days_per_learning_day = Column(Integer, nullable=False, default=3, server_default=text("3"))
     max_question_count = Column(Integer, nullable=False, default=100, server_default=text("100"))
+    include_related_words = Column(Boolean, nullable=False, default=False, server_default=text("FALSE"))
     allow_student_answer_pdf = Column(Boolean, nullable=False, default=False, server_default=text("FALSE"))
     is_active = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -696,6 +713,44 @@ class VocabularyTestAnswer(Base):
     manual_reason = Column(Text, nullable=True)
     manual_graded_by = Column(Integer, ForeignKey("math_admins.id"), nullable=True)
     manual_graded_at = Column(DateTime(timezone=True), nullable=True)
+    gemini_reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    gemini_verdict = Column(String(20), nullable=True)
+    gemini_confidence = Column(Integer, nullable=True)
+    gemini_reason = Column(Text, nullable=True)
+    gemini_risk_flags = Column(JSONB_TYPE, nullable=True)
+    gemini_model = Column(String(100), nullable=True)
+    gemini_auto_applied = Column(Boolean, nullable=False, default=False, server_default=text("FALSE"))
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class VocabularyGradingRule(Base):
+    __tablename__ = "vocabulary_grading_rules"
+    __table_args__ = (
+        UniqueConstraint(
+            "word_source_type",
+            "word_id",
+            "bank_word_id",
+            "normalized_student_answer",
+            name="uq_vocabulary_grading_rule_word_answer",
+        ),
+        CheckConstraint("decision IN ('ACCEPT', 'REJECT')", name="ck_vocabulary_grading_rules_decision"),
+        CheckConstraint("source IN ('TEACHER', 'GEMINI')", name="ck_vocabulary_grading_rules_source"),
+        Index("ix_vocabulary_grading_rules_direct", "word_id", "normalized_student_answer"),
+        Index("ix_vocabulary_grading_rules_bank", "bank_word_id", "normalized_student_answer"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    word_source_type = Column(String(20), nullable=False)
+    word_id = Column(Integer, ForeignKey("vocabulary_words.id", ondelete="CASCADE"), nullable=True)
+    bank_word_id = Column(Integer, ForeignKey("vocabulary_bank_words.id", ondelete="CASCADE"), nullable=True)
+    english_snapshot = Column(String(200), nullable=False)
+    canonical_meaning = Column(Text, nullable=False)
+    normalized_student_answer = Column(Text, nullable=False)
+    decision = Column(String(10), nullable=False)
+    source = Column(String(20), nullable=False, default="TEACHER", server_default=text("'TEACHER'"))
+    confirmed_by_teacher = Column(Boolean, nullable=False, default=True, server_default=text("TRUE"))
+    use_count = Column(Integer, nullable=False, default=0, server_default=text("0"))
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
 

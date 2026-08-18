@@ -28,6 +28,7 @@ type Challenge = {
   start_bank_day: number | null;
   bank_days_per_learning_day: number;
   max_question_count: number;
+  include_related_words: boolean;
   allow_student_answer_pdf: boolean;
   is_active: boolean;
   words: Word[];
@@ -199,7 +200,7 @@ export default function VocabularyChallengeDetailPage() {
           <div>
             <h1 className="text-3xl font-black text-[#17213B]">{challenge.name}</h1>
             <p className="mt-2 text-sm font-semibold text-[#7A859F]">{challenge.student_name} · {challenge.start_date} ~ {challenge.end_date}</p>
-            <p className="mt-1 text-xs font-bold text-[#98A2B3]">{challenge.source_type === "word_bank" ? `공용 워드뱅크 · ${challenge.word_bank_title ?? "-"}` : `직접 등록 · ${challenge.accumulation_type}`}</p>
+            <p className="mt-1 text-xs font-bold text-[#98A2B3]">{challenge.source_type === "word_bank" ? `공용 워드뱅크 · ${challenge.word_bank_title ?? "-"}${challenge.include_related_words ? " · 파생어 포함" : ""}` : `직접 등록 · ${challenge.accumulation_type}`}</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <button onClick={() => setEditing((value) => !value)} className="rounded-full bg-white px-4 py-2 text-sm font-black text-[#17213B] shadow-sm">{editing ? "수정 닫기" : "정보 수정"}</button>

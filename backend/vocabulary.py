@@ -13,7 +13,7 @@ from zipfile import ZipFile
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field, model_validator
-from sqlalchemy import func, or_
+from sqlalchemy import and_, func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -21,6 +21,13 @@ import admin_auth
 import models
 from database import get_db
 from study_dates import get_study_date
+from vocabulary_grading import deterministic_grade, normalize_grading_text
+from vocabulary_gemini import (
+    GEMINI_VOCAB_CHUNK_SIZE,
+    gemini_model_name,
+    review_vocabulary_answers_with_gemini,
+    should_auto_apply_gemini,
+)
 
 
 router = APIRouter(tags=["Vocabulary"])
@@ -126,6 +133,7 @@ def normalize_input_answer(input_answer: str | None) -> str:
 
 
 def is_answer_correct(input_answer: str | None, accepted_answers: list[str]) -> bool:
+    return deterministic_grade(input_answer, accepted_answers).is_correct
     raw_input = (input_answer or "").strip()
     if not raw_input or not accepted_answers:
         return False
@@ -146,6 +154,82 @@ def is_answer_correct(input_answer: str | None, accepted_answers: list[str]) -> 
         default=0.0,
     )
     return best_ratio >= ANSWER_SIMILARITY_THRESHOLD  # 4) 유사도 (경미한 오타 허용, 자모 단위로 비교)
+
+
+def grading_rule_for_answer(
+    db: Session,
+    question: models.VocabularyTestQuestion,
+    input_answer: str | None,
+) -> models.VocabularyGradingRule | None:
+    normalized_answer = normalize_grading_text(input_answer)
+    if not normalized_answer:
+        return None
+    query = db.query(models.VocabularyGradingRule).filter(
+        models.VocabularyGradingRule.word_source_type == question.word_source_type,
+        models.VocabularyGradingRule.normalized_student_answer == normalized_answer,
+        models.VocabularyGradingRule.confirmed_by_teacher.is_(True),
+    )
+    if question.word_source_type == "word_bank":
+        query = query.filter(models.VocabularyGradingRule.bank_word_id == question.bank_word_id)
+    else:
+        query = query.filter(models.VocabularyGradingRule.word_id == question.word_id)
+    return query.first()
+
+
+def grade_answer_for_question(
+    db: Session,
+    question: models.VocabularyTestQuestion,
+    input_answer: str | None,
+) -> bool:
+    rule = grading_rule_for_answer(db, question, input_answer)
+    if rule is not None:
+        rule.use_count += 1
+        return rule.decision == "ACCEPT"
+    return deterministic_grade(input_answer, question.accepted_answers_snapshot).is_correct
+
+
+def save_grading_rule(
+    db: Session,
+    question: models.VocabularyTestQuestion,
+    input_answer: str | None,
+    decision: Literal["ACCEPT", "REJECT"],
+    *,
+    source: Literal["TEACHER", "GEMINI"] = "TEACHER",
+    confirmed_by_teacher: bool = True,
+) -> models.VocabularyGradingRule | None:
+    normalized_answer = normalize_grading_text(input_answer)
+    if not normalized_answer:
+        return None
+    query = db.query(models.VocabularyGradingRule).filter(
+        models.VocabularyGradingRule.word_source_type == question.word_source_type,
+        models.VocabularyGradingRule.normalized_student_answer == normalized_answer,
+    )
+    if question.word_source_type == "word_bank":
+        query = query.filter(models.VocabularyGradingRule.bank_word_id == question.bank_word_id)
+    else:
+        query = query.filter(models.VocabularyGradingRule.word_id == question.word_id)
+    rule = query.first()
+    canonical_meaning = " / ".join(str(value) for value in question.accepted_answers_snapshot)
+    if rule is None:
+        rule = models.VocabularyGradingRule(
+            word_source_type=question.word_source_type,
+            word_id=question.word_id,
+            bank_word_id=question.bank_word_id,
+            english_snapshot=question.english_snapshot,
+            canonical_meaning=canonical_meaning,
+            normalized_student_answer=normalized_answer,
+            decision=decision,
+            source=source,
+            confirmed_by_teacher=confirmed_by_teacher,
+        )
+        db.add(rule)
+    else:
+        rule.english_snapshot = question.english_snapshot
+        rule.canonical_meaning = canonical_meaning
+        rule.decision = decision
+        rule.source = source
+        rule.confirmed_by_teacher = confirmed_by_teacher
+    return rule
 
 
 def parse_meanings(raw_meaning: str) -> tuple[list[str], list[str]]:
@@ -305,6 +389,7 @@ def parse_word_master_preview(path: Path, workbook: dict) -> dict:
         "warnings": warnings,
         "sample_words": words[:5],
         "words": words,
+        "relations": [],
     }
 
 
@@ -400,6 +485,150 @@ def parse_ebs_preview(path: Path, workbook: dict) -> dict:
         "warnings": warnings,
         "sample_words": words[:5],
         "words": words,
+        "relations": [],
+    }
+
+
+def parse_blacklabel_preview(path: Path, workbook: dict) -> dict:
+    rows = workbook["rows"].get("단어 및 연관어(파생어)") or next(iter(workbook["rows"].values()), [])
+    headers = [rows[0].get(column, "").strip() for column in ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K"]] if rows else []
+    expected = ["파트", "Day", "Num", "단어", "단어 뜻", "연관어 1", "단어 뜻", "연관어 2", "단어 뜻", "연관어 3", "단어 뜻"]
+    if headers != expected:
+        raise HTTPException(status_code=400, detail=f"Required Blacklabel headers do not match: {headers}")
+
+    errors: list[str] = []
+    warnings: list[str] = []
+    words: list[dict] = []
+    relations: list[dict[str, str]] = []
+    word_by_normalized: dict[str, dict] = {}
+    main_normalized: set[str] = set()
+    related_normalized: set[str] = set()
+    duplicate_related_skipped = 0
+    missing_meanings: list[str] = []
+    day_counts: dict[int, int] = {}
+    next_day_order: dict[int, int] = {}
+
+    def add_word(
+        *,
+        day_no: int,
+        day_order: int,
+        english: str,
+        meaning: str,
+        word_type: str,
+        row_number: int,
+    ) -> str | None:
+        nonlocal duplicate_related_skipped
+        english = re.sub(r"\s+", " ", english.strip())
+        meaning = meaning.strip()
+        if not english:
+            return None
+        if not meaning:
+            missing_meanings.append(f"row {row_number}: {english}")
+            return None
+        normalized = normalize_text(english)
+        accepted, row_warnings = parse_meanings(meaning)
+        warnings.extend(f"row {row_number}: {warning}" for warning in row_warnings)
+        existing = word_by_normalized.get(normalized)
+        if existing:
+            if word_type == "main":
+                existing["word_type"] = "main"
+                main_normalized.add(normalized)
+            else:
+                duplicate_related_skipped += 1
+            return normalized
+        word_by_normalized[normalized] = {
+            "day_no": day_no,
+            "order_index": len(words) + 1,
+            "day_order": day_order,
+            "english": english,
+            "normalized_english": normalized,
+            "accepted_meanings": accepted,
+            "raw_meaning": meaning,
+            "word_type": word_type,
+        }
+        words.append(word_by_normalized[normalized])
+        if word_type == "main":
+            main_normalized.add(normalized)
+        else:
+            related_normalized.add(normalized)
+        return normalized
+
+    for row_number, row in enumerate(rows[1:], start=2):
+        day_match = re.fullmatch(r"Day\s*0*(\d{1,3})", row.get("B", "").strip(), flags=re.IGNORECASE)
+        if not day_match:
+            errors.append(f"row {row_number}: invalid Day")
+            continue
+        day_no = int(day_match.group(1))
+        try:
+            main_day_order = int(str(row.get("C", "")).strip())
+        except ValueError:
+            errors.append(f"row {row_number}: invalid Num")
+            continue
+        next_day_order[day_no] = max(next_day_order.get(day_no, 0), main_day_order)
+        parent_normalized = add_word(
+            day_no=day_no,
+            day_order=main_day_order,
+            english=row.get("D", ""),
+            meaning=row.get("E", ""),
+            word_type="main",
+            row_number=row_number,
+        )
+        if parent_normalized:
+            day_counts[day_no] = day_counts.get(day_no, 0) + 1
+        for word_column, meaning_column in [("F", "G"), ("H", "I"), ("J", "K")]:
+            related = row.get(word_column, "")
+            related_meaning = row.get(meaning_column, "")
+            if not related.strip():
+                if related_meaning.strip():
+                    errors.append(f"row {row_number}: related meaning without related word in column {meaning_column}")
+                continue
+            next_day_order[day_no] = next_day_order.get(day_no, 0) + 1
+            related_normalized_value = add_word(
+                day_no=day_no,
+                day_order=next_day_order[day_no],
+                english=related,
+                meaning=related_meaning,
+                word_type="related",
+                row_number=row_number,
+            )
+            if parent_normalized and related_normalized_value:
+                relations.append({
+                    "parent_normalized_english": parent_normalized,
+                    "related_normalized_english": related_normalized_value,
+                    "relation_type": "related",
+                })
+
+    if missing_meanings:
+        errors.extend(f"missing meaning: {item}" for item in missing_meanings[:20])
+    if not words:
+        errors.append("No Blacklabel words found.")
+    unknown_days = sorted(day for day in day_counts if day < 1 or day > 365)
+    if unknown_days:
+        errors.append(f"out-of-range Day values: {unknown_days}")
+    total_days = max(day_counts) if day_counts else 0
+    return {
+        "title": "블랙라벨 1등급 VOCA",
+        "source_format": "blacklabel_related_flat_sheet",
+        "source_filename": path.name,
+        "total_words": len(words),
+        "total_rows": sum(day_counts.values()),
+        "main_word_count": sum(day_counts.values()),
+        "related_word_count": len(relations),
+        "relation_count": len(relations),
+        "duplicate_removed_count": sum(day_counts.values()) + len(relations) - len(words),
+        "total_days": total_days,
+        "words_per_day": max(day_counts.values()) if day_counts else 1,
+        "default_daily_test_question_count": 100,
+        "used_sheet_count": 1,
+        "ignored_sheet_count": max(0, len(workbook["sheets"]) - 1),
+        "duplicate_words": [],
+        "duplicate_related_skipped": duplicate_related_skipped,
+        "day_counts": day_counts,
+        "errors": errors,
+        "warnings": warnings,
+        "sample_words": words[:5],
+        "words": words,
+        "relations": relations,
     }
 
 
@@ -413,6 +642,10 @@ def preview_bank_xlsx(path: Path) -> dict:
         headers = [rows[0].get(column, "").strip() for column in ["A", "B", "C", "D", "E"]] if rows else []
         if headers == ["\ub2e8\uc5b4\uc7a5", "Index", "\ud56d\ubaa9", "\ub2e8\uc5b4", "\ub73b"]:
             return parse_word_master_preview(path, workbook)
+    rows = workbook["rows"].get("단어 및 연관어(파생어)") or (next(iter(workbook["rows"].values()), []) if workbook["rows"] else [])
+    blacklabel_headers = [rows[0].get(column, "").strip() for column in ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K"]] if rows else []
+    if blacklabel_headers == ["파트", "Day", "Num", "단어", "단어 뜻", "연관어 1", "단어 뜻", "연관어 2", "단어 뜻", "연관어 3", "단어 뜻"]:
+        return parse_blacklabel_preview(path, workbook)
     if any(EBS_EN_TO_KO_SHEET.fullmatch(name) for name in sheet_names):
         return parse_ebs_preview(path, workbook)
     raise HTTPException(status_code=400, detail="Unsupported vocabulary bank source format.")
@@ -433,6 +666,7 @@ class ChallengeIn(BaseModel):
     start_bank_day: int | None = Field(default=None, ge=1, le=365)
     bank_days_per_learning_day: int = Field(default=3, ge=1, le=30)
     max_question_count: int = Field(default=100, ge=1, le=2000)
+    include_related_words: bool = False
     allow_student_answer_pdf: bool = False
     is_active: bool = True
 
@@ -464,6 +698,7 @@ class ChallengeUpdate(BaseModel):
     start_bank_day: int | None = Field(default=None, ge=1, le=365)
     bank_days_per_learning_day: int | None = Field(default=None, ge=1, le=30)
     max_question_count: int | None = Field(default=None, ge=1, le=2000)
+    include_related_words: bool | None = None
     allow_student_answer_pdf: bool | None = None
     is_active: bool | None = None
 
@@ -552,6 +787,14 @@ class GradingActionIn(BaseModel):
 
 class SessionReviewIn(BaseModel):
     reviewed: bool
+
+
+class GeminiBatchReviewIn(BaseModel):
+    review_ids: list[int] | None = None
+    student_id: int | None = None
+    study_date: date | None = None
+    day_or_name: str | None = None
+    query: str | None = None
 
 
 def storage_path_from_input(storage_path: str) -> Path:
@@ -653,6 +896,7 @@ def bank_word_dict(word: models.VocabularyBankWord) -> dict:
         "english": word.english,
         "accepted_meanings": word.accepted_meanings,
         "raw_meaning": word.raw_meaning,
+        "word_type": word.word_type,
         "part_of_speech": word.part_of_speech,
         "memo": word.memo,
     }
@@ -682,6 +926,7 @@ def challenge_dict(db: Session, challenge: models.VocabularyChallenge, include_w
         "start_bank_day": challenge.start_bank_day,
         "bank_days_per_learning_day": challenge.bank_days_per_learning_day,
         "max_question_count": challenge.max_question_count,
+        "include_related_words": challenge.include_related_words,
         "allow_student_answer_pdf": challenge.allow_student_answer_pdf,
         "is_active": challenge.is_active,
         "created_at": challenge.created_at,
@@ -807,10 +1052,7 @@ def vocabulary_day_info(db: Session, challenge: models.VocabularyChallenge, stud
         }
     new_days = bank_day_sequence_for_learning_day(challenge, bank, study_date)
     cumulative_days = cumulative_bank_day_sequence(challenge, bank, study_date)
-    pool_count = db.query(func.count(models.VocabularyBankWord.id)).filter(
-        models.VocabularyBankWord.bank_id == bank.id,
-        models.VocabularyBankWord.day_no.in_(cumulative_days) if cumulative_days else False,
-    ).scalar() or 0
+    pool_count = len(select_bank_word_pool(db, challenge, cumulative_days))
     max_count = challenge.max_question_count or challenge.daily_test_question_count or bank.default_daily_test_question_count
     return {
         "learning_day": challenge_learning_day(challenge, study_date),
@@ -823,6 +1065,43 @@ def vocabulary_day_info(db: Session, challenge: models.VocabularyChallenge, stud
     }
 
 
+def unique_words_by_normalized(words: list[models.VocabularyBankWord]) -> list[models.VocabularyBankWord]:
+    unique: list[models.VocabularyBankWord] = []
+    seen: set[str] = set()
+    for word in words:
+        normalized = normalize_text(word.english)
+        if normalized in seen:
+            continue
+        unique.append(word)
+        seen.add(normalized)
+    return unique
+
+
+def select_bank_word_pool(
+    db: Session,
+    challenge: models.VocabularyChallenge,
+    cumulative_days: list[int],
+) -> list[models.VocabularyBankWord]:
+    if not challenge.word_bank_id or not cumulative_days:
+        return []
+    base_words = db.query(models.VocabularyBankWord).filter(
+        models.VocabularyBankWord.bank_id == challenge.word_bank_id,
+        models.VocabularyBankWord.day_no.in_(cumulative_days),
+        models.VocabularyBankWord.word_type == "main",
+    ).all()
+    if not challenge.include_related_words or not base_words:
+        return unique_words_by_normalized(base_words)
+    parent_ids = [word.id for word in base_words]
+    related_words = db.query(models.VocabularyBankWord).join(
+        models.VocabularyBankWordRelation,
+        models.VocabularyBankWordRelation.related_word_id == models.VocabularyBankWord.id,
+    ).filter(
+        models.VocabularyBankWord.bank_id == challenge.word_bank_id,
+        models.VocabularyBankWordRelation.parent_word_id.in_(parent_ids),
+    ).all()
+    return unique_words_by_normalized(base_words + related_words)
+
+
 def select_bank_words(db: Session, challenge: models.VocabularyChallenge, study_date: date) -> list[models.VocabularyBankWord]:
     if not challenge.word_bank_id:
         return []
@@ -833,10 +1112,7 @@ def select_bank_words(db: Session, challenge: models.VocabularyChallenge, study_
     if not cumulative_days:
         return []
     limit = challenge.max_question_count or challenge.daily_test_question_count or bank.default_daily_test_question_count or 100
-    words = db.query(models.VocabularyBankWord).filter(
-        models.VocabularyBankWord.bank_id == challenge.word_bank_id,
-        models.VocabularyBankWord.day_no.in_(cumulative_days),
-    ).all()
+    words = select_bank_word_pool(db, challenge, cumulative_days)
     random.SystemRandom().shuffle(words)
     return words[:min(len(words), limit)]
 
@@ -859,6 +1135,7 @@ def new_word_count_for_date(db: Session, challenge: models.VocabularyChallenge, 
     return db.query(func.count(models.VocabularyBankWord.id)).filter(
         models.VocabularyBankWord.bank_id == bank.id,
         models.VocabularyBankWord.day_no.in_(days),
+        models.VocabularyBankWord.word_type == "main",
     ).scalar() or 0
 
 
@@ -869,6 +1146,19 @@ def final_is_correct(answer: models.VocabularyTestAnswer | None) -> bool:
     if answer.manual_is_correct is not None:
         return bool(answer.manual_is_correct)
     return bool(answer.is_correct)
+
+
+def student_gemini_explanation(answer: models.VocabularyTestAnswer | None) -> str | None:
+    if answer is None or not answer.gemini_reviewed_at or not answer.gemini_reason:
+        return None
+    if answer.gemini_verdict not in {"CORRECT", "ACCEPTABLE", "WRONG"}:
+        return None
+    if answer.manual_is_correct is None:
+        return None
+    gemini_final = answer.gemini_verdict in {"CORRECT", "ACCEPTABLE"}
+    if bool(answer.manual_is_correct) != gemini_final:
+        return None
+    return answer.gemini_reason.strip() or None
 
 
 def serialize_session(
@@ -900,6 +1190,10 @@ def serialize_session(
                 "accepted_answers": question.accepted_answers_snapshot,
                 "is_correct": final_is_correct(answer),
             })
+            if not for_admin:
+                explanation = student_gemini_explanation(answer)
+                if explanation:
+                    item["gemini_explanation"] = explanation
             if for_admin:
                 item.update({
                     "response_id": answer.id if answer else None,
@@ -909,6 +1203,13 @@ def serialize_session(
                     "manual_reason": answer.manual_reason if answer else None,
                     "manual_graded_by": answer.manual_graded_by if answer else None,
                     "manual_graded_at": answer.manual_graded_at if answer else None,
+                    "gemini_reviewed_at": answer.gemini_reviewed_at if answer else None,
+                    "gemini_verdict": answer.gemini_verdict if answer else None,
+                    "gemini_confidence": answer.gemini_confidence if answer else None,
+                    "gemini_reason": answer.gemini_reason if answer else None,
+                    "gemini_risk_flags": (answer.gemini_risk_flags or []) if answer else [],
+                    "gemini_model": answer.gemini_model if answer else None,
+                    "gemini_auto_applied": bool(answer.gemini_auto_applied) if answer else False,
                 })
         items.append(item)
     challenge = db.get(models.VocabularyChallenge, session.challenge_id)
@@ -1136,6 +1437,23 @@ def admin_import_bank(payload: BankImportIn, db: Session = Depends(get_db)):
     db.flush()
     for item in preview["words"]:
         db.add(models.VocabularyBankWord(bank_id=bank.id, **item))
+    db.flush()
+    word_ids = {
+        row.normalized_english: row.id
+        for row in db.query(models.VocabularyBankWord).filter_by(bank_id=bank.id).all()
+    }
+    relation_keys: set[tuple[int, int, str]] = set()
+    for relation in preview.get("relations", []):
+        parent_id = word_ids.get(relation["parent_normalized_english"])
+        related_id = word_ids.get(relation["related_normalized_english"])
+        relation_type = relation.get("relation_type", "related")
+        if parent_id and related_id and parent_id != related_id and (parent_id, related_id, relation_type) not in relation_keys:
+            relation_keys.add((parent_id, related_id, relation_type))
+            db.add(models.VocabularyBankWordRelation(
+                parent_word_id=parent_id,
+                related_word_id=related_id,
+                relation_type=relation_type,
+            ))
     db.commit()
     db.refresh(bank)
     return {"bank": bank_dict(db, bank), "warnings": preview["warnings"]}
@@ -1476,19 +1794,8 @@ def pending_manual_review_count(db: Session, session_id: int) -> int:
     ).scalar() or 0
 
 
-@router.get("/admin/vocabulary-review-items")
-def admin_vocabulary_review_items(
-    student_id: int | None = Query(default=None),
-    study_date: date | None = Query(default=None),
-    day_or_name: str | None = Query(default=None),
-    review_status: Literal["pending", "completed", "all"] = Query(default="pending"),
-    query: str | None = Query(default=None),
-    include_reviewed: bool = Query(default=False),
-    db: Session = Depends(get_db),
-    admin: models.Admin = Depends(admin_auth.require_admin),
-):
-    del admin
-    rows = db.query(
+def vocabulary_review_base_query(db: Session):
+    return db.query(
         models.VocabularyTestSession,
         models.VocabularyChallenge,
         models.Student,
@@ -1513,6 +1820,17 @@ def admin_vocabulary_review_items(
         models.VocabularyTestAnswer.input_answer.isnot(None),
         func.length(func.trim(models.VocabularyTestAnswer.input_answer)) > 0,
     )
+
+
+def apply_review_filters(
+    rows,
+    *,
+    student_id: int | None = None,
+    study_date: date | None = None,
+    review_status: str = "pending",
+    query: str | None = None,
+    include_reviewed: bool = False,
+):
     if not include_reviewed:
         rows = rows.filter(models.VocabularyTestSession.admin_reviewed_at.is_(None))
     if student_id is not None:
@@ -1523,6 +1841,13 @@ def admin_vocabulary_review_items(
         rows = rows.filter(models.VocabularyTestAnswer.manual_is_correct.is_(None))
     elif review_status == "completed":
         rows = rows.filter(models.VocabularyTestAnswer.manual_is_correct.isnot(None))
+    elif review_status == "gemini_completed":
+        rows = rows.filter(models.VocabularyTestAnswer.gemini_reviewed_at.isnot(None))
+    elif review_status == "gemini_review":
+        rows = rows.filter(
+            models.VocabularyTestAnswer.gemini_reviewed_at.isnot(None),
+            models.VocabularyTestAnswer.manual_is_correct.is_(None),
+        )
     if query:
         like = f"%{query.strip().lower()}%"
         rows = rows.filter(or_(
@@ -1530,6 +1855,29 @@ def admin_vocabulary_review_items(
             func.lower(models.VocabularyTestAnswer.input_answer).like(like),
             func.lower(models.Student.name).like(like),
         ))
+    return rows
+
+
+@router.get("/admin/vocabulary-review-items")
+def admin_vocabulary_review_items(
+    student_id: int | None = Query(default=None),
+    study_date: date | None = Query(default=None),
+    day_or_name: str | None = Query(default=None),
+    review_status: Literal["pending", "completed", "all", "gemini_completed", "gemini_review"] = Query(default="pending"),
+    query: str | None = Query(default=None),
+    include_reviewed: bool = Query(default=False),
+    db: Session = Depends(get_db),
+    admin: models.Admin = Depends(admin_auth.require_admin),
+):
+    del admin
+    rows = apply_review_filters(
+        vocabulary_review_base_query(db),
+        student_id=student_id,
+        study_date=study_date,
+        review_status=review_status,
+        query=query,
+        include_reviewed=include_reviewed,
+    )
     rows = rows.order_by(
         models.VocabularyTestSession.study_date.desc(),
         models.Student.name,
@@ -1572,6 +1920,13 @@ def admin_vocabulary_review_items(
             "is_manual_override": answer.manual_is_correct is not None,
             "manual_is_correct": answer.manual_is_correct,
             "manual_graded_at": answer.manual_graded_at,
+            "gemini_reviewed_at": answer.gemini_reviewed_at,
+            "gemini_verdict": answer.gemini_verdict,
+            "gemini_confidence": answer.gemini_confidence,
+            "gemini_reason": answer.gemini_reason,
+            "gemini_risk_flags": answer.gemini_risk_flags or [],
+            "gemini_model": answer.gemini_model,
+            "gemini_auto_applied": answer.gemini_auto_applied,
             "admin_reviewed_at": session.admin_reviewed_at,
             "session_score": session.score,
             "session_correct_count": session.correct_count,
@@ -1579,6 +1934,150 @@ def admin_vocabulary_review_items(
             "pending_count_for_session": pending_manual_review_count(db, session.id),
         })
     return {"items": items, "count": len(items)}
+
+
+def _gemini_review_candidates(db: Session, payload: GeminiBatchReviewIn):
+    rows = apply_review_filters(
+        vocabulary_review_base_query(db),
+        student_id=payload.student_id,
+        study_date=payload.study_date,
+        review_status="pending",
+        query=payload.query,
+        include_reviewed=False,
+    )
+    if payload.review_ids:
+        rows = rows.filter(models.VocabularyTestAnswer.id.in_(payload.review_ids))
+    rows = rows.order_by(
+        models.VocabularyTestSession.study_date.desc(),
+        models.Student.name,
+        models.VocabularyTestQuestion.order_index,
+    ).all()
+    candidates = []
+    for session, challenge, student, question, answer in rows:
+        del student
+        day_info = vocabulary_day_info(db, challenge, session.study_date)
+        day_text = " ".join(
+            str(value or "") for value in [
+                challenge.name,
+                day_info.get("learning_day"),
+                day_info.get("new_bank_day_label"),
+                day_info.get("cumulative_bank_day_label"),
+            ]
+        ).lower()
+        if payload.day_or_name and payload.day_or_name.strip().lower() not in day_text:
+            continue
+        if is_blank_answer(answer.input_answer) or answer.manual_is_correct is not None:
+            continue
+        candidates.append((session, question, answer))
+    return candidates
+
+
+@router.post("/admin/vocabulary-review-items/gemini-batch")
+def admin_gemini_batch_review(
+    payload: GeminiBatchReviewIn,
+    db: Session = Depends(get_db),
+    admin: models.Admin = Depends(admin_auth.require_admin),
+):
+    del admin
+    candidates = _gemini_review_candidates(db, payload)
+    requested_count = len(candidates)
+    if requested_count == 0:
+        return {
+            "requested_count": 0,
+            "processed_count": 0,
+            "auto_correct_count": 0,
+            "auto_acceptable_count": 0,
+            "wrong_count": 0,
+            "human_review_count": 0,
+            "failed_count": 0,
+            "model": gemini_model_name(),
+        }
+
+    totals = {
+        "processed_count": 0,
+        "auto_correct_count": 0,
+        "auto_acceptable_count": 0,
+        "wrong_count": 0,
+        "human_review_count": 0,
+        "failed_count": 0,
+    }
+    by_answer_id = {answer.id: (session.id, question.id, answer.id) for session, question, answer in candidates}
+    model = gemini_model_name()
+
+    for start in range(0, len(candidates), GEMINI_VOCAB_CHUNK_SIZE):
+        chunk = candidates[start:start + GEMINI_VOCAB_CHUNK_SIZE]
+        request_items = [
+            {
+                "review_id": answer.id,
+                "word": question.english_snapshot,
+                "accepted_answers": question.accepted_answers_snapshot,
+                "student_answer": answer.input_answer,
+            }
+            for _session, question, answer in chunk
+        ]
+        try:
+            gemini_results = review_vocabulary_answers_with_gemini(request_items)
+        except HTTPException as exc:
+            db.rollback()
+            if exc.status_code == 400:
+                raise
+            totals["failed_count"] += len(chunk)
+            continue
+
+        for result in gemini_results:
+            ids = by_answer_id.get(result.review_id)
+            if ids is None:
+                continue
+            session_id, question_id, answer_id = ids
+            session = db.get(models.VocabularyTestSession, session_id)
+            question = db.get(models.VocabularyTestQuestion, question_id)
+            answer = db.get(models.VocabularyTestAnswer, answer_id)
+            if session is None or question is None or answer is None:
+                totals["failed_count"] += 1
+                continue
+            if answer.manual_is_correct is not None or is_blank_answer(answer.input_answer):
+                continue
+
+            previous_final = final_is_correct(answer)
+            answer.gemini_reviewed_at = datetime.now(timezone.utc)
+            answer.gemini_verdict = result.verdict
+            answer.gemini_confidence = round(result.confidence * 100)
+            answer.gemini_reason = result.reason
+            answer.gemini_risk_flags = result.risk_flags
+            answer.gemini_model = model
+            answer.gemini_auto_applied = False
+
+            action = should_auto_apply_gemini(result)
+            if action in {"correct", "acceptable"}:
+                answer.manual_is_correct = True
+                answer.manual_reason = f"Gemini {result.verdict}: {result.reason}"
+                answer.manual_graded_by = None
+                answer.manual_graded_at = answer.gemini_reviewed_at
+                answer.gemini_auto_applied = True
+                new_final = True
+                if action == "correct":
+                    totals["auto_correct_count"] += 1
+                else:
+                    totals["auto_acceptable_count"] += 1
+            elif action == "wrong":
+                answer.manual_is_correct = False
+                answer.manual_reason = f"Gemini WRONG: {result.reason}"
+                answer.manual_graded_by = None
+                answer.manual_graded_at = answer.gemini_reviewed_at
+                answer.gemini_auto_applied = True
+                new_final = False
+                totals["wrong_count"] += 1
+            else:
+                new_final = previous_final
+                totals["human_review_count"] += 1
+
+            if previous_final != new_final:
+                apply_manual_grading_note_sync(db, session, question, answer, previous_final, new_final)
+            recompute_session_totals(db, session)
+            totals["processed_count"] += 1
+        db.commit()
+
+    return {"requested_count": requested_count, **totals, "model": model}
 
 
 @router.patch("/admin/vocabulary-results/{session_id}/review")
@@ -1875,6 +2374,15 @@ def admin_update_manual_grading(
 
     if previous_final != new_final:
         apply_manual_grading_note_sync(db, session, question, answer, previous_final, new_final)
+    if payload.action in {"mark_correct", "mark_incorrect"}:
+        save_grading_rule(
+            db,
+            question,
+            answer.input_answer,
+            "ACCEPT" if new_final else "REJECT",
+            source="TEACHER",
+            confirmed_by_teacher=True,
+        )
 
     recompute_session_totals(db, session)
     db.commit()
@@ -1926,7 +2434,7 @@ def submit_session(db: Session, session: models.VocabularyTestSession):
             )
             db.add(answer)
         answer.input_answer = normalize_input_answer(answer.input_answer)
-        answer.is_correct = is_answer_correct(answer.input_answer, question.accepted_answers_snapshot)
+        answer.is_correct = grade_answer_for_question(db, question, answer.input_answer)
         if is_blank_answer(answer.input_answer):
             answer.manual_is_correct = False
             answer.manual_reason = None
@@ -2117,6 +2625,35 @@ def student_wrong_notes(
         word = db.get(models.VocabularyBankWord, note.bank_word_id) if note.word_source_type == "word_bank" else db.get(models.VocabularyWord, note.word_id)
         if not word:
             continue
+        latest_answer_rows = db.query(models.VocabularyTestAnswer).join(
+            models.VocabularyTestQuestion,
+            models.VocabularyTestAnswer.question_id == models.VocabularyTestQuestion.id,
+        ).join(
+            models.VocabularyTestSession,
+            models.VocabularyTestAnswer.session_id == models.VocabularyTestSession.id,
+        ).filter(
+            models.VocabularyTestSession.student_id == student_id,
+            models.VocabularyTestSession.status == "submitted",
+            models.VocabularyTestSession.session_type == "main",
+            models.VocabularyTestQuestion.word_source_type == note.word_source_type,
+            or_(
+                models.VocabularyTestAnswer.manual_is_correct.is_(False),
+                and_(
+                    models.VocabularyTestAnswer.manual_is_correct.is_(None),
+                    models.VocabularyTestAnswer.is_correct.is_(False),
+                ),
+            ),
+        )
+        if note.word_source_type == "word_bank":
+            latest_answer_rows = latest_answer_rows.filter(models.VocabularyTestQuestion.bank_word_id == note.bank_word_id)
+        else:
+            latest_answer_rows = latest_answer_rows.filter(models.VocabularyTestQuestion.word_id == note.word_id)
+        latest_answer = latest_answer_rows.order_by(
+            models.VocabularyTestSession.study_date.desc(),
+            models.VocabularyTestSession.id.desc(),
+            models.VocabularyTestAnswer.id.desc(),
+        ).first()
+        explanation = student_gemini_explanation(latest_answer) if note.status == "unresolved" else None
         rows.append({
             "id": note.id,
             "word_id": note.word_id,
@@ -2131,6 +2668,7 @@ def student_wrong_notes(
             "wrong_count": note.wrong_count,
             "status": note.status,
             "resolved_at": note.resolved_at,
+            "gemini_explanation": explanation,
         })
     return rows
 
