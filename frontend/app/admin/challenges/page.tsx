@@ -18,9 +18,9 @@ const sections = [
   },
   {
     title: "수능특강 / 수능완성",
-    description: "수특 10일 챌린지와 관련 학습 흐름을 관리합니다.",
+    description: "수특 챌린지와 9모 EBS 문학 챌린지를 관리합니다.",
     links: [
-      { href: "/admin/suteuk-challenges", label: "수능특강", description: "학생별 10일 챌린지 배정, 진행률, 쉬는날 관리" },
+      { href: "/admin/suteuk-challenges", label: "수능특강 / 문학", description: "학생별 챌린지 배정, 진행률, 쉬는날 관리" },
     ],
   },
   {

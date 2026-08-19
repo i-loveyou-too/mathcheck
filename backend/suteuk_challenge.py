@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 import models
 from database import get_db
+from literature_challenge_data import LITERATURE_CHALLENGE_DAYS
 from study_dates import get_study_date
 from suteuk_concepts import SUTEUK_CONCEPT_ITEMS
 from suteuk_formula_quiz import FORMULA_QUIZ_BY_CODE, FORMULA_QUIZ_BY_DAY, FORMULA_QUIZ_EXPECTED_COUNT
@@ -19,8 +20,9 @@ router = APIRouter(tags=["Suteuk Challenge"])
 
 DEFAULT_CHALLENGE_TYPE = "suteuk_10day"
 ASSIGNMENT_STATUSES = {"active", "paused"}
-PROGRESS_TASK_TYPES = {"workbook", "concept_recall", "formula_quiz", "concept_review"}
-MANUAL_TASK_TYPES = {"workbook", "concept_review"}
+LITERATURE_CHALLENGE_TYPE = "ebs_literature_9mo"
+PROGRESS_TASK_TYPES = {"workbook", "concept_recall", "formula_quiz", "concept_review", "literature_video"}
+MANUAL_TASK_TYPES = {"workbook", "concept_review", "literature_video"}
 CONCEPT_RESPONSES = {"know", "unsure", "dont_know"}
 CONCEPT_FINAL_STATUSES = {"understood_after_card", "still_dont_know"}
 CONCEPTS_BY_DAY = {
@@ -232,6 +234,13 @@ CHALLENGE_CONFIGS = {
         "total_days": 5,
         "days": SUTEUK_LEVEL2_5DAY_DAYS,
     },
+    LITERATURE_CHALLENGE_TYPE: {
+        "code": LITERATURE_CHALLENGE_TYPE,
+        "title": "9모 EBS 문학 챌린지",
+        "short_title": "9모 문학",
+        "total_days": 14,
+        "days": LITERATURE_CHALLENGE_DAYS,
+    },
 }
 
 
@@ -253,7 +262,7 @@ class RestDateIn(BaseModel):
 class StudentProgressIn(BaseModel):
     student_id: int
     assignment_id: int
-    day_number: int = Field(ge=1, le=10)
+    day_number: int = Field(ge=1, le=14)
     task_code: str
     completed: bool
 
@@ -654,8 +663,10 @@ def day_summary(
     concepts: dict[str, models.SuteukChallengeConceptProgress] | None = None,
     formula_responses: dict[str, models.SuteukChallengeFormulaResponse] | None = None,
     scheduled_date: date | None = None,
+    target_date: date | None = None,
 ) -> dict:
     tasks = [serialize_task(day["day"], task, progress) for task in sorted(day["tasks"], key=lambda item: item["order"])]
+    locked = False
     checkable = [task for task in tasks if task["checkable"]]
     completed = sum(1 for task in checkable if task["completed"])
     total = len(checkable)
@@ -668,6 +679,7 @@ def day_summary(
         "progress_rate": round(completed * 100 / total) if total else 0,
         "total_problems": total_problems,
         "scheduled_date": scheduled_date,
+        "locked": locked,
         "concept_summary": concept_summary_for_day(day["day"], concepts or {}) if challenge_type == DEFAULT_CHALLENGE_TYPE and CONCEPTS_BY_DAY.get(day["day"]) else None,
         "formula_summary": formula_summary_for_day(day["day"], formula_responses or {}) if challenge_type == DEFAULT_CHALLENGE_TYPE and day["day"] in {1, 2, 3} else None,
     }
@@ -697,6 +709,16 @@ def serialize_assignment(
         for day_number, task in all_tasks
         if progress.get((day_number, task["code"])) and progress[(day_number, task["code"])].completed
     )
+    aa_tasks = [
+        (day_number, task)
+        for day_number, task in all_tasks
+        if task.get("importance") == "AA"
+    ]
+    aa_completed = sum(
+        1
+        for day_number, task in aa_tasks
+        if progress.get((day_number, task["code"])) and progress[(day_number, task["code"])].completed
+    )
     selected_day_number = selected_day or current_day
     selected = day_config(assignment.challenge_type, selected_day_number)
     selected_scheduled_date = calendar_date_for_day(assignment.start_date, selected_day_number, rests)
@@ -720,7 +742,9 @@ def serialize_assignment(
         "overall_total_tasks": overall_total,
         "overall_completed_tasks": overall_completed,
         "overall_progress_rate": round(overall_completed * 100 / overall_total) if overall_total else 0,
-        "today": day_summary(selected, progress, assignment.challenge_type, concepts, formula_responses, scheduled_date=selected_scheduled_date),
+        "aa_total_tasks": len(aa_tasks),
+        "aa_completed_tasks": aa_completed,
+        "today": day_summary(selected, progress, assignment.challenge_type, concepts, formula_responses, scheduled_date=selected_scheduled_date, target_date=target),
         "created_at": assignment.created_at,
         "updated_at": assignment.updated_at,
     }
@@ -733,6 +757,7 @@ def serialize_assignment(
                 concepts,
                 formula_responses,
                 scheduled_date=calendar_date_for_day(assignment.start_date, day["day"], rests),
+                target_date=target,
             )
             for day in config["days"]
         ]

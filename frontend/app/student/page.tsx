@@ -55,6 +55,10 @@ type SuteukChallengeAssignment = {
     completed_tasks: number;
     total_tasks: number;
     progress_rate: number;
+    tasks?: {
+      content_type?: "novel" | "poetry" | "special";
+      title?: string;
+    }[];
   };
 };
 
@@ -514,6 +518,16 @@ export default function StudentDashboardPage() {
               <p className="mt-2 break-words text-sm font-bold text-white/78">
                 {suteukChallenge.schedule_finished ? "챌린지 기간 종료" : `DAY ${suteukChallenge.current_day} / ${suteukChallenge.total_days}`} · {suteukChallenge.start_date} 시작
               </p>
+              {suteukChallenge.challenge_type === "ebs_literature_9mo" ? (
+                <div className="mt-3 space-y-1 text-sm font-black text-white">
+                  <p>오늘 딱 2작품만!</p>
+                  {(suteukChallenge.today.tasks ?? []).map((task) => (
+                    <p key={`${task.content_type}-${task.title}`} className="text-white/86">
+                      {task.content_type === "novel" ? "📕" : task.content_type === "special" ? "🎭" : "🌿"} {task.title}
+                    </p>
+                  ))}
+                </div>
+              ) : null}
               <div className="mt-4 h-2.5 overflow-hidden rounded-full bg-white/22">
                 <div
                   className="h-full rounded-full bg-white transition-all duration-500"
@@ -527,7 +541,7 @@ export default function StudentDashboardPage() {
                 <p className="text-3xl font-black">{suteukChallenge.overall_progress_rate}%</p>
               </div>
               <span className="inline-flex min-h-11 max-w-full items-center justify-center rounded-full bg-white px-4 py-2 text-center text-sm font-black leading-tight text-[#E13D3D] shadow-[0_12px_26px_rgba(16,33,61,0.16)] sm:max-w-[180px]">
-                {suteukChallenge.today.completed_tasks > 0 ? "오늘 분량 이어하기" : "오늘 분량 시작"}
+                {suteukChallenge.challenge_type === "ebs_literature_9mo" ? "오늘 공부하기 →" : suteukChallenge.today.completed_tasks > 0 ? "오늘 분량 이어하기" : "오늘 분량 시작"}
               </span>
             </div>
           </div>

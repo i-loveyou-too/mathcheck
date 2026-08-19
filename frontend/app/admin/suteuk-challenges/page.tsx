@@ -73,6 +73,7 @@ const today = new Date().toISOString().slice(0, 10);
 const fallbackTypes: ChallengeType[] = [
   { code: "suteuk_10day", title: "수특 10일 챌린지", short_title: "수특 10일", total_days: 10 },
   { code: "suteuk_level2_5day", title: "수특 LEVEL 2 · 5일 챌린지", short_title: "수특 LEVEL 2", total_days: 5 },
+  { code: "ebs_literature_9mo", title: "9모 EBS 문학 챌린지", short_title: "9모 문학", total_days: 14 },
 ];
 
 function StatusPill({ status }: { status: string }) {
@@ -321,7 +322,7 @@ export default function AdminSuteukChallengesPage() {
                       <div className="mt-3 h-2 rounded-full bg-[#F1F5F9]">
                         <div className="h-full rounded-full bg-[#FF5A5F]" style={{ width: `${day.progress_rate}%` }} />
                       </div>
-                      <p className="mt-3 text-xs font-bold text-[#667085]">{day.total_problems ? `총 ${day.total_problems}문제` : "콘텐츠 준비 중"}</p>
+                      <p className="mt-3 text-xs font-bold text-[#667085]">{detail?.challenge_type === "ebs_literature_9mo" ? "소설 1 + 시가 1" : day.total_problems ? `총 ${day.total_problems}문제` : "콘텐츠 준비 중"}</p>
                     </article>
                   ))}
                 </div>
